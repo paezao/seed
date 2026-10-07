@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -226,6 +227,7 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// group (see controlUI) whatever the organism asks for.
 			resp.Header.Set("Cross-Origin-Opener-Policy", "unsafe-none")
 			resp.Header.Del("Service-Worker-Allowed")
+			restrictFraming(resp.Header, resp.Request.Host)
 			return nil
 		}
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -264,4 +266,24 @@ func errorBlock(msg string) string {
 func htmlEscape(s string) string {
 	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;")
 	return r.Replace(s)
+}
+
+// restrictFraming decides who may frame an organism response. On the main
+// origin nobody may: a framed admin screen (organism.localhost) could
+// otherwise navigate itself to a main-origin page, become same-origin with
+// the control plane and read its token. On the organism origin, only the
+// control plane (same port on localhost/127.0.0.1/[::1]) may frame it. The
+// policy is added as an extra CSP header, so the organism's own CSP still applies.
+func restrictFraming(h http.Header, host string) {
+	hostname, port := host, ""
+	if hn, p, err := net.SplitHostPort(host); err == nil {
+		hostname, port = hn, p
+	}
+	if strings.EqualFold(hostname, OrganismFrameHost) && port != "" {
+		h.Add("Content-Security-Policy", fmt.Sprintf("frame-ancestors http://localhost:%[1]s http://127.0.0.1:%[1]s http://[::1]:%[1]s", port))
+		h.Del("X-Frame-Options")
+		return
+	}
+	h.Add("Content-Security-Policy", "frame-ancestors 'none'")
+	h.Set("X-Frame-Options", "DENY")
 }

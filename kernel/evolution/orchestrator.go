@@ -350,7 +350,7 @@ func (o *Orchestrator) say(ctx context.Context, e *memory.Evolution, content str
 	if conv == "" {
 		conv = memory.DefaultConversation
 	}
-	m, err := o.Store.AddMessage(ctx, conv, "seed", content, e.ID)
+	m, err := o.Store.AddReport(ctx, conv, content, e.ID)
 	if err == nil {
 		o.Bus.Publish("message", m)
 	}

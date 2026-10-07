@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 
+	"seed/kernel/fsx"
 	"seed/kernel/permissions"
 )
 
@@ -101,8 +102,10 @@ func (w *Workspace) readFile(rel string) ([]byte, error) {
 
 // checkWrite refuses writes the policy does not see correctly: a write must
 // not traverse a symlink (e.g. organism/link -> ../kernel), otherwise the
-// path that was classified is not the path that gets written. When
-// allowFinalLink is set (deleting), the last component may itself be a link.
+// path that was classified is not the path that gets written. This check
+// gives a clear error early; the write itself (fsx.*NoFollow, openat2 with
+// RESOLVE_NO_SYMLINKS) enforces it race-free. When allowFinalLink is set
+// (deleting), the last component may itself be a link.
 func (w *Workspace) checkWrite(rel string, allowFinalLink ...bool) error {
 	parts := strings.Split(filepath.ToSlash(rel), "/")
 	for i := range parts {
@@ -355,16 +358,8 @@ func WriteFileTools(w *Workspace) []*Tool {
 				if err := w.checkWrite(rel); err != nil {
 					return "", err
 				}
-				r, err := w.root()
-				if err != nil {
-					return "", err
-				}
-				defer r.Close()
-				if err := r.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
-					return "", err
-				}
-				_, existed := r.Lstat(rel)
-				if err := r.WriteFile(rel, []byte(a.Content), 0o644); err != nil {
+				_, existed := os.Lstat(filepath.Join(w.Root, rel))
+				if err := fsx.WriteFileNoFollow(w.Root, rel, []byte(a.Content), 0o644); err != nil {
 					return "", err
 				}
 				verb := "created"
@@ -401,12 +396,7 @@ func WriteFileTools(w *Workspace) []*Tool {
 				if err := w.checkWrite(rel); err != nil {
 					return "", err
 				}
-				r, err := w.root()
-				if err != nil {
-					return "", err
-				}
-				defer r.Close()
-				b, err := r.ReadFile(rel)
+				b, err := fsx.ReadFileNoFollow(w.Root, rel)
 				if err != nil {
 					return "", err
 				}
@@ -426,7 +416,7 @@ func WriteFileTools(w *Workspace) []*Tool {
 				} else {
 					s = strings.Replace(s, a.OldString, a.NewString, 1)
 				}
-				if err := r.WriteFile(rel, []byte(s), 0o644); err != nil {
+				if err := fsx.WriteFileNoFollow(w.Root, rel, []byte(s), 0o644); err != nil {
 					return "", err
 				}
 				return fmt.Sprintf("edited %s (%d replacement(s))", rel, max(1, n*boolInt(a.ReplaceAll))), nil
@@ -452,15 +442,7 @@ func WriteFileTools(w *Workspace) []*Tool {
 				if err := w.checkWrite(rel, true); err != nil {
 					return "", err
 				}
-				r, err := w.root()
-				if err != nil {
-					return "", err
-				}
-				defer r.Close()
-				if _, err := r.Lstat(rel); err != nil {
-					return "", err
-				}
-				return "deleted " + rel, r.RemoveAll(rel)
+				return "deleted " + rel, fsx.RemoveAllNoFollow(w.Root, rel)
 			},
 		},
 	}

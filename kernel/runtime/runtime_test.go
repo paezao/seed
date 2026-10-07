@@ -232,3 +232,35 @@ func TestControlPlaneNotServedOnOrganismOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestOrganismFramingPolicy(t *testing.T) {
+	h := http.Header{}
+	restrictFraming(h, "localhost:8081")
+	if h.Get("X-Frame-Options") != "DENY" || !strings.Contains(strings.Join(h.Values("Content-Security-Policy"), ";"), "frame-ancestors 'none'") {
+		t.Fatalf("main-origin organism pages must not be frameable: %v", h)
+	}
+	h = http.Header{"Content-Security-Policy": {"default-src 'self'"}}
+	restrictFraming(h, "organism.localhost:8081")
+	csp := h.Values("Content-Security-Policy")
+	if len(csp) != 2 || !strings.Contains(csp[1], "frame-ancestors http://localhost:8081") || h.Get("X-Frame-Options") != "" {
+		t.Fatalf("organism origin should be frameable only by the control plane, keeping its own CSP: %v", h)
+	}
+}
+
+func TestKernelReportsAreRecordsNotAgentWords(t *testing.T) {
+	msgs := toModelMessages([]memory.Message{
+		{Role: "user", Kind: "chat", Content: "become a todo app"},
+		{Role: "seed", Kind: "chat", Content: "On it."},
+		{Role: "seed", Kind: "report", Content: "I am now **generation 2**"},
+		{Role: "user", Kind: "chat", Content: "add priorities"},
+	})
+	for _, m := range msgs {
+		if m.Role == models.Assistant && strings.Contains(m.Content, "generation 2") {
+			t.Fatal("kernel report must not appear as the agent's own words")
+		}
+	}
+	last := msgs[len(msgs)-1]
+	if last.Role != models.User || !strings.Contains(last.Content, "[kernel record] I am now") || !strings.Contains(last.Content, "add priorities") {
+		t.Fatalf("report should be a user-side record merged before the next request: %+v", msgs)
+	}
+}

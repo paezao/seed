@@ -137,9 +137,15 @@ func toModelMessages(history []memory.Message) []models.Message {
 	for _, m := range history {
 		role := models.User
 		content := m.Content
-		if m.Role == "seed" {
+		switch {
+		case m.Kind == "report":
+			// Written by the kernel, not by the chat agent: present it as a
+			// record so the agent never imitates it (and never claims an
+			// evolution happened without starting one).
+			content = "[kernel record] " + content
+		case m.Role == "seed":
 			role = models.Assistant
-		} else if m.Role == "system" {
+		case m.Role == "system":
 			content = "[system] " + content
 		}
 		if n := len(out); n > 0 && out[n-1].Role == role {

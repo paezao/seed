@@ -26,12 +26,15 @@ var migrationsFS embed.FS
 const DefaultConversation = "default"
 
 type Message struct {
-	ID             string    `json:"id"`
-	ConversationID string    `json:"conversation_id"`
-	Role           string    `json:"role"`
-	Content        string    `json:"content"`
-	EvolutionID    string    `json:"evolution_id,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	ID             string `json:"id"`
+	ConversationID string `json:"conversation_id"`
+	Role           string `json:"role"`
+	Content        string `json:"content"`
+	EvolutionID    string `json:"evolution_id,omitempty"`
+	// Kind is "chat" (a conversational turn) or "report" (written by the
+	// kernel about an evolution, in the Seed's voice).
+	Kind      string    `json:"kind"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Plan struct {
@@ -168,15 +171,24 @@ func (s *Store) Close() { s.Pool.Close() }
 // ---- messages
 
 func (s *Store) AddMessage(ctx context.Context, conv, role, content, evolutionID string) (*Message, error) {
-	m := &Message{ID: ids.New("msg"), ConversationID: conv, Role: role, Content: content, EvolutionID: evolutionID}
-	err := s.Pool.QueryRow(ctx, `INSERT INTO messages (id, conversation_id, role, content, evolution_id)
-		VALUES ($1, $2, $3, $4, NULLIF($5, '')) RETURNING created_at`, m.ID, conv, role, content, evolutionID).Scan(&m.CreatedAt)
+	return s.addMessage(ctx, conv, role, "chat", content, evolutionID)
+}
+
+// AddReport records a kernel-written report about an evolution.
+func (s *Store) AddReport(ctx context.Context, conv, content, evolutionID string) (*Message, error) {
+	return s.addMessage(ctx, conv, "seed", "report", content, evolutionID)
+}
+
+func (s *Store) addMessage(ctx context.Context, conv, role, kind, content, evolutionID string) (*Message, error) {
+	m := &Message{ID: ids.New("msg"), ConversationID: conv, Role: role, Kind: kind, Content: content, EvolutionID: evolutionID}
+	err := s.Pool.QueryRow(ctx, `INSERT INTO messages (id, conversation_id, role, kind, content, evolution_id)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, '')) RETURNING created_at`, m.ID, conv, role, kind, content, evolutionID).Scan(&m.CreatedAt)
 	return m, err
 }
 
 // Messages returns the last limit messages, oldest first.
 func (s *Store) Messages(ctx context.Context, conv string, limit int) ([]Message, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, conversation_id, role, content, coalesce(evolution_id, ''), created_at FROM (
+	rows, err := s.Pool.Query(ctx, `SELECT id, conversation_id, role, kind, content, coalesce(evolution_id, ''), created_at FROM (
 		SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2) m
 		ORDER BY created_at, id`, conv, limit)
 	if err != nil {
@@ -184,7 +196,7 @@ func (s *Store) Messages(ctx context.Context, conv string, limit int) ([]Message
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Message, error) {
 		var m Message
-		err := r.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Content, &m.EvolutionID, &m.CreatedAt)
+		err := r.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Kind, &m.Content, &m.EvolutionID, &m.CreatedAt)
 		return m, err
 	})
 }

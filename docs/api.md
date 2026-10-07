@@ -33,6 +33,7 @@ type Message = {
   role: "user" | "seed" | "system";
   content: string;                  // markdown
   evolution_id?: string;            // set when the message announces/tracks an evolution
+  kind: "chat" | "report";          // report = written by the kernel about an evolution
   created_at: string;
 };
 
