@@ -1,0 +1,23 @@
+# Shared local infrastructure for Seeds. `seed run` starts the same thing
+# automatically (seed infra up); use this if you prefer compose.
+name: seed-infra
+services:
+  postgres:
+    image: postgres:17
+    container_name: seed-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: seed
+      POSTGRES_PASSWORD: seed
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - seed-postgres-data:/var/lib/postgresql/data
+    networks: [seed-net]
+volumes:
+  seed-postgres-data:
+    name: seed-postgres-data
+networks:
+  seed-net:
+    name: seed-net

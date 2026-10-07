@@ -1,0 +1,58 @@
+# Seed configuration. Part of the kernel: changing it requires owner approval.
+name: seed
+
+server:
+  addr: 127.0.0.1:8080
+
+model:
+  # auto picks the first provider with a key in the environment:
+  # ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY.
+  provider: auto
+  name: ""            # provider default (Claude Sonnet 5.5) when empty
+  max_tokens: 16000
+
+database:
+  # Administrative connection (creates the kernel, organism and scratch databases).
+  # Override with SEED_DATABASE_URL.
+  url: postgres://seed:seed@127.0.0.1:55432/postgres?sslmode=disable
+
+sandbox:
+  driver: docker      # docker (isolated) | local (no isolation; tests only)
+  image: seed-sandbox # built from ./Dockerfile
+  network: seed-net
+  db_host: seed-postgres:5432
+  memory: 4g
+  cpus: "4"
+
+organism:
+  build: make -C organism build
+  test: make -C organism test
+  run: organism/bin/server
+  port: 8080
+  health: /healthz
+  migrations: organism/migrations
+
+evolution:
+  max_repair_attempts: 3
+  max_agent_turns: 150
+  command_timeout_seconds: 900
+
+permissions:
+  # allow | ask | deny for each risk level.
+  safe: allow         # reading, inspecting, running tests
+  review: allow       # changing the organism, migrations, dependencies (inside the sandbox)
+  dangerous: ask      # changing the kernel
+  require_plan_approval: false
+  require_apply_approval: false
+
+kernel:
+  protected:
+    - kernel/
+    - cmd/
+    - control/
+    - go.mod
+    - go.sum
+    - seed.yaml
+    - Dockerfile
+    - Makefile
+    - docker-compose.yml

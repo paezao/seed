@@ -1,0 +1,9 @@
+# kernel runtime state: worktrees, built kernel, markers
+.seed/
+/bin/
+node_modules/
+kernel/template/assets/template.tar.gz
+# organism build outputs (see organism/.gitignore)
+organism/bin/
+organism/web/dist/
+.env

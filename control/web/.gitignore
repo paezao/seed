@@ -1,0 +1,4 @@
+node_modules/
+*.log
+.vite/
+# dist/ is intentionally committed (embedded in the Go binary)
