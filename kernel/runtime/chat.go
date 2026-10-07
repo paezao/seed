@@ -73,7 +73,7 @@ func (c *Chat) respond(ctx context.Context) {
 			if err := json.Unmarshal(in, &a); err != nil {
 				return "", err
 			}
-			e, err := c.Orch.Request(ctx, memory.DefaultConversation, a.Intent)
+			e, err := c.Orch.Request(ctx, memory.DefaultConversation, withOwnerWords(a.Intent, lastOwnerMessage(history)))
 			if err != nil {
 				return "", err
 			}
@@ -167,4 +167,23 @@ func firstNonEmpty(s ...string) string {
 		}
 	}
 	return ""
+}
+
+func lastOwnerMessage(history []memory.Message) string {
+	for i := len(history) - 1; i >= 0; i-- {
+		if history[i].Role == "user" {
+			return strings.TrimSpace(history[i].Content)
+		}
+	}
+	return ""
+}
+
+// withOwnerWords makes sure the evolution sees the owner's exact request,
+// not only the chat model's paraphrase (which can drop details).
+func withOwnerWords(intent, owner string) string {
+	intent = strings.TrimSpace(intent)
+	if owner == "" || strings.Contains(intent, owner) {
+		return intent
+	}
+	return intent + "\n\nThe owner's exact words: \"" + owner + "\""
 }

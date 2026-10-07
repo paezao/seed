@@ -264,3 +264,14 @@ func TestKernelReportsAreRecordsNotAgentWords(t *testing.T) {
 		t.Fatalf("report should be a user-side record merged before the next request: %+v", msgs)
 	}
 }
+
+func TestEvolutionKeepsOwnersWords(t *testing.T) {
+	owner := "Tasks should have priorities: low, medium and high. Let me filter by priority."
+	got := withOwnerWords("Become a todo application with task priorities.", owner)
+	if !strings.Contains(got, owner) {
+		t.Fatalf("owner's words lost: %q", got)
+	}
+	if withOwnerWords(owner, owner) != owner {
+		t.Fatal("no duplication when the intent already quotes the owner")
+	}
+}
