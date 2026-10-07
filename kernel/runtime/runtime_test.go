@@ -194,28 +194,41 @@ func TestControlPageOnlyForNavigations(t *testing.T) {
 	}
 }
 
-func TestStoredKeyNeverSentToCallerURL(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	var hits []string
-	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits = append(hits, r.Header.Get("Authorization"))
-		w.WriteHeader(500)
-	}))
-	defer evil.Close()
-	if err := updateCredentials(func(c *credentials) { c.Providers["openrouter"] = credential{APIKey: "sk-or-secret"} }); err != nil {
-		t.Fatal(err)
+func TestSecretsLeaveTheEnvironment(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
+	t.Setenv("STRIPE_KEY", "sk_live_x")
+	t.Setenv("SEED_SECRETS", "STRIPE_KEY")
+	t.Setenv("PATH_LIKE", "not a secret")
+	s := LoadSecrets()
+	if s.Get("OPENROUTER_API_KEY") != "sk-or-test" || s.Get("STRIPE_KEY") != "sk_live_x" {
+		t.Fatal("secrets should be held in memory")
 	}
-	k := &Kernel{Cfg: &config.Config{}, Mind: models.NewSwitchable()}
-	r := httptest.NewRequest("POST", "/_seed/api/model", strings.NewReader(`{"provider":"openrouter","name":"x/y","base_url":"`+evil.URL+`"}`))
-	rec := httptest.NewRecorder()
-	k.handleSetModel(rec, r)
-	for _, h := range hits {
-		if strings.Contains(h, "sk-or-secret") {
-			t.Fatal("stored key was sent to a caller-supplied URL")
+	for _, n := range []string{"OPENROUTER_API_KEY", "STRIPE_KEY", "SEED_SECRETS"} {
+		if _, ok := os.LookupEnv(n); ok {
+			t.Fatalf("%s must be removed from the environment so nothing I start inherits it", n)
 		}
 	}
-	if len(hits) != 0 {
-		t.Fatalf("openrouter must ignore base_url; evil server was contacted %d times", len(hits))
+	if os.Getenv("PATH_LIKE") == "" {
+		t.Fatal("non-secrets stay")
+	}
+}
+
+func TestModelConfigReportsKeySource(t *testing.T) {
+	t.Setenv("OPENROUTER_API_KEY", "sk-or-test")
+	k := &Kernel{Cfg: &config.Config{}, Mind: models.NewSwitchable(), Secrets: LoadSecrets()}
+	mc := k.modelConfig()
+	if len(mc.Providers) != 1 || !mc.Providers[0].HasKey || mc.Providers[0].KeySource != "env" || mc.Providers[0].KeyEnv != "OPENROUTER_API_KEY" {
+		t.Fatalf("unexpected providers: %+v", mc.Providers)
+	}
+	b, _ := json.Marshal(mc)
+	if strings.Contains(string(b), "sk-or-test") {
+		t.Fatal("the key must never be returned")
+	}
+	// Keys passed at start cannot be forgotten through the API.
+	rec := httptest.NewRecorder()
+	k.handleForgetKey(rec, httptest.NewRequest("POST", "/_seed/api/model/forget-key", strings.NewReader(`{"provider":"openrouter"}`)))
+	if rec.Code != 400 {
+		t.Fatalf("forgetting an env key should be refused, got %d", rec.Code)
 	}
 }
 

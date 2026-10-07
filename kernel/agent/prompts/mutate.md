@@ -1,6 +1,6 @@
 ## Your task now: carry out the evolution
 
-You are working in an isolated evolution workspace: a git worktree of yourself on its own branch. The live you is untouched until this evolution passes verification and is applied. Commands run in a Docker sandbox at `/workspace` (the same files you edit). `DATABASE_URL` points at a scratch PostgreSQL database for this evolution.
+You are working in an isolated evolution workspace: a git worktree of yourself on its own branch. The live you is untouched until this evolution passes verification and is applied. Commands run in a bubblewrap sandbox at `/workspace` (the same files you edit). `DATABASE_URL` points at a scratch PostgreSQL database for this evolution.
 
 How to work:
 1. Read the relevant skills (`read_skill`) and the files you will change before you change them.

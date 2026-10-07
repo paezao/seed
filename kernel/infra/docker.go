@@ -10,13 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
-)
-
-const (
-	PostgresContainer = "seed-postgres"
-	PostgresImage     = "postgres:17"
-	PostgresHostPort  = "55432"
 )
 
 // Docker runs docker CLI commands.
@@ -28,68 +21,6 @@ func Docker(ctx context.Context, args ...string) (string, error) {
 		return strings.TrimSpace(out.String()), fmt.Errorf("docker %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 	}
 	return strings.TrimSpace(out.String()), nil
-}
-
-// DockerAvailable reports whether the docker daemon is reachable.
-func DockerAvailable(ctx context.Context) bool {
-	_, err := Docker(ctx, "info", "--format", "{{.ServerVersion}}")
-	return err == nil
-}
-
-// EnsureNetwork creates a bridge network if missing.
-func EnsureNetwork(ctx context.Context, name string) error {
-	if _, err := Docker(ctx, "network", "inspect", name); err == nil {
-		return nil
-	}
-	_, err := Docker(ctx, "network", "create", name)
-	return err
-}
-
-// EnsurePostgres starts the shared Seed PostgreSQL container on network and
-// waits until admin can connect.
-func EnsurePostgres(ctx context.Context, network string, admin Admin) error {
-	if admin.Ping(ctx) == nil {
-		return nil
-	}
-	// An installation from before managed credentials: rotate the password.
-	if rotateLegacy(ctx, admin) == nil && admin.Ping(ctx) == nil {
-		slog.Info("rotated the PostgreSQL superuser password to a managed secret")
-		return nil
-	}
-	if err := EnsureNetwork(ctx, network); err != nil {
-		return err
-	}
-	state, err := Docker(ctx, "inspect", "-f", "{{.State.Running}}", PostgresContainer)
-	switch {
-	case err != nil:
-		slog.Info("starting PostgreSQL container", "name", PostgresContainer, "port", PostgresHostPort)
-		_, err = Docker(ctx, "run", "-d", "--name", PostgresContainer, "--restart", "unless-stopped",
-			"--network", network, "-p", "127.0.0.1:"+PostgresHostPort+":5432",
-			"-e", "POSTGRES_USER=seed", "-e", "POSTGRES_PASSWORD="+passwordOf(admin.URL), "-e", "POSTGRES_DB=postgres",
-			"-v", "seed-postgres-data:/var/lib/postgresql/data", PostgresImage)
-		if err != nil {
-			return err
-		}
-	case state != "true":
-		if _, err := Docker(ctx, "start", PostgresContainer); err != nil {
-			return err
-		}
-	}
-	// Make sure it is attached to the sandbox network (compose-created containers may not be).
-	_, _ = Docker(ctx, "network", "connect", network, PostgresContainer)
-	deadline := time.Now().Add(60 * time.Second)
-	for time.Now().Before(deadline) {
-		if err := admin.Ping(ctx); err == nil {
-			return nil
-		}
-		_ = rotateLegacy(ctx, admin)
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
-	return fmt.Errorf("PostgreSQL did not become ready at %s", PostgresHostPort)
 }
 
 // EnsureImage builds the sandbox image from dockerfile (if not already built)

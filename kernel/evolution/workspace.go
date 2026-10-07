@@ -49,7 +49,7 @@ func (o *Orchestrator) prepareWorkspace(ctx context.Context, e *memory.Evolution
 		return nil, fmt.Errorf("scratch database: %w", err)
 	}
 	dbHost := ""
-	if o.Cfg.Sandbox.Driver == "docker" {
+	if o.Cfg.Sandbox.Driver != "local" {
 		dbHost = o.Cfg.Sandbox.DBHost
 	}
 	sandboxDB := o.Admin.DatabaseURL(ws.dbName, o.DB.Role, o.DB.Password, dbHost)
@@ -118,7 +118,7 @@ func (ws *workspace) close(ctx context.Context, success bool) {
 func (o *Orchestrator) cleanupScratch(ctx context.Context, e *memory.Evolution, removeWorktree bool) {
 	short := strings.ToLower(ids.Short(e.ID, 8))
 	_ = o.Admin.DropDatabase(ctx, o.Cfg.DBName("evo_"+short))
-	if o.Cfg.Sandbox.Driver == "docker" {
+	if o.Cfg.Sandbox.Driver != "local" {
 		_, _ = dockerRm(ctx, o.Cfg.ContainerName("evo-"+short))
 	}
 	if removeWorktree && e.Worktree != "" {

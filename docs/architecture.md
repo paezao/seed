@@ -13,38 +13,32 @@ SEED
 
 ```mermaid
 flowchart TB
-    owner([Owner]) -- intent --> cp
+    owner([Owner]) -- "browser: / and /_seed" --> port
 
-    subgraph seed["Seed process (kernel)"]
-        cp["Control plane<br/>/_seed (React)"]
-        api["HTTP API + SSE"]
-        chat["Chat agent"]
-        orch["Evolution orchestrator<br/>state machine"]
-        agent["Agent loop<br/>(plan · mutate · reflect)"]
-        tools["Primitive tools<br/>fs · run · http · db · git · skills"]
-        perm["Permission policy<br/>safe · review · dangerous"]
-        proxy["Reverse proxy  /"]
-        cp --> api --> chat --> orch
-        orch --> agent --> perm --> tools
+    subgraph container["One container = one Seed's body (seed-runtime image)"]
+        port["port 8080"] --> kernel
+        subgraph kernel["Kernel process"]
+            cp["Control plane /_seed"]
+            orch["Evolution orchestrator"]
+            agent["Agent loop + tools"]
+            proxy["Reverse proxy /"]
+        end
+        pg[("Private PostgreSQL<br/>Unix socket only")]
+        subgraph bw1["bubblewrap"]
+            evo["Evolution workspace<br/>(git worktree)"]
+        end
+        subgraph bw2["bubblewrap"]
+            live["Live organism<br/>organism/bin/server"]
+        end
+        kernel --> pg
+        orch --> evo
+        proxy --> live
+        evo -. socket .-> pg
+        live -. socket .-> pg
     end
 
-    subgraph docker["Docker (seed-net)"]
-        evo["Evolution sandbox<br/>worktree mounted, kernel read-only"]
-        live["Live sandbox<br/>organism/bin/server"]
-        pg[("PostgreSQL<br/>kernel memory · live DB · scratch DBs")]
-    end
-
-    repo[("Git repository<br/>main = current generation<br/>seed/evo_* = evolutions")]
-
-    tools -- "run / http" --> evo
-    tools -- "read/write (confined)" --> repo
-    orch -- "worktree, commit, ff-merge" --> repo
-    orch -- "deploy" --> live
-    proxy --> live
-    evo --> pg
-    live --> pg
-    api --> pg
-    owner -- "browse /" --> proxy
+    folder[("The Seed's folder (mounted at /seed)<br/>code · git history · knowledge · skills<br/>.seed/postgres · .seed/secrets")]
+    container --- folder
 ```
 
 ## Kernel (`kernel/`)
@@ -55,13 +49,14 @@ flowchart TB
 | `models` | Provider-neutral `Model` interface. OpenRouter is offered to owners, while Anthropic and OpenAI-compatible are implemented. A `Switchable` model changes live when the owner picks another model. There is a scripted fake for tests. Retries with backoff. |
 | `tools` | Primitive tools and the `Registry`, which classifies every call and enforces permissions |
 | `permissions` | Risk levels, policy, approvals, kernel-path protection |
-| `sandbox` | `Driver`/`Sandbox` interfaces. The Docker driver gives isolation; the local driver is for tests. |
+| `sandbox` | `Driver`/`Sandbox` interfaces. The bubblewrap driver gives isolation; the local driver is for tests. |
+| `pg` | The Seed's private PostgreSQL: init, start and stop, data in `.seed/postgres`, socket only |
 | `evolution` | The orchestrator: state machine, workspaces, verification, reflection, commit, apply, rollback, recovery |
 | `memory` | Operational memory in PostgreSQL: conversations, evolutions, events, generations, approvals |
 | `knowledge` / `skills` | Read the Seed's self model, narrative and skills from the repository |
 | `git` | Git CLI wrapper (worktrees, commits, trailers, fast-forward) |
 | `migrate` | Ordered, checksummed SQL migrations (used for kernel memory and the organism) |
-| `infra` | PostgreSQL container, Docker network, sandbox image |
+| `infra` | database administration, the owner's config directory, the runtime image |
 | `runtime` | Boot, the live organism supervisor and proxy, the HTTP API, SSE, chat |
 | `template` | `seed new`: plants a pristine Seed and commits generation 1 |
 
@@ -103,7 +98,9 @@ page that says *I don't have a purpose yet*.
 
 ## Data
 
-One PostgreSQL server (`seed-postgres`) holds, per Seed:
+Each Seed runs its own private PostgreSQL inside its container, with data in its folder
+(`.seed/postgres`), reachable only through a Unix socket and protected by a password in
+`.seed/secrets`. It holds:
 
 | database | owner | contents |
 |---|---|---|

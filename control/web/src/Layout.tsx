@@ -48,17 +48,26 @@ export default function Layout() {
   const contentRef = useRef<HTMLElement>(null);
   useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [pathname]);
 
-  // First run is a fullscreen experience: until the Seed has a brain and its
+  // First run is a fullscreen experience: until the Seed can think and its
   // owner has said what it should become, there is no control plane chrome.
+  // Once shown, it stays until it hands over (onDone), so live status changes
+  // (e.g. a purpose being set mid-evolution) never yank it away.
   const [welcomeDone, setWelcomeDone] = useState(false);
   const [hasMessages, setHasMessages] = useState<boolean | null>(null);
   useEffect(() => {
     if (!status || status.purpose) return;
     api.messages(1).then((m) => setHasMessages(m.length > 0)).catch(() => setHasMessages(true));
   }, [status?.purpose, status == null]); // eslint-disable-line react-hooks/exhaustive-deps
-  const firstRun = !welcomeDone && !!status && (!status.model.configured || (!status.purpose && hasMessages === false));
-  if (firstRun) {
-    return <Welcome onDone={() => { setWelcomeDone(true); navigate('/'); }} />;
+  const fresh = !!status && !status.purpose && hasMessages === false;
+  const wantsWelcome = !!status && (!status.model.configured || fresh);
+  const [welcomeLatched, setWelcomeLatched] = useState(false);
+  useEffect(() => { if (wantsWelcome && !welcomeDone) setWelcomeLatched(true); }, [wantsWelcome, welcomeDone]);
+  if (!welcomeDone && (wantsWelcome || welcomeLatched)) {
+    return <Welcome fresh={!!status && !status.purpose && hasMessages !== true} onDone={() => { setWelcomeDone(true); navigate('/'); }} />;
+  }
+  // Still finding out whether this is a first run: a calm blank screen instead of a flash of chrome.
+  if (!welcomeDone && status && !status.purpose && hasMessages === null) {
+    return <div className="welcome" aria-busy="true" />;
   }
 
   return (
@@ -92,10 +101,10 @@ export default function Layout() {
             <Link
               to="/settings"
               className="model-line model-link"
-              title={status.model.configured ? 'My mind — change it in Settings' : 'No mind yet — choose a model in Settings'}
+              title={status.model.configured ? 'My mind — change it in Settings' : 'No brain: I was started without a key'}
             >
               <span className={`dot ${status.model.configured ? 'dot-ok' : 'dot-warn'}`} />
-              <span className="mono truncate">{status.model.configured ? `${status.model.provider}/${status.model.name}` : 'no mind yet'}</span>
+              <span className="mono truncate">{status.model.configured ? `${status.model.provider}/${status.model.name}` : 'no brain (no key)'}</span>
             </Link>
           )}
           <div className="model-line">

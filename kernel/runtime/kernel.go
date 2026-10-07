@@ -26,6 +26,7 @@ import (
 	"seed/kernel/memory"
 	"seed/kernel/models"
 	"seed/kernel/permissions"
+	"seed/kernel/pg"
 	"seed/kernel/sandbox"
 )
 
@@ -37,20 +38,24 @@ var ErrRestart = errors.New("kernel restart requested")
 const RestartExitCode = 75
 
 type Kernel struct {
-	Cfg          *config.Config
-	Store        *memory.Store
-	Bus          *events.Bus
-	Repo         *git.Repo
-	Mind         *models.Switchable
+	Cfg   *config.Config
+	Store *memory.Store
+	Bus   *events.Bus
+	Repo  *git.Repo
+	Mind  *models.Switchable
+	// Secrets passed by the owner at start (memory only).
+	Secrets      *Secrets
 	Driver       sandbox.Driver
 	SandboxImage string
 	Admin        infra.Admin
-	Policy       *permissions.Policy
-	Approvals    *evolution.Approvals
-	Orch         *evolution.Orchestrator
-	Organism     *Organism
-	Chat         *Chat
-	Logs         *LogBuffer
+	// PG is my private PostgreSQL (nil when an external server is configured).
+	PG        *pg.Server
+	Policy    *permissions.Policy
+	Approvals *evolution.Approvals
+	Orch      *evolution.Orchestrator
+	Organism  *Organism
+	Chat      *Chat
+	Logs      *LogBuffer
 
 	restart chan struct{}
 	// Token authorizes control-plane API calls. It is embedded only in the
@@ -65,7 +70,8 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	if err != nil {
 		return nil, err
 	}
-	k := &Kernel{Cfg: cfg, Bus: events.NewBus(), Logs: logs, restart: make(chan struct{}, 1), Token: infra.RandomSecret(24)}
+	k := &Kernel{Cfg: cfg, Bus: events.NewBus(), Logs: logs, restart: make(chan struct{}, 1), Token: infra.RandomSecret(24),
+		Secrets: LoadSecrets()}
 	if err := WriteControlToken(cfg.Root, k.Token); err != nil {
 		return nil, err
 	}
@@ -79,36 +85,32 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	}
 	k.Policy = permissions.NewPolicy(cfg.Permissions.Safe, cfg.Permissions.Review, cfg.Permissions.Dangerous, cfg.Kernel.Evolvable)
 
-	// Infrastructure
+	// Body: a private PostgreSQL inside my own folder (unless an external
+	// server is configured) and a sandbox driver for generated code.
+	stateDir := filepath.Join(cfg.Root, ".seed")
 	if cfg.Database.URL == "" {
-		if cfg.Database.URL, err = infra.ManagedAdminURL(); err != nil {
-			return nil, fmt.Errorf("database credentials: %w", err)
+		k.PG, err = pg.Start(ctx, stateDir)
+		if err != nil {
+			return nil, fmt.Errorf("my database: %w", err)
 		}
+		cfg.Database.URL = k.PG.AdminURL()
 	}
 	k.Admin = infra.Admin{URL: cfg.Database.URL}
-	if cfg.Sandbox.Driver == "docker" {
-		if !infra.DockerAvailable(ctx) {
-			return nil, errors.New("docker is not available; Seeds run generated code in Docker sandboxes (or set sandbox.driver: local, without isolation)")
+	if err := k.Admin.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("postgres at %s: %w", redact(cfg.Database.URL), err)
+	}
+	switch cfg.Sandbox.Driver {
+	case "bwrap":
+		if !sandbox.BwrapAvailable() {
+			return nil, errors.New("bubblewrap is not available; run me in my container (`seed run`), or set sandbox.driver: local (no isolation)")
 		}
-		if err := infra.EnsurePostgres(ctx, cfg.Sandbox.Network, k.Admin); err != nil {
-			return nil, fmt.Errorf("postgres: %w", err)
+		d := &sandbox.BwrapDriver{CacheDir: filepath.Join(stateDir, "cache"), Hide: []string{cfg.Root}}
+		if k.PG != nil {
+			d.SocketDir = k.PG.SocketDir
 		}
-		if err := infra.EnsureNetwork(ctx, cfg.Sandbox.Network); err != nil {
-			return nil, err
-		}
-		ref, err := infra.EnsureImage(ctx, cfg.Sandbox.Image, filepath.Join(cfg.Root, "Dockerfile"))
-		if err != nil {
-			return nil, fmt.Errorf("sandbox image: %w", err)
-		}
-		k.SandboxImage = ref
-		cache, _ := os.UserCacheDir()
-		k.Driver = &sandbox.DockerDriver{Image: ref, Network: cfg.Sandbox.Network, Memory: cfg.Sandbox.Memory,
-			CPUs: cfg.Sandbox.CPUs, CacheDir: filepath.Join(cache, "seed")}
-	} else {
-		slog.Warn("sandbox.driver is local: generated code runs on the host WITHOUT isolation")
-		if err := k.Admin.Ping(ctx); err != nil {
-			return nil, fmt.Errorf("postgres at %s: %w", redact(cfg.Database.URL), err)
-		}
+		k.Driver = d
+	default:
+		slog.Warn("sandbox.driver is local: generated code runs WITHOUT isolation")
 		k.Driver = sandbox.LocalDriver{}
 	}
 
@@ -157,8 +159,10 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	// Mind: the model this Seed thinks with, chosen by its owner.
 	k.Mind = models.NewSwitchable()
 	k.loadMind(ctx)
-	if !k.Mind.Info().Configured {
-		slog.Info("I have no mind yet: choose a model in my control plane")
+	if info := k.Mind.Info(); info.Configured {
+		slog.Info("I can think", "provider", info.Provider, "model", info.Name)
+	} else {
+		slog.Warn("I have no brain: start me with `seed run -e OPENROUTER_API_KEY` (or lend me a key in my control plane)")
 	}
 
 	k.Organism = &Organism{Cfg: cfg, Driver: k.Driver, Admin: k.Admin, Role: role, Pass: pass, Repo: k.Repo, Bus: k.Bus}
@@ -274,6 +278,7 @@ func (k *Kernel) Serve(ctx context.Context) error {
 		k.Organism.Stop(shutdownCtx)
 	}
 	k.Store.Close()
+	k.PG.Stop()
 	return result
 }
 

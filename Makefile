@@ -8,16 +8,17 @@
 
 GO      ?= go
 BIN     := bin/seed
-SANDBOX := $(shell docker images --format '{{.Repository}}:{{.Tag}}' seed-sandbox 2>/dev/null | head -1)
+UID     := $(shell id -u)
+GID     := $(shell id -g)
+# Same hardened settings as a running Seed (see cmd/seed/container.go).
+SECURITY := --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=unconfined \
+            --security-opt apparmor=unconfined --security-opt systempaths=unconfined
 
-.PHONY: up down build control template install test lint e2e clean
+.PHONY: up build control template install test lint e2e clean
 
 up: build
-	$(BIN) infra up
-	@echo "infrastructure ready. create a Seed: $(BIN) new myapp"
-
-down:
-	-$(BIN) infra down
+	$(BIN) image
+	@echo "ready. plant a Seed: $(BIN) new myapp"
 
 build: control template
 	$(GO) build -o $(BIN) ./cmd/seed
@@ -36,8 +37,11 @@ template:
 install: build
 	install -m 0755 $(BIN) $(HOME)/.local/bin/seed
 
-test:
-	SEED_TEST_SANDBOX_IMAGE=$(SANDBOX) $(GO) test ./kernel/... ./cmd/...
+test: build
+	mkdir -p $(HOME)/.cache/seed-dev
+	docker run --rm $(SECURITY) --user $(UID):$(GID) -v $(CURDIR):/src -w /src \
+	  -v $(HOME)/.cache/seed-dev:/cache -e GOCACHE=/cache/go-build -e GOMODCACHE=/cache/go-mod \
+	  --entrypoint /usr/bin/tini $$($(BIN) image) -- go test ./kernel/... ./cmd/...
 
 lint:
 	$(GO) vet ./...

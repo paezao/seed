@@ -25,14 +25,15 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	goruntime "runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
 
 	"seed/kernel/config"
 	"seed/kernel/git"
-	"seed/kernel/infra"
 	"seed/kernel/runtime"
 	"seed/kernel/template"
 )
@@ -40,15 +41,18 @@ import (
 const usage = `seed — software that grows itself
 
 Usage:
-  seed new <name>          create a new Seed in ./<name>
+  seed new <name> -e OPENROUTER_API_KEY   plant a Seed in ./<name>, start it, open it
   seed run                 run the Seed in the current directory
   seed status              show what this Seed is right now
   seed evolve "<intent>"   ask this Seed to evolve and follow its progress
   seed generations         list this Seed's generations
   seed rollback <n>        return to generation n
-  seed infra up|down       start/stop shared PostgreSQL (docker)
+  seed stop                stop the Seed in the current directory
 
-Flags for run/serve: --dir <path>, --addr <host:port>
+Flags for run: -e KEY[=VALUE] (secrets, repeatable), --env-file <file>, --dir <path>,
+               --addr <host:port>, --open, --detach, --native
+
+Secrets (your model API key, tokens) are passed at every start and never stored by the Seed.
 `
 
 func main() {
@@ -75,8 +79,10 @@ func main() {
 		err = cmdGenerations(ctx, args)
 	case "rollback":
 		err = cmdRollback(ctx, args)
-	case "infra":
-		err = cmdInfra(ctx, args)
+	case "stop":
+		err = cmdStop(ctx, args)
+	case "image":
+		err = cmdImage(ctx, args)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
@@ -101,20 +107,30 @@ func cmdNew(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("new", flag.ContinueOnError)
 	noRun := fs.Bool("no-run", false, "only create the Seed; don't start it")
 	addr := fs.String("addr", "", "listen address")
-	// Allow flags before or after the name.
-	var rest []string
-	for _, a := range args {
-		if strings.HasPrefix(a, "-") {
-			rest = append([]string{a}, rest...)
-		} else {
-			rest = append(rest, a)
+	secrets := map[string]string{}
+	fs.Var(envFlag{secrets}, "e", "pass a secret to the first run: KEY or KEY=VALUE; repeatable")
+	envFile := fs.String("env-file", "", "pass secrets from a KEY=VALUE file")
+	// Allow flags before or after the name (flags that take a value keep it).
+	takesValue := map[string]bool{"e": true, "addr": true, "env-file": true}
+	var flags, positional []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if !strings.HasPrefix(a, "-") {
+			positional = append(positional, a)
+			continue
+		}
+		flags = append(flags, a)
+		name := strings.TrimLeft(a, "-")
+		if takesValue[name] && !strings.Contains(a, "=") && i+1 < len(args) {
+			i++
+			flags = append(flags, args[i])
 		}
 	}
-	if err := fs.Parse(rest); err != nil {
+	if err := fs.Parse(append(flags, positional...)); err != nil {
 		return err
 	}
 	if fs.NArg() != 1 {
-		return errors.New("usage: seed new <name> [--no-run] [--addr host:port]")
+		return errors.New("usage: seed new <name> [-e KEY]... [--env-file file] [--no-run] [--addr host:port]")
 	}
 	name := fs.Arg(0)
 	dir, err := filepath.Abs(name)
@@ -142,22 +158,27 @@ Run:
 	if *addr != "" {
 		runArgs = append(runArgs, "--addr", *addr)
 	}
+	if *envFile != "" {
+		runArgs = append(runArgs, "--env-file", *envFile)
+	}
+	for k, v := range secrets { // in-process: values never reach a command line
+		runArgs = append(runArgs, "-e", k+"="+v)
+	}
 	return cmdRun(ctx, runArgs)
 }
 
 // openWhenUp waits for the kernel to listen, then opens the control plane.
-func openWhenUp(ctx context.Context, dir string) {
-	for i := 0; i < 600; i++ {
+func openWhenUp(ctx context.Context, addrOf func() string) {
+	for i := 0; i < 1200; i++ {
 		select {
 		case <-ctx.Done():
 			return
 		case <-time.After(500 * time.Millisecond):
 		}
-		b, err := os.ReadFile(runtime.AddrPath(dir))
-		if err != nil {
+		addr := addrOf()
+		if addr == "" {
 			continue
 		}
-		addr := strings.TrimSpace(string(b))
 		_, port, _ := net.SplitHostPort(addr)
 		url := "http://localhost:" + port + "/_seed/"
 		resp, err := http.Get("http://" + addr + "/_seed/api/identity/logo")
@@ -178,8 +199,74 @@ func openWhenUp(ctx context.Context, dir string) {
 }
 
 type runFlags struct {
-	dir, addr string
-	open      bool
+	dir, addr            string
+	open, native, detach bool
+	// secrets are KEY=VALUE pairs passed with -e / --env-file.
+	secrets map[string]string
+}
+
+func (f runFlags) secretNames() []string {
+	names := make([]string, 0, len(f.secrets))
+	for k := range f.secrets {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	return names
+}
+
+func (f runFlags) secretEnv() []string {
+	var env []string
+	for _, k := range f.secretNames() {
+		env = append(env, k+"="+f.secrets[k])
+	}
+	return env
+}
+
+// envFlag collects -e KEY (value from the current environment) and -e KEY=VALUE.
+type envFlag struct{ m map[string]string }
+
+func (e envFlag) String() string { return "" }
+func (e envFlag) Set(v string) error {
+	k, val, hasVal := strings.Cut(v, "=")
+	k = strings.TrimSpace(k)
+	if !envName.MatchString(k) {
+		return fmt.Errorf("invalid variable name %q", k)
+	}
+	if !hasVal {
+		var ok bool
+		if val, ok = os.LookupEnv(k); !ok {
+			return fmt.Errorf("-e %s: %s is not set in your environment", k, k)
+		}
+	}
+	e.m[k] = val
+	return nil
+}
+
+var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// readEnvFile parses KEY=VALUE lines (# comments, optional quotes).
+func readEnvFile(path string, into map[string]string) error {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	for i, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		line = strings.TrimPrefix(line, "export ")
+		k, v, ok := strings.Cut(line, "=")
+		if !ok || !envName.MatchString(strings.TrimSpace(k)) {
+			return fmt.Errorf("%s:%d: expected KEY=VALUE", path, i+1)
+		}
+		v = strings.TrimSpace(v)
+		if len(v) >= 2 && (v[0] == '"' && v[len(v)-1] == '"' || v[0] == '\'' && v[len(v)-1] == '\'') {
+			v = v[1 : len(v)-1]
+		}
+		into[strings.TrimSpace(k)] = v
+	}
+	return nil
 }
 
 func parseRunFlags(name string, args []string) (runFlags, error) {
@@ -188,8 +275,19 @@ func parseRunFlags(name string, args []string) (runFlags, error) {
 	fs.StringVar(&f.dir, "dir", ".", "Seed directory")
 	fs.StringVar(&f.addr, "addr", "", "listen address (default from seed.yaml; a busy port moves to the next free one)")
 	fs.BoolVar(&f.open, "open", false, "open the control plane in your browser once I'm up")
+	fs.BoolVar(&f.native, "native", false, "run directly on this machine instead of in my container (kernel development)")
+	fs.BoolVar(&f.detach, "detach", false, "start in the background and return")
+	f.secrets = map[string]string{}
+	fs.Var(envFlag{f.secrets}, "e", "pass a secret: KEY (value from your environment) or KEY=VALUE; repeatable")
+	var envFile string
+	fs.StringVar(&envFile, "env-file", "", "pass secrets from a KEY=VALUE file (keep it outside the Seed)")
 	if err := fs.Parse(args); err != nil {
 		return f, err
+	}
+	if envFile != "" {
+		if err := readEnvFile(envFile, f.secrets); err != nil {
+			return f, err
+		}
 	}
 	abs, err := filepath.Abs(f.dir)
 	f.dir = abs
@@ -199,11 +297,9 @@ func parseRunFlags(name string, args []string) (runFlags, error) {
 // cmdRun builds the Seed's own kernel from its own source and runs it. When
 // the kernel exits asking for a restart (an evolution changed it), it is
 // rebuilt and started again: the Seed literally runs the latest version of itself.
-func cmdRun(ctx context.Context, args []string) error {
-	f, err := parseRunFlags("run", args)
-	if err != nil {
-		return err
-	}
+// runNative builds and runs the kernel directly on this machine (kernel
+// development; needs bubblewrap and PostgreSQL server binaries installed).
+func runNative(ctx context.Context, f runFlags) error {
 	if _, err := config.Load(f.dir); err != nil {
 		return err
 	}
@@ -221,7 +317,8 @@ func cmdRun(ctx context.Context, args []string) error {
 		}
 		child := exec.Command(bin, "serve", "--dir", f.dir)
 		child.Stdout, child.Stderr, child.Stdin = os.Stdout, os.Stderr, os.Stdin
-		child.Env = os.Environ()
+		child.Env = append(os.Environ(), f.secretEnv()...)
+		child.Env = append(child.Env, runtime.SecretsEnv+"="+strings.Join(f.secretNames(), ","))
 		if f.addr != "" {
 			child.Env = append(child.Env, "SEED_ADDR="+f.addr)
 		}
@@ -230,7 +327,10 @@ func cmdRun(ctx context.Context, args []string) error {
 			return err
 		}
 		if f.open {
-			go openWhenUp(ctx, f.dir)
+			go openWhenUp(ctx, func() string {
+				b, _ := os.ReadFile(runtime.AddrPath(f.dir))
+				return strings.TrimSpace(string(b))
+			})
 			f.open = false // only the first start, not kernel restarts
 		}
 		done := make(chan error, 1)
@@ -283,7 +383,9 @@ func baseURL() (string, *config.Config, error) {
 		return "", nil, err
 	}
 	addr := cfg.Server.Addr
-	if b, err := os.ReadFile(runtime.AddrPath(cfg.Root)); err == nil {
+	if b, err := os.ReadFile(hostAddrPath(cfg.Root)); err == nil {
+		addr = strings.TrimSpace(string(b))
+	} else if b, err := os.ReadFile(runtime.AddrPath(cfg.Root)); err == nil {
 		addr = strings.TrimSpace(string(b))
 	}
 	return "http://" + addr + "/_seed/api", cfg, nil
@@ -507,37 +609,6 @@ func cmdRollback(ctx context.Context, args []string) error {
 		return err
 	}
 	return follow(ctx, base, e.ID)
-}
-
-func cmdInfra(ctx context.Context, args []string) error {
-	if len(args) != 1 {
-		return errors.New("usage: seed infra up|down")
-	}
-	d := config.Defaults()
-	managed, err := infra.ManagedAdminURL()
-	if err != nil {
-		return err
-	}
-	admin := infra.Admin{URL: managed}
-	if v := os.Getenv("SEED_DATABASE_URL"); v != "" {
-		admin.URL = v
-	}
-	switch args[0] {
-	case "up":
-		if err := infra.EnsureNetwork(ctx, d.Sandbox.Network); err != nil {
-			return err
-		}
-		if err := infra.EnsurePostgres(ctx, d.Sandbox.Network, admin); err != nil {
-			return err
-		}
-		fmt.Println("PostgreSQL ready on 127.0.0.1:" + infra.PostgresHostPort)
-	case "down":
-		_, err := infra.Docker(ctx, "stop", infra.PostgresContainer)
-		return err
-	default:
-		return errors.New("usage: seed infra up|down")
-	}
-	return nil
 }
 
 func shortHash(h string) string {

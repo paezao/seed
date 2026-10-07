@@ -32,6 +32,7 @@ export type Message = {
   role: 'user' | 'seed' | 'system';
   content: string;
   evolution_id?: string;
+  kind?: 'chat' | 'report';
   created_at: string;
 };
 
@@ -154,15 +155,22 @@ export type Settings = Record<string, unknown>;
 
 // ---- model ("mind") configuration ----
 export type ProviderId = 'anthropic' | 'openrouter' | 'openai' | 'openai-compatible';
+export type KeySource = 'env' | 'session' | '';
 export type ProviderInfo = {
   id: ProviderId;
   label: string;
-  /** A key for this provider is stored in the owner's credentials (never returned). */
+  /** A key is available right now (never returned). */
   has_key: boolean;
+  /** Where the key came from: passed at start ("env"), lent this session ("session"), or none. */
+  key_source?: KeySource;
+  /** The variable to pass at start, e.g. "OPENROUTER_API_KEY". */
+  key_env?: string;
   needs_key: boolean;
   needs_base_url: boolean;
   base_url: string;
   default_model: string;
+  /** Where to get a key. */
+  keys_url?: string;
 };
 export type ModelConfig = {
   provider: string;

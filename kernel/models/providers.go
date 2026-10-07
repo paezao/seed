@@ -19,13 +19,15 @@ type Provider struct {
 	NeedsBaseURL bool   `json:"needs_base_url"`
 	DefaultModel string `json:"default_model"`
 	KeysURL      string `json:"keys_url,omitempty"`
+	// KeyEnv is the variable the owner passes the key in (seed run -e KEY_ENV).
+	KeyEnv string `json:"key_env"`
 }
 
 // Providers lists the providers offered to owners. v0.1 starts with
 // OpenRouter: one key gives access to any model. The Anthropic and
 // OpenAI-compatible implementations exist and can be listed here later.
 var Providers = []Provider{
-	{ID: "openrouter", Label: "OpenRouter", NeedsKey: true, DefaultModel: "anthropic/claude-sonnet-5.5", KeysURL: "https://openrouter.ai/keys"},
+	{ID: "openrouter", Label: "OpenRouter", NeedsKey: true, DefaultModel: "anthropic/claude-sonnet-5.5", KeysURL: "https://openrouter.ai/keys", KeyEnv: "OPENROUTER_API_KEY"},
 }
 
 func ProviderByID(id string) (Provider, bool) {

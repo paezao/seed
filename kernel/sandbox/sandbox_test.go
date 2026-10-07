@@ -102,22 +102,33 @@ func exercise(t *testing.T, d Driver, server string) {
 }
 
 func TestLocalSandbox(t *testing.T) {
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 needed for the test server")
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node needed for the test server")
 	}
-	exercise(t, LocalDriver{}, `exec python3 -c "
-import http.server,os
-class H(http.server.BaseHTTPRequestHandler):
-    def do_GET(s):
-        s.send_response(200); s.end_headers(); s.wfile.write(b'hi')
-http.server.HTTPServer(('127.0.0.1', int(os.environ['PORT'])), H).serve_forever()"`)
+	exercise(t, LocalDriver{}, `exec node -e "require('http').createServer((q,r)=>r.end('hi')).listen(process.env.PORT)"`)
 }
 
-func TestDockerSandbox(t *testing.T) {
-	image := os.Getenv("SEED_TEST_SANDBOX_IMAGE")
-	if image == "" {
-		t.Skip("set SEED_TEST_SANDBOX_IMAGE to run Docker sandbox tests")
+func TestBwrapSandbox(t *testing.T) {
+	if !BwrapAvailable() {
+		t.Skip("bubblewrap not available")
 	}
-	d := &DockerDriver{Image: image, CacheDir: t.TempDir(), Memory: "512m", CPUs: "1"}
+	secretDir := t.TempDir()
+	os.WriteFile(filepath.Join(secretDir, "key"), []byte("SECRET"), 0o600)
+	d := &BwrapDriver{CacheDir: t.TempDir(), Hide: []string{secretDir}}
 	exercise(t, d, `exec node -e "require('http').createServer((q,r)=>r.end('hi')).listen(process.env.PORT)"`)
+
+	// Hidden host paths are invisible, and the sandbox gets a clean environment.
+	ctx := context.Background()
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "organism"), 0o755)
+	t.Setenv("SEED_SECRET_ENV", "leak")
+	sb, err := d.Create(ctx, Spec{Name: "hide", Root: root, Writable: []string{"organism"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sb.Close(ctx)
+	res, _ := sb.Exec(ctx, "cat "+filepath.Join(secretDir, "key")+"; echo env=$SEED_SECRET_ENV; pwd", 10*time.Second, nil)
+	if strings.Contains(res.Output, "SECRET") || strings.Contains(res.Output, "env=leak") || !strings.Contains(res.Output, "/workspace") {
+		t.Fatalf("sandbox leaked host state: %q", res.Output)
+	}
 }

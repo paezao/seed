@@ -111,7 +111,8 @@ func (a Admin) ListDatabases(ctx context.Context, prefix string) ([]string, erro
 }
 
 // DatabaseURL derives a connection URL for database db from the admin URL,
-// optionally replacing credentials and host (host may be "host:port").
+// optionally replacing credentials and host. host may be "host:port" or an
+// absolute Unix socket directory (e.g. the socket as mounted in a sandbox).
 func (a Admin) DatabaseURL(db, user, password, host string) string {
 	u, err := url.Parse(a.URL)
 	if err != nil {
@@ -121,7 +122,12 @@ func (a Admin) DatabaseURL(db, user, password, host string) string {
 	if user != "" {
 		u.User = url.UserPassword(user, password)
 	}
-	if host != "" {
+	switch {
+	case strings.HasPrefix(host, "/"):
+		q := u.Query()
+		q.Set("host", host)
+		u.Host, u.RawQuery = "", q.Encode()
+	case host != "":
 		u.Host = host
 	}
 	return u.String()

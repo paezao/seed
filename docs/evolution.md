@@ -41,7 +41,7 @@ stateDiagram-v2
    risks. It includes an *identity* step when the Seed takes on a new purpose. Optional owner
    approval (`require_plan_approval`).
 3. **Workspace.** A git worktree on branch `seed/evo_<id>` from the current generation, a scratch
-   database `<name>_evo_<id>`, and a Docker sandbox with the worktree mounted at `/workspace`
+   database `<name>_evo_<id>` in the Seed's private PostgreSQL, and a bubblewrap sandbox with the worktree mounted at `/workspace`
    (kernel paths read-only).
 4. **Mutating.** The builder agent edits files, runs builds and tests, applies migrations, starts
    the organism and makes HTTP requests, all inside the sandbox. It ends by calling `finish` with a

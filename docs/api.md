@@ -178,29 +178,31 @@ type Skill = { name: string; description: string; path: string; files: string[];
 
 ## Model ("mind") configuration
 
-The owner picks the model that drives the Seed. A fresh Seed **always asks**: it has no mind
-until the owner chooses a provider and gives a key. Environment variables are never picked up
-implicitly. API keys are stored per provider in the owner's user config
-(`~/.config/seed/credentials.json`, mode 0600), so they can be reused across Seeds and more
-providers and keys can be added over time. Keys are **never** returned by the API. The per-Seed
-choice (provider and model) is kept in the Seed's operational memory. Changes take effect
-immediately, with no restart.
+A Seed stores **no credentials**. The owner passes secrets as key/value pairs when starting it
+(`seed run -e OPENROUTER_API_KEY`, `--env-file`); a deployed Seed gets the same variables from its
+platform. The kernel holds them in memory only. If no key was passed, the owner may paste one in the
+control plane **for this session only** (memory; gone on restart). Keys are never returned by the API.
+The model choice (not a secret) is kept in the Seed's memory, and `SEED_MODEL` can also be passed at start.
+When a key is present and no model was chosen, the provider's default model is used.
 
 ```ts
 type ProviderInfo = {
-  id: string;                      // v0.1 offers "openrouter" only (one key, any model); more providers later
-  label: string;                   // "Anthropic", "OpenRouter", "OpenAI", "Local / OpenAI-compatible"
-  has_key: boolean;                // a key for this provider is stored in the owner's credentials
-  needs_key: boolean;              // false for openai-compatible
-  needs_base_url: boolean;         // true for openai-compatible
-  base_url: string;                // stored base URL (openai-compatible), "" otherwise
+  id: string;                      // v0.1: "openrouter" only
+  label: string;
+  has_key: boolean;                // a key is available right now
+  key_source: "env" | "session" | "";   // passed at start, pasted this session, or none
+  key_env: string;                 // the variable to pass, e.g. "OPENROUTER_API_KEY"
+  needs_key: boolean;
+  needs_base_url: boolean;
+  base_url: string;
   default_model: string;
+  keys_url?: string;               // where to get a key
 };
 
 type ModelConfig = {
-  provider: string;                // currently selected provider id
-  name: string;                    // currently selected model id
-  configured: boolean;             // the owner chose a provider/model for this Seed and a key exists
+  provider: string;                // selected provider id
+  name: string;                    // selected model id (the default when none was chosen)
+  configured: boolean;             // the Seed can think (a key is present)
   providers: ProviderInfo[];
 };
 
@@ -210,8 +212,8 @@ type ModelOption = { id: string; name: string; context_length?: number; descript
 | Method | Path | Body | Response |
 |---|---|---|---|
 | GET | `/model` | | `ModelConfig` |
-| GET | `/model/options?provider=<id>` | | `{models: ModelOption[], error?: string}` — models the provider offers (fetched live when possible, curated fallback otherwise) |
-| POST | `/model` | `{provider, name, api_key?, base_url?}` | `ModelConfig` — validates by making a tiny test call; on failure returns 400 `{error}` and changes nothing. `api_key` (if given) is stored for that provider. |
-| POST | `/model/forget-key` | `{provider}` | `ModelConfig` — deletes the stored key for that provider |
+| GET | `/model/options?provider=<id>` | | `{models: ModelOption[], error?: string}` |
+| POST | `/model` | `{provider, name, api_key?}` | `ModelConfig`. Validates with a tiny test call; 400 `{error}` changes nothing. `api_key` is held **for this session only**. |
+| POST | `/model/forget-key` | `{provider}` | `ModelConfig`. Forgets a session key (keys passed at start cannot be forgotten). |
 
 `Status.model` (`{provider, name, configured}`) reflects changes; a `status` SSE event is sent after a change.

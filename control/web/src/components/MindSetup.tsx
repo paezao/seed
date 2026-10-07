@@ -1,21 +1,35 @@
+import { useState } from 'react';
 import { api } from '../api';
+import { brainProvider, CopyCommand, restartCommand } from './Brain';
 import { ModelForm } from './ModelForm';
 import { ErrorNote, Loading, useLoad } from './ui';
 
-/** First-run card: the Seed asks for a mind (provider, key, model) before anything else. */
+/** Shown in the chat while the Seed has no key: how to restart it with one, or lend one for this session. */
 export function MindSetup({ compact }: { compact?: boolean }) {
   const load = useLoad(() => api.model(), []);
+  const [lending, setLending] = useState(false);
+  const provider = brainProvider(load.data);
   return (
     <section className={`mind-setup${compact ? ' compact' : ''}`} aria-labelledby="mind-setup-title">
-      <h2 id="mind-setup-title" className="mind-title">First, give me a mind.</h2>
+      <h2 id="mind-setup-title" className="mind-title">I need a brain to think.</h2>
       <p className="mind-line">
-        I think with a language model. Choose a provider and a model; your key is stored in your user
-        config (<code>~/.config/seed</code>), never in my repository.
+        No key was passed when I started. Restart me with one{provider?.keys_url && (
+          <> (<a className="mf-get-key" href={provider.keys_url} target="_blank" rel="noreferrer">get a key ↗</a>)</>
+        )}:
       </p>
+      <CopyCommand command={restartCommand(provider)} label="Restart command" />
       {load.error && !load.data && <ErrorNote error={load.error} onRetry={load.reload} />}
       {!load.data && load.loading && <Loading />}
-      {load.data && (
-        <ModelForm config={load.data} onSaved={load.setData} submitLabel="Wake up" busyLabel="Waking up…" />
+      {load.data && !lending && (
+        <button type="button" className="link-btn mind-lend-toggle" onClick={() => setLending(true)}>
+          or lend me a key for this session
+        </button>
+      )}
+      {load.data && lending && (
+        <div className="mind-lend-form">
+          <ModelForm config={load.data} onSaved={load.setData} submitLabel="Wake up" busyLabel="Waking up…" autoFocusKey
+            onCancel={() => setLending(false)} cancelLabel="Never mind" />
+        </div>
       )}
     </section>
   );

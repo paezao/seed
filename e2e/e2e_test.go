@@ -24,8 +24,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"seed/kernel/infra"
 )
 
 var token string
@@ -70,10 +68,6 @@ func TestCanonicalDemo(t *testing.T) {
 	if model == "" {
 		model = "anthropic/claude-sonnet-5.5"
 	}
-	adminURL, err := infra.ManagedAdminURL()
-	if err != nil {
-		t.Fatal(err)
-	}
 	bin, err := filepath.Abs("../bin/seed")
 	if err != nil {
 		t.Fatal(err)
@@ -90,10 +84,11 @@ func TestCanonicalDemo(t *testing.T) {
 	base := fmt.Sprintf("http://127.0.0.1:%d", port)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "run", "--addr", fmt.Sprintf("127.0.0.1:%d", port))
+	// Started the way an owner starts a Seed: the key passed in at start, never stored.
+	cmd := exec.CommandContext(ctx, bin, "run", "--addr", fmt.Sprintf("127.0.0.1:%d", port), "-e", "OPENROUTER_API_KEY", "-e", "SEED_MODEL")
 	cmd.Dir = root
-	// Isolated user config: the test's key never lands in the owner's ~/.config/seed.
-	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "SEED_DATABASE_URL="+adminURL)
+	// The Seed runs in its container with its own private PostgreSQL.
+	cmd.Env = append(os.Environ(), "OPENROUTER_API_KEY="+key, "SEED_MODEL="+model)
 	logf, _ := os.Create(filepath.Join(dir, "seed.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
@@ -116,10 +111,9 @@ func TestCanonicalDemo(t *testing.T) {
 		token = strings.TrimSpace(string(b))
 		return err == nil && getJSON(base+"/_seed/api/status", &s) == nil && s.Organism["state"] == "running"
 	})
-	if s.Model.Configured {
-		t.Fatal("a fresh Seed must ask for its mind")
+	if !s.Model.Configured {
+		t.Fatal("a Seed started with OPENROUTER_API_KEY should be able to think right away")
 	}
-	post(t, base+"/_seed/api/model", map[string]string{"provider": "openrouter", "name": model, "api_key": key})
 	if s.Purpose != "" || s.Generation.Number != 1 || s.Identity.Name != "Seed" {
 		t.Fatalf("fresh seed should have no purpose at generation 1: %+v", s)
 	}
@@ -135,6 +129,15 @@ func TestCanonicalDemo(t *testing.T) {
 		post(t, base+"/_seed/api/messages", map[string]string{"content": message})
 		var evo evolution
 		// The Seed's chat agent decides to start an evolution.
+		defer func() {
+			if t.Failed() {
+				var msgs []struct{ Role, Content string }
+				_ = getJSON(base+"/_seed/api/messages?limit=6", &msgs)
+				for _, m := range msgs {
+					t.Logf("chat %s: %s", m.Role, tail(m.Content, 600))
+				}
+			}
+		}()
 		waitFor(t, 3*time.Minute, func() bool {
 			var evs []evolution
 			if getJSON(base+"/_seed/api/evolutions", &evs) != nil {

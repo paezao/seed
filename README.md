@@ -5,12 +5,12 @@
 You plant a Seed, and it starts as almost nothing: a kernel (agent, tools, sandbox, memory), a control plane, and an empty body. You tell it what to become. It plans the change, rewrites its own code in an isolated workspace, builds, tests, runs and checks the result, records what it learned, commits, and *becomes* that new version: a new **generation**. The builder never leaves. The todo app you end up with still contains the Seed, and the Seed still knows how it got there.
 
 ```
-$ seed new tasks
+$ export OPENROUTER_API_KEY=sk-or-…      # or keep it in your shell profile
+$ seed new tasks -e OPENROUTER_API_KEY
 ```
 
 That plants the Seed in `./tasks`, starts it, and opens its control plane in your browser.
-If port 8080 is taken, it uses the next free one. First it asks for a mind: you
-paste an OpenRouter key and pick a model. Then:
+If port 8080 is taken, it uses the next free one. Then:
 
 > I don't have a purpose yet.
 > What should I become?
@@ -19,21 +19,24 @@ Say *"Become a todo application. I need to create, complete and delete tasks."* 
 
 ## Requirements
 
-- Linux with Docker (generated code always runs in containers)
-- Go 1.26+ (the Seed compiles its own kernel on `seed run`)
-- Node.js 22+ (only to develop the control plane)
-- An [OpenRouter](https://openrouter.ai/keys) API key. One key gives you any model, and you
-  enter it in the control plane (stored in `~/.config/seed/credentials.json`, never in a repository).
+- Docker (Docker Desktop on macOS and Windows), or Podman with `SEED_CONTAINER_ENGINE=podman`
+- Go 1.27+ and Node.js 22+ only to build the `seed` CLI from source
+- An [OpenRouter](https://openrouter.ai/keys) API key (one key, any model). You pass it when you
+  start a Seed: `seed new tasks -e OPENROUTER_API_KEY`. Seeds never store credentials.
 
-PostgreSQL is started for you in Docker (`seed-postgres`, on 127.0.0.1:55432).
+**A Seed is one folder.** It runs in one container, its body: its kernel, its own private
+PostgreSQL (data in `.seed/postgres` inside the folder), the Go and Node toolchains it builds
+itself with, and bubblewrap to sandbox its experiments. Nothing is shared between Seeds and
+nothing else runs beside them. Only one port is exposed, the Seed's own. Copy, move or back up
+the folder, and `seed run` brings it back to life. The same image is what you deploy.
 
 ## Getting started
 
 ```bash
 make build                 # control plane + template + bin/seed
 make install               # copies bin/seed to ~/.local/bin
-seed new myapp             # create, start, open the browser (--no-run to only create)
-cd myapp && seed run --open   # later: run it again
+seed new myapp -e OPENROUTER_API_KEY      # create, start, open the browser
+cd myapp && seed run -e OPENROUTER_API_KEY --open   # later: start it again
 ```
 
 CLI:
@@ -41,12 +44,12 @@ CLI:
 | command | |
 |---|---|
 | `seed new <name>` | plant a new Seed (generation 1), start it, open the control plane |
-| `seed run [--open]` | build this Seed's own kernel from its source and run it |
+| `seed run [--open] [--detach]` | start the Seed in its container (it builds its own kernel from its own source) |
 | `seed status` | what the Seed is right now |
 | `seed evolve "<intent>"` | evolve from the terminal and follow progress |
 | `seed generations` | list generations (works offline from git) |
 | `seed rollback <n>` | return to generation n (recorded as a new generation) |
-| `seed infra up\|down` | shared PostgreSQL |
+| `seed stop` | stop the Seed (its folder keeps everything) |
 
 ## Documentation
 

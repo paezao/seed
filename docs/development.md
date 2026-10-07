@@ -3,9 +3,9 @@
 ## Setup
 
 ```bash
-make up       # builds bin/seed, starts seed-postgres (127.0.0.1:55432) and the seed-net network
+make up       # builds bin/seed and the runtime image (a Seed's body)
 make build    # control plane (npm) → template snapshot → bin/seed
-make test     # kernel tests (PostgreSQL required; Docker sandbox tests run when the image exists)
+make test     # kernel tests, run inside the runtime image (private PostgreSQL, real bubblewrap)
 make lint     # go vet, gofmt, control-plane typecheck, organism vet
 ```
 
@@ -20,23 +20,31 @@ The repository itself is a pristine Seed (`seed.yaml` name `seed`). `seed new` c
 through the template snapshot, which `make template` builds from tracked and untracked
 non-ignored files.
 
-## Model configuration
+## Secrets and model
 
-A Seed's mind is chosen by its owner in the control plane. A fresh Seed always asks for it
-first; nothing is picked up from the environment. v0.1 offers **OpenRouter**, where one key
-gives any tool-capable model. The model list comes live from OpenRouter, filtered to models
-that support tool calling.
+A Seed stores **no credentials**. Pass them each time you start it:
 
-- Keys are stored per provider in `~/.config/seed/credentials.json` (0600), shared by your Seeds.
-- The per-Seed choice of provider and model is stored in that Seed's memory. It can be changed
-  any time in Settings, without a restart.
-- The kernel validates a choice with a tiny test call before saving it.
-- More providers (Anthropic and OpenAI-compatible, both already implemented in `kernel/models`) are a
-  matter of listing them in `models.Providers`.
+```bash
+seed run -e OPENROUTER_API_KEY              # value from your shell
+seed run -e GITHUB_TOKEN=ghp_…               # explicit value (lands in shell history)
+seed run --env-file ~/.seed.env              # KEY=VALUE lines, kept outside any Seed
+```
 
-Infrastructure overrides: `SEED_DATABASE_URL` (your own PostgreSQL), `SEED_ADDR`,
-`SEED_SANDBOX_DRIVER`. The managed PostgreSQL's random superuser password lives in
-`~/.config/seed/postgres.json`.
+The launcher passes the names on the container's command line and the values through the
+container engine's environment. The kernel reads them once at boot into memory
+(`kernel/runtime/secrets.go`) and removes them from its environment, so PostgreSQL, git and
+sandboxes never inherit them. A deployed Seed gets the same variables from its platform.
+
+The model is chosen in the control plane (Settings → Mind) or with `-e SEED_MODEL=…`; the
+choice is not a secret and is kept in the Seed's memory. Without a key, the control plane
+explains how to start with one and can borrow a key **for the current session only**.
+v0.1 offers OpenRouter (one key, any tool-capable model).
+
+Overrides: `SEED_DATABASE_URL` (an external PostgreSQL instead of the private one),
+`SEED_SANDBOX_DRIVER`, `SEED_CONTAINER_ENGINE=podman`.
+
+`seed run --native` runs the kernel directly on your machine instead of in its container (for
+kernel development). It needs bubblewrap and PostgreSQL server binaries installed.
 
 ## Tests
 
@@ -47,15 +55,17 @@ Infrastructure overrides: `SEED_DATABASE_URL` (your own PostgreSQL), `SEED_ADDR`
 | agent loop: terminal tools, nudges, malformed/unknown tool calls, permission denial, provider failure, turn limits, context compaction | `kernel/agent/agent_test.go` |
 | providers: wire formats, API errors, malformed responses, retry/backoff | `kernel/models/models_test.go` |
 | tools: path confinement (symlinks, `..`, `.git`), kernel-write classification, edits | `kernel/tools/tools_test.go` |
-| sandbox boundaries: read-only kernel, masked `.seed`, non-root, timeouts, background processes | `kernel/sandbox/sandbox_test.go` (Docker test needs `SEED_TEST_SANDBOX_IMAGE`) |
+| sandbox boundaries (bubblewrap): read-only workspace except evolvable dirs, masked `.seed` and host paths, clean env, timeouts, background processes | `kernel/sandbox/sandbox_test.go` |
+| private PostgreSQL: init, restart with data, password auth | `kernel/pg/pg_test.go` |
 | git: worktrees, fast-forward refusal on divergence, trailers, roll-forward | `kernel/git/git_test.go` |
 | migrations: ordering, transactional failure, checksum protection | `kernel/migrate/migrate_test.go` |
-| canonical demo (Seed → todo → priorities) with a real model | `e2e/` (`make e2e` with `SEED_TEST_OPENROUTER_API_KEY` set: the test gives the Seed its mind through the API, using an isolated config dir; costs a few dollars) |
+| canonical demo (Seed → todo → priorities) with a real model | `e2e/` (`make e2e` with `SEED_TEST_OPENROUTER_API_KEY` set, passed to the Seed with `-e` like an owner would; `SEED_E2E_MODEL` picks the model; costs a few dollars) |
 
 ## Repository layout
 
 ```
-cmd/seed/           CLI (new, run, serve, status, evolve, generations, rollback, infra)
+cmd/seed/           CLI (new, run, stop, status, evolve, generations, rollback) and the container launcher
+Dockerfile          the runtime image: a Seed's body
 kernel/             the kernel (see docs/architecture.md)
 control/web/        control plane (React); dist/ is committed and embedded
 organism/           the empty organism a new Seed starts with

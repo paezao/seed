@@ -73,7 +73,7 @@ type Orchestrator struct {
 	cancels map[string]context.CancelFunc
 	running string
 	// answers delivers the owner's answer to an evolution waiting on questions.
-	answers map[string]chan string
+	answers map[string]*waiter
 }
 
 func (o *Orchestrator) init() {
@@ -82,7 +82,7 @@ func (o *Orchestrator) init() {
 	if o.wake == nil {
 		o.wake = make(chan struct{}, 1)
 		o.cancels = map[string]context.CancelFunc{}
-		o.answers = map[string]chan string{}
+		o.answers = map[string]*waiter{}
 	}
 }
 
@@ -1292,7 +1292,7 @@ func ensureDir(p string) error { return os.MkdirAll(p, 0o755) }
 func (o *Orchestrator) askOwner(ctx context.Context, e *memory.Evolution, qs []memory.Question) (string, error) {
 	ch := make(chan string, 1)
 	o.mu.Lock()
-	o.answers[e.ID] = ch
+	o.answers[e.ID] = &waiter{ch: ch}
 	o.mu.Unlock()
 	defer func() {
 		o.mu.Lock()
@@ -1342,10 +1342,18 @@ func (o *Orchestrator) WaitingForAnswer() string {
 	o.init()
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	for id := range o.answers {
-		return id
+	for id, w := range o.answers {
+		if !w.answered {
+			return id
+		}
 	}
 	return ""
+}
+
+// waiter is one round of questions; it accepts exactly one answer.
+type waiter struct {
+	ch       chan string
+	answered bool
 }
 
 // Answer delivers the owner's answer to an evolution waiting on questions.
@@ -1356,17 +1364,15 @@ func (o *Orchestrator) Answer(ctx context.Context, id, answer string) error {
 		return errors.New("the answer is empty")
 	}
 	o.mu.Lock()
-	ch := o.answers[id]
-	o.mu.Unlock()
-	if ch == nil {
+	w := o.answers[id]
+	if w == nil || w.answered {
+		o.mu.Unlock()
 		return fmt.Errorf("evolution %s is not waiting for an answer", id)
 	}
-	select {
-	case ch <- answer:
-		return nil
-	default:
-		return errors.New("an answer was already given")
-	}
+	w.answered = true
+	o.mu.Unlock()
+	w.ch <- answer // buffered: never blocks
+	return nil
 }
 
 // RoadmapPath holds the owner's larger goal and its stages. The kernel keeps

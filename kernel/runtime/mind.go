@@ -10,53 +10,43 @@ import (
 	"strings"
 	"sync"
 
-	"seed/kernel/infra"
 	"seed/kernel/models"
 )
 
 // The Seed's "mind": which model it thinks with.
 //
-// A fresh Seed always asks its owner. Keys are stored per provider in the
-// owner's user config (~/.config/seed/credentials.json, 0600), shared by all
-// their Seeds and never written to a repository or returned by the API. The
-// per-Seed choice of provider and model lives in operational memory.
+// The Seed stores no credentials. The key arrives with the owner's secrets
+// at start (OPENROUTER_API_KEY), or is lent in the control plane for the
+// current session only. Either way it lives in memory. The model choice is
+// not a secret: it is kept in operational memory (or passed as SEED_MODEL).
 
-const credentialsFile = "credentials.json"
+// sessionKeys are keys lent in the control plane, per provider, until restart.
+var sessionKeys = struct {
+	sync.Mutex
+	m map[string]string
+}{m: map[string]string{}}
 
-type credential struct {
-	APIKey  string `json:"api_key,omitempty"`
-	BaseURL string `json:"base_url,omitempty"`
-}
-
-type credentials struct {
-	Providers map[string]credential `json:"providers"`
-}
-
-var credMu sync.Mutex
-
-func loadCredentials() credentials {
-	var c credentials
-	if err := infra.ReadSecretJSON(credentialsFile, &c); err != nil && !errors.Is(err, os.ErrNotExist) {
-		slog.Warn("reading credentials", "err", err)
+// providerKey returns the key for a provider and where it came from. A key
+// lent in the control plane wins for the session (the owner chose it
+// explicitly); otherwise the key passed at start.
+func (k *Kernel) providerKey(p models.Provider) (key, source string) {
+	sessionKeys.Lock()
+	v := sessionKeys.m[p.ID]
+	sessionKeys.Unlock()
+	if v != "" {
+		return v, "session"
 	}
-	if c.Providers == nil {
-		c.Providers = map[string]credential{}
+	if v := k.Secrets.Get(p.KeyEnv); v != "" {
+		return v, "env"
 	}
-	return c
-}
-
-func updateCredentials(fn func(*credentials)) error {
-	credMu.Lock()
-	defer credMu.Unlock()
-	c := loadCredentials()
-	fn(&c)
-	return infra.WriteSecretJSON(credentialsFile, c)
+	return "", ""
 }
 
 type providerInfo struct {
 	models.Provider
-	HasKey  bool   `json:"has_key"`
-	BaseURL string `json:"base_url"`
+	HasKey    bool   `json:"has_key"`
+	KeySource string `json:"key_source"`
+	BaseURL   string `json:"base_url"`
 }
 
 type modelConfig struct {
@@ -69,29 +59,50 @@ type modelConfig struct {
 func (k *Kernel) modelConfig() modelConfig {
 	info := k.Mind.Info()
 	mc := modelConfig{Provider: info.Provider, Name: info.Name, Configured: info.Configured}
-	creds := loadCredentials()
 	for _, p := range models.Providers {
-		c := creds.Providers[p.ID]
-		mc.Providers = append(mc.Providers, providerInfo{Provider: p, HasKey: c.APIKey != "", BaseURL: c.BaseURL})
+		_, src := k.providerKey(p)
+		mc.Providers = append(mc.Providers, providerInfo{Provider: p, HasKey: src != "", KeySource: src})
+	}
+	if mc.Provider == "" && len(models.Providers) > 0 {
+		mc.Provider, mc.Name = models.Providers[0].ID, models.Providers[0].DefaultModel
 	}
 	return mc
 }
 
-// loadMind restores this Seed's chosen model at boot.
+// chosenModel returns this Seed's model choice: SEED_MODEL, then memory,
+// then the provider's default.
+func (k *Kernel) chosenModel(ctx context.Context) (models.Provider, string) {
+	p := models.Providers[0]
+	if id, err := k.Store.Setting(ctx, "model_provider"); err == nil {
+		if pp, ok := models.ProviderByID(id); ok {
+			p = pp
+		}
+	}
+	name := p.DefaultModel
+	if v, err := k.Store.Setting(ctx, "model_name"); err == nil && v != "" {
+		name = v
+	}
+	if v := strings.TrimSpace(os.Getenv("SEED_MODEL")); v != "" {
+		name = v
+	}
+	return p, name
+}
+
+// loadMind wires up the model at boot: with a key, I can think right away.
 func (k *Kernel) loadMind(ctx context.Context) {
-	provider, _ := k.Store.Setting(ctx, "model_provider")
-	name, _ := k.Store.Setting(ctx, "model_name")
-	if provider == "" || name == "" {
+	p, name := k.chosenModel(ctx)
+	key, _ := k.providerKey(p)
+	if key == "" {
+		k.Mind.Set(models.NewSwitchable(), models.Info{Provider: p.ID, Name: name})
 		return
 	}
-	c := loadCredentials().Providers[provider]
-	m, err := models.Build(models.Selection{Provider: provider, Name: name, APIKey: c.APIKey, BaseURL: c.BaseURL, MaxTokens: k.Cfg.Model.MaxTokens})
+	m, err := models.Build(models.Selection{Provider: p.ID, Name: name, APIKey: key, MaxTokens: k.Cfg.Model.MaxTokens})
 	if err != nil {
-		slog.Warn("my chosen model is unavailable", "provider", provider, "model", name, "err", err)
-		k.Mind.Set(models.NewSwitchable(), models.Info{Provider: provider, Name: name})
+		slog.Warn("my model is unavailable", "provider", p.ID, "model", name, "err", err)
+		k.Mind.Set(models.NewSwitchable(), models.Info{Provider: p.ID, Name: name})
 		return
 	}
-	k.Mind.Set(m, models.Info{Provider: provider, Name: name, Configured: true})
+	k.Mind.Set(m, models.Info{Provider: p.ID, Name: name, Configured: true})
 }
 
 func (k *Kernel) handleModel(w http.ResponseWriter, r *http.Request) {
@@ -121,14 +132,13 @@ func (k *Kernel) handleModelOptions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, out)
 }
 
-// handleSetModel validates a choice with a tiny test call, then stores the
-// key (if given) and this Seed's choice, and switches immediately.
+// handleSetModel switches model (and optionally lends a key for this
+// session), validating with a tiny test call first.
 func (k *Kernel) handleSetModel(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Provider string `json:"provider"`
 		Name     string `json:"name"`
 		APIKey   string `json:"api_key"`
-		BaseURL  string `json:"base_url"`
 	}
 	if err := decodeBody(r, &body); err != nil {
 		writeErr(w, 400, err)
@@ -140,30 +150,17 @@ func (k *Kernel) handleSetModel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Name = strings.TrimSpace(body.Name)
-	body.APIKey = strings.TrimSpace(body.APIKey)
-	stored := loadCredentials().Providers[p.ID]
-	if !p.NeedsBaseURL {
-		// Fixed-endpoint providers (OpenRouter): the URL is not the caller's to choose.
-		body.BaseURL = ""
-	}
-	key, base := body.APIKey, body.BaseURL
-	if base == "" {
-		base = stored.BaseURL
-	}
+	key := strings.TrimSpace(body.APIKey)
 	if key == "" {
-		// Never send a stored key anywhere but where it was stored for: a
-		// caller could otherwise point base_url at itself and receive it.
-		if body.BaseURL != "" && body.BaseURL != stored.BaseURL {
-			writeErr(w, 400, errors.New("enter the API key again to use a different base URL"))
-			return
-		}
-		key = stored.APIKey
+		key, _ = k.providerKey(p)
 	}
 	if p.NeedsKey && key == "" {
-		writeErr(w, 400, errors.New("enter your "+p.Label+" API key"))
+		writeErr(w, 400, fmt.Errorf("I need a key: start me with `seed run -e %s`, or lend me one for this session", p.KeyEnv))
 		return
 	}
-	m, err := models.Build(models.Selection{Provider: p.ID, Name: body.Name, APIKey: key, BaseURL: base, MaxTokens: k.Cfg.Model.MaxTokens})
+	// The endpoint is fixed by the provider: a caller cannot redirect the
+	// test call (and the key) elsewhere.
+	m, err := models.Build(models.Selection{Provider: p.ID, Name: body.Name, APIKey: key, MaxTokens: k.Cfg.Model.MaxTokens})
 	if err != nil {
 		writeErr(w, 400, err)
 		return
@@ -172,20 +169,10 @@ func (k *Kernel) handleSetModel(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, fmt.Errorf("%s could not use %s: %v", p.Label, body.Name, err))
 		return
 	}
-	if body.APIKey != "" || body.BaseURL != "" {
-		if err := updateCredentials(func(c *credentials) {
-			cur := c.Providers[p.ID]
-			if body.APIKey != "" {
-				cur.APIKey = body.APIKey
-			}
-			if body.BaseURL != "" {
-				cur.BaseURL = body.BaseURL
-			}
-			c.Providers[p.ID] = cur
-		}); err != nil {
-			writeErr(w, 500, err)
-			return
-		}
+	if strings.TrimSpace(body.APIKey) != "" {
+		sessionKeys.Lock()
+		sessionKeys.m[p.ID] = key
+		sessionKeys.Unlock()
 	}
 	ctx := r.Context()
 	if err := k.Store.SetSetting(ctx, "model_provider", p.ID); err != nil {
@@ -202,6 +189,8 @@ func (k *Kernel) handleSetModel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, k.modelConfig())
 }
 
+// handleForgetKey forgets a key lent for this session. Keys passed at start
+// are the environment's; restart without them to remove them.
 func (k *Kernel) handleForgetKey(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Provider string `json:"provider"`
@@ -210,13 +199,19 @@ func (k *Kernel) handleForgetKey(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	if err := updateCredentials(func(c *credentials) { delete(c.Providers, body.Provider) }); err != nil {
-		writeErr(w, 500, err)
+	p, ok := models.ProviderByID(body.Provider)
+	if !ok {
+		writeErr(w, 400, fmt.Errorf("unknown provider %q", body.Provider))
 		return
 	}
-	if info := k.Mind.Info(); info.Provider == body.Provider {
-		k.Mind.Set(models.NewSwitchable(), models.Info{Provider: info.Provider, Name: info.Name})
-		k.Bus.Publish("organism", nil)
+	if _, src := k.providerKey(p); src != "session" {
+		writeErr(w, 400, errors.New("there is no lent key to forget; a key passed when I was started goes away when you restart me without it"))
+		return
 	}
+	sessionKeys.Lock()
+	delete(sessionKeys.m, p.ID)
+	sessionKeys.Unlock()
+	k.loadMind(r.Context())
+	k.Bus.Publish("organism", nil)
 	writeJSON(w, 200, k.modelConfig())
 }

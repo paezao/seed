@@ -50,18 +50,15 @@ type ModelConfig struct {
 type DatabaseConfig struct {
 	// URL is an administrative connection to the PostgreSQL server used by the
 	// kernel. It must be able to create databases and roles. Empty means the
-	// managed local server, whose credentials live in ~/.config/seed.
+	// Seed's own private PostgreSQL (kernel/pg).
 	URL string `yaml:"url" json:"-"`
 }
 
 type SandboxConfig struct {
-	Driver  string `yaml:"driver" json:"driver"` // docker | local
-	Image   string `yaml:"image" json:"image"`
-	Network string `yaml:"network" json:"network"`
-	// DBHost is how sandboxed code reaches PostgreSQL (host:port).
+	Driver string `yaml:"driver" json:"driver"` // bwrap | local
+	// DBHost is how sandboxed code reaches PostgreSQL: the socket directory
+	// as mounted in the sandbox.
 	DBHost string `yaml:"db_host" json:"db_host"`
-	Memory string `yaml:"memory" json:"memory"`
-	CPUs   string `yaml:"cpus" json:"cpus"`
 }
 
 type OrganismConfig struct {
@@ -105,10 +102,7 @@ func Defaults() Config {
 		Server: ServerConfig{Addr: "127.0.0.1:8080"},
 		Model:  ModelConfig{MaxTokens: 16000},
 		// Database.URL empty: use the managed local server (seed infra).
-		Sandbox: SandboxConfig{
-			Driver: "docker", Image: "seed-sandbox", Network: "seed-net",
-			DBHost: "seed-postgres:5432", Memory: "4g", CPUs: "4",
-		},
+		Sandbox: SandboxConfig{Driver: "bwrap", DBHost: "/run/seed-db"},
 		Organism: OrganismConfig{
 			Build: "make -C organism build", Test: "make -C organism test",
 			Run: "organism/bin/server", Port: 8080, Health: "/healthz",
@@ -167,9 +161,9 @@ func (c *Config) Validate() error {
 		}
 	}
 	switch c.Sandbox.Driver {
-	case "docker", "local":
+	case "bwrap", "local":
 	default:
-		return fmt.Errorf("seed.yaml: sandbox.driver %q must be docker or local", c.Sandbox.Driver)
+		return fmt.Errorf("seed.yaml: sandbox.driver %q must be bwrap or local", c.Sandbox.Driver)
 	}
 	return nil
 }

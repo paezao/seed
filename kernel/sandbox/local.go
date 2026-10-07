@@ -24,6 +24,10 @@ type LocalDriver struct{}
 func (LocalDriver) Isolated() bool { return false }
 
 func (LocalDriver) Create(ctx context.Context, spec Spec) (Sandbox, error) {
+	return newLocal(spec)
+}
+
+func newLocal(spec Spec) (*localSandbox, error) {
 	if spec.Root == "" {
 		return nil, errors.New("sandbox: root is required")
 	}
@@ -55,6 +59,19 @@ type localSandbox struct {
 	mu       sync.Mutex
 	procs    map[string]*exec.Cmd
 	closed   bool
+	// command builds the process for a shell command line; the local driver
+	// runs it directly, other drivers wrap it (e.g. in bubblewrap).
+	command func(line string, extra map[string]string) *exec.Cmd
+}
+
+func (s *localSandbox) cmd(line string, extra map[string]string) *exec.Cmd {
+	if s.command != nil {
+		return s.command(line, extra)
+	}
+	c := exec.Command("bash", "-c", line)
+	c.Dir = s.spec.Root
+	c.Env = s.environ(extra)
+	return c
 }
 
 func (s *localSandbox) environ(extra map[string]string) []string {
@@ -74,9 +91,7 @@ func (s *localSandbox) Exec(ctx context.Context, command string, timeout time.Du
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.Command("bash", "-c", command)
-	cmd.Dir = s.spec.Root
-	cmd.Env = s.environ(env)
+	cmd := s.cmd(command, env)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	var out limitedBuffer
 	cmd.Stdout, cmd.Stderr = &out, &out
@@ -120,9 +135,7 @@ func (s *localSandbox) Start(ctx context.Context, name, command string, env map[
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command("bash", "-c", command)
-	cmd.Dir = s.spec.Root
-	cmd.Env = s.environ(env)
+	cmd := s.cmd(command, env)
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {

@@ -5,25 +5,30 @@ design assumes autonomy will grow, so trust boundaries are structural rather tha
 
 ## Sandboxing
 
-Generated code never runs on the host. The Docker sandbox driver (`kernel/sandbox/docker.go`):
+A Seed runs in **one container**, an unprivileged container with all capabilities dropped and
+`no-new-privileges`, running as your user. Inside it, every command an evolution runs, and the
+live organism, is isolated again with **bubblewrap** (`kernel/sandbox/bwrap.go`). Each sandbox
+gets:
 
-- mounts only the evolution's worktree at `/workspace`;
-- re-mounts every protected kernel path **read-only** (in the live sandbox, also `.git`,
-  `knowledge/` and `skills/`);
-- masks `.seed/` (worktrees, kernel binary, markers) with an empty tmpfs;
-- runs as the host user's uid/gid, never root, with `--cap-drop ALL` and `no-new-privileges`;
-- limits pids, memory and CPUs, and kills commands at a timeout from inside the container;
-- uses the `seed-net` network shared only with PostgreSQL, and publishes ports on 127.0.0.1 only;
-- has no Docker socket, no host home directory, and no secrets except its database URL.
+- an empty root with only system directories mounted read-only (`/usr`, `/etc`, …);
+- the workspace at `/workspace`, **read-only** except the evolvable directories;
+- empty tmpfs over `.seed/`, over the live Seed's folder and over the owner's config (API keys);
+- its own PID, IPC and UTS namespaces, a private `/tmp`, and a clean environment (no kernel env vars);
+- the Seed's PostgreSQL only through its Unix socket, mounted read-only, with a role that has no
+  access to kernel memory;
+- timeouts enforced by killing the whole process group.
 
-The sandbox image is built from `Dockerfile` **without a build context**, so it cannot copy
+Nested bubblewrap needs user namespaces and a fresh `/proc`. Docker's default seccomp, AppArmor
+and `/proc` masking forbid these, so the container runs with those three relaxed
+(`seccomp=unconfined`, `apparmor=unconfined`, `systempaths=unconfined`) but with **no**
+capabilities and no privileged mode. A tailored seccomp profile (Docker's default plus
+user-namespace creation) is a planned refinement.
+
+Sandboxes share the container's network so they can install dependencies. The kernel API they could
+reach requires the control token, which they cannot read.
+
+The runtime image is built from `Dockerfile` **without a build context**, so it cannot copy
 repository files or secrets.
-
-Network egress is allowed, so that `go get` and `npm install` work. Restricting egress to a package
-proxy is a natural next step.
-
-The `local` driver exists for kernel tests. It provides no isolation, and the kernel logs a warning
-when it is configured.
 
 ## Permissions
 
@@ -67,17 +72,17 @@ the kernel restarts into its own new source.
 
 ## Data
 
-- The shared PostgreSQL superuser has a random password, generated once and stored in
-  `~/.config/seed/postgres.json` (0600). Sandboxes can reach the server, so the password must never be
-  guessable or appear in a repository. Older installs with the default password are rotated
-  automatically.
+- Each Seed's PostgreSQL is private to its container. It listens only on a Unix socket, and its
+  superuser password is random and stored in `.seed/secrets` (0600, hidden from sandboxes).
 - The live organism uses a non-superuser role that owns only its live database. Evolutions use a
   separate role that owns only scratch databases, so an experiment can never touch live data.
   `CONNECT` is revoked from `PUBLIC` on every database.
-- Model API keys are entered by the owner and stored per provider in
-  `~/.config/seed/credentials.json` (0600). They never enter a repository or the environment of a
-  sandbox, and the API never returns them. A stored key is only ever sent to the endpoint it was
-  stored for: fixed-endpoint providers ignore `base_url`, and changing a URL requires re-entering the key.
+- **No credentials are stored.** The owner passes secrets (model API key, tokens) at every start
+  (`seed run -e KEY`, `--env-file`), or the platform sets them when deployed. The kernel keeps them
+  in memory and removes them from its environment at boot. They never reach a repository, the
+  Seed's folder or database, logs, model prompts or sandboxes, and the API never returns them. A
+  key lent in the control plane lasts for the session only. Provider endpoints are fixed, so a
+  caller cannot redirect a key to another host.
 - File tools never write through symlinks, so the path that is permission-checked is the path that
   is written. On Linux this is enforced at the moment of each operation (`openat2` with
   `RESOLVE_NO_SYMLINKS|RESOLVE_BENEATH`), with no check-then-write race against sandboxed processes.
@@ -119,4 +124,3 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
 - The control plane has no authentication. It binds to 127.0.0.1 by default; do not expose it.
 - Sandboxes have outbound network access.
 - Rollback does not reverse database migrations.
-- The shared PostgreSQL uses fixed local-development credentials.

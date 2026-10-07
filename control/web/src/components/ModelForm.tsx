@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { api, errorMessage, type ModelConfig, type ModelOption, type ProviderInfo, type SetModelBody } from '../api';
 import { useLive } from '../live';
+import { keyEnvOf, keySourceText } from './Brain';
 
 /** "200000" -> "200K", "1048576" -> "1M". */
 export function formatContext(n?: number): string {
@@ -123,17 +124,9 @@ function ModelPicker({ id, value, onChange, options, loading, placeholder }: {
   );
 }
 
-/** Where the owner can get a key, per provider (data-driven; unknown providers get no link). */
-const KEY_URLS: Record<string, string> = {
-  openrouter: 'https://openrouter.ai/keys',
-  anthropic: 'https://console.anthropic.com/settings/keys',
-  openai: 'https://platform.openai.com/api-keys',
-};
-
 function GetKeyLink({ provider }: { provider: ProviderInfo }) {
-  const href = KEY_URLS[provider.id];
-  if (!href || !provider.needs_key) return null;
-  return <a className="mf-get-key" href={href} target="_blank" rel="noreferrer">Get a key ↗</a>;
+  if (!provider.keys_url || !provider.needs_key) return null;
+  return <a className="mf-get-key" href={provider.keys_url} target="_blank" rel="noreferrer">Get a key ↗</a>;
 }
 
 function initialProvider(config: ModelConfig): ProviderInfo | undefined {
@@ -148,10 +141,12 @@ type Props = {
   busyLabel?: string;
   onCancel?: () => void;
   cancelLabel?: string;
+  /** Focus the first field on mount. */
+  autoFocusKey?: boolean;
 };
 
 /** Choose provider, key, base URL and model; POST /model (the kernel test-calls the model). */
-export function ModelForm({ config, onSaved, submitLabel = 'Save', busyLabel = 'Testing…', onCancel, cancelLabel = 'Cancel' }: Props) {
+export function ModelForm({ config, onSaved, submitLabel = 'Save', busyLabel = 'Testing…', onCancel, cancelLabel = 'Cancel', autoFocusKey }: Props) {
   const { refreshStatus } = useLive();
   const uid = useId();
   const start = initialProvider(config);
@@ -226,7 +221,7 @@ export function ModelForm({ config, onSaved, submitLabel = 'Save', busyLabel = '
                 />
                 <span className="provider-name">{p.label}</span>
                 <span className="provider-note">
-                  {!p.needs_key ? 'no key needed' : p.has_key ? <span className="ok-text">key stored</span> : 'needs a key'}
+                  {!p.needs_key ? 'no key needed' : p.has_key ? <span className="ok-text">{keySourceText(p)}</span> : 'needs a key'}
                 </span>
               </label>
             ))}
@@ -241,9 +236,13 @@ export function ModelForm({ config, onSaved, submitLabel = 'Save', busyLabel = '
               <span className="mf-label">API key</span>
               <div className="mf-stored">
                 <span className="dot dot-ok" />
-                <span>Using your stored {provider.label} key.</span>
+                <span>
+                  {provider.key_source === 'session'
+                    ? <>Using the {provider.label} key you lent me for this session.</>
+                    : <>Using the {provider.label} key passed at start via <code>${keyEnvOf(provider)}</code>.</>}
+                </span>
                 <button type="button" className="link-btn" onClick={() => setDifferentKey(true)} disabled={busy}>
-                  Use a different key
+                  Lend me a different key
                 </button>
               </div>
             </>
@@ -263,11 +262,13 @@ export function ModelForm({ config, onSaved, submitLabel = 'Save', busyLabel = '
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="Paste your key"
                 disabled={busy}
-                autoFocus={differentKey}
+                autoFocus={differentKey || autoFocusKey}
+                aria-describedby={`${uid}-key-hint`}
               />
+              <div className="mf-hint" id={`${uid}-key-hint`}>Only for this session; I won't keep it.</div>
               {provider.has_key && (
                 <button type="button" className="link-btn mf-under" onClick={() => { setDifferentKey(false); setApiKey(''); }} disabled={busy}>
-                  Use my stored key instead
+                  {provider.key_source === 'env' ? 'Use the key passed at start instead' : 'Keep using the key you lent me'}
                 </button>
               )}
             </>

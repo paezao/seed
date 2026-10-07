@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import type { Evolution } from '../api';
-import { growth, type GrowthStage } from '../phases';
+import { growth, type GrowthMood, type GrowthStage } from '../phases';
 
 const STAGE_LABEL: Record<GrowthStage, string> = {
   0: 'a seed', 1: 'a sprout', 2: 'growing leaves', 3: 'a bud', 4: 'in bloom',
@@ -34,16 +34,31 @@ export function Sprout({ evolution, size = 40 }: { evolution: Evolution; size?: 
     return () => window.clearTimeout(t);
   }, [status]);
 
+  const label = mood === 'wilted' ? `Stopped as ${STAGE_LABEL[stage]}` : mood === 'waiting' ? 'A seed, waiting for you' : `Growing: ${STAGE_LABEL[stage]}`;
+  return <SproutPlant stage={stage} mood={mood} size={size} celebrate={celebrate} label={label} />;
+}
+
+/**
+ * The plant itself, driven directly by stage and mood (for places with no
+ * evolution yet, like the first-run screen). `label` = null makes it decorative.
+ */
+export function SproutPlant({ stage, mood, size = 40, celebrate, label, className }: {
+  stage: GrowthStage;
+  mood: GrowthMood;
+  size?: number;
+  celebrate?: boolean;
+  label?: string | null;
+  className?: string;
+}) {
   const cls = [
     'sprout', `sprout-${mood}`,
     stage >= 1 && 'has-sprout', stage >= 2 && 'has-leaves', stage >= 3 && 'has-bud', stage >= 4 && 'has-bloom',
-    stage === 0 && 'only-seed', celebrate && 'celebrate',
+    stage === 0 && 'only-seed', celebrate && 'celebrate', className,
   ].filter(Boolean).join(' ');
-
-  const label = mood === 'wilted' ? `Stopped as ${STAGE_LABEL[stage]}` : mood === 'waiting' ? 'A seed, waiting for you' : `Growing: ${STAGE_LABEL[stage]}`;
+  const a11y = label === null ? { 'aria-hidden': true } : { role: 'img', 'aria-label': label ?? `Growing: ${STAGE_LABEL[stage]}`, title: label ?? undefined };
 
   return (
-    <span className={cls} style={{ width: size, height: size }} role="img" aria-label={label} title={label}>
+    <span className={cls} style={{ width: size, height: size }} {...a11y}>
       <svg viewBox="0 0 48 48" width={size} height={size} aria-hidden>
         <circle className="sp-halo" cx="24" cy="38" r="9" />
         <ellipse className="sp-soil" cx="24" cy="43.2" rx="15" ry="2.2" />

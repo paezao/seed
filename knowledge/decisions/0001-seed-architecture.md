@@ -10,7 +10,7 @@ reversible.
 
 - I am split into a protected **kernel** (agent, tools, sandbox, memory, control
   plane) and an **organism** (everything I grow).
-- Every evolution happens in a separate git worktree and Docker sandbox with a
+- Every evolution happens in a separate git worktree and bubblewrap sandbox with a
   scratch database. It becomes my live self only after the kernel has
   independently built, tested, launched and checked it.
 - Each successful evolution is one git commit, called a **generation**. Rollback creates

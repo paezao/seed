@@ -56,7 +56,7 @@ func (o *Organism) DatabaseURL() string {
 
 func (o *Organism) sandboxDBURL() string {
 	host := ""
-	if o.Cfg.Sandbox.Driver == "docker" {
+	if o.Cfg.Sandbox.Driver != "local" {
 		host = o.Cfg.Sandbox.DBHost
 	}
 	return o.Admin.DatabaseURL(o.dbName(), o.Role, o.Pass, host)

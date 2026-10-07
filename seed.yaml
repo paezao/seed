@@ -10,18 +10,15 @@ model:
   max_tokens: 16000
 
 database:
-  # Empty: use the managed local PostgreSQL (started automatically; its random
-  # superuser password lives in ~/.config/seed/postgres.json). Set a URL, or
-  # SEED_DATABASE_URL, to use your own server.
+  # Empty: my own private PostgreSQL, inside my folder (.seed/postgres), reached
+  # only through a Unix socket. Set a URL (or SEED_DATABASE_URL) to use an
+  # external server instead.
   url: ""
 
 sandbox:
-  driver: docker      # docker (isolated) | local (no isolation; tests only)
-  image: seed-sandbox # built from ./Dockerfile
-  network: seed-net
-  db_host: seed-postgres:5432
-  memory: 4g
-  cpus: "4"
+  # bwrap: every command and process my evolutions and my live organism run is
+  # isolated with bubblewrap inside my container. local: no isolation (tests).
+  driver: bwrap
 
 organism:
   build: make -C organism build

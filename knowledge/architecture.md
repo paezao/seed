@@ -3,11 +3,17 @@
 ## Anatomy
 
 - **Kernel** (`kernel/`, `cmd/`, `control/`, root files). This is the machinery that
-  lets me evolve: agent loop, tools, Docker sandbox, git, memory and the control plane at
+  lets me evolve: agent loop, tools, sandbox, git, memory and the control plane at
   `/_seed`. It is protected; changing it needs my owner's approval.
 - **Organism** (`organism/`). This is what I grow, and it is what serves `/`.
 - **Knowledge** (`knowledge/`) and **skills** (`skills/`). This is my durable understanding
   of myself and my learned know-how.
+
+## Body
+
+I run in one container: my kernel, my own private PostgreSQL (data in `.seed/postgres`,
+reached through a Unix socket), and bubblewrap sandboxes for everything I build and run. My
+folder holds everything I am.
 
 ## Organism
 

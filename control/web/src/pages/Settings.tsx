@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, errorMessage, type ModelConfig, type ProviderInfo } from '../api';
 import { ModelForm } from '../components/ModelForm';
+import { CopyCommand, keyEnvOf, keySourceText, restartCommand } from '../components/Brain';
 import { Badge, ErrorNote, Loading, PageHeader, useLoad } from '../components/ui';
 import { useLive } from '../live';
 
@@ -61,14 +62,14 @@ function ForgetKey({ provider, onDone }: { provider: ProviderInfo; onDone: (cfg:
 
   if (!confirming) {
     return (
-      <button className="btn btn-sm btn-danger-ghost" onClick={() => setConfirming(true)} aria-label={`Forget stored ${provider.label} key`}>
-        Forget stored key
+      <button className="btn btn-sm btn-danger-ghost" onClick={() => setConfirming(true)} aria-label={`Forget the ${provider.label} key lent for this session`}>
+        Forget key
       </button>
     );
   }
   return (
     <span className="inline-confirm">
-      <span className="small">Forget the {provider.label} key for all your Seeds?</span>
+      <span className="small">Forget the key you lent me? I can't think again until I get another.</span>
       <button className="btn btn-sm btn-danger" onClick={go} disabled={busy}>{busy ? 'Forgetting…' : 'Forget'}</button>
       <button className="btn btn-sm btn-ghost" onClick={() => { setConfirming(false); setErr(null); }} disabled={busy}>Cancel</button>
       {err && <span className="error-text small">{err}</span>}
@@ -97,7 +98,7 @@ function MindPanel() {
                 <span className="muted"> via {current?.label ?? cfg.provider}</span>
               </span>
             ) : (
-              <span>I have no mind yet — choose a model.</span>
+              <span>I have no brain right now: no key was passed when I started.</span>
             )}
             <span className="spacer" />
             {cfg.configured && !editing && (
@@ -105,8 +106,16 @@ function MindPanel() {
             )}
           </div>
 
+          {!cfg.configured && (
+            <div className="mind-restart">
+              <p className="small muted">Restart me with a key from your environment:</p>
+              <CopyCommand command={restartCommand(current)} label="Restart command" />
+            </div>
+          )}
+
           {(editing || !cfg.configured) && (
             <div className="mind-edit">
+              {!cfg.configured && <p className="small muted mind-lend">Or lend me a key for this session:</p>}
               <ModelForm
                 key={`${cfg.provider}/${cfg.name}/${cfg.configured}`}
                 config={cfg}
@@ -118,9 +127,10 @@ function MindPanel() {
             </div>
           )}
 
-          <h3>Your providers</h3>
+          <h3>Keys</h3>
           <p className="small muted">
-            Keys live in your user config (<code>~/.config/seed/credentials.json</code>), shared by all your Seeds. They are never shown again.
+            I keep no keys. Pass one when you start me (<code>seed run -e {keyEnvOf(current)}</code>); a key lent here
+            lives in memory only, until I restart. Keys are never shown again.
           </p>
           <ul className="provider-list">
             {cfg.providers.map((p) => (
@@ -129,9 +139,11 @@ function MindPanel() {
                 {p.id === cfg.provider && cfg.configured && <Badge tone="info">in use</Badge>}
                 {!p.needs_key
                   ? <span className="muted small mono truncate">{p.base_url || 'no key needed'}</span>
-                  : p.has_key ? <Badge tone="ok">key stored</Badge> : <span className="muted small">no key</span>}
+                  : p.has_key
+                    ? <Badge tone={p.key_source === 'session' ? 'warn' : 'ok'}>{keySourceText(p)}</Badge>
+                    : <span className="muted small">no key</span>}
                 <span className="spacer" />
-                {p.needs_key && p.has_key && <ForgetKey provider={p} onDone={load.setData} />}
+                {p.needs_key && p.key_source === 'session' && <ForgetKey provider={p} onDone={load.setData} />}
               </li>
             ))}
           </ul>

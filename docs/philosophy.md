@@ -27,8 +27,9 @@ application that knows how to become a larger application:
    contains "todo"`. A todo app is produced by the same general mechanism as anything else.
 4. **Ordinary software.** The organism is plain Go, React and PostgreSQL that a human can read
    and take over. Seed is an evolutionary runtime around software, not a new language.
-5. **Boring infrastructure.** Go, PostgreSQL, Git and Docker, with no agent framework, queue or
-   vector DB. The Seed must be able to understand its own implementation.
+5. **Boring infrastructure.** Go, PostgreSQL, Git, a container and bubblewrap, with no agent
+   framework, queue or vector DB. A Seed is one self-contained folder. The Seed must be able to
+   understand its own implementation.
 6. **Safety by construction.** Self-modifying software needs strong trust boundaries. Every
    change happens in isolation, is independently verified, is a git commit, and can be rolled
    back. The kernel is protected from the organism it grows.

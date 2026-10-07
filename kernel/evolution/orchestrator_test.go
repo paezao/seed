@@ -51,19 +51,12 @@ type harness struct {
 	base  string
 }
 
-const testServer = `exec python3 -c "
-import http.server,os
-class H(http.server.BaseHTTPRequestHandler):
-    def log_message(s,*a): pass
-    def do_GET(s):
-        s.send_response(200); s.end_headers(); s.wfile.write(b'ok')
-    do_POST=do_GET
-http.server.HTTPServer(('127.0.0.1', int(os.environ['PORT'])), H).serve_forever()"`
+const testServer = `exec node -e "require('http').createServer((q,r)=>{r.end('ok')}).listen(process.env.PORT)"`
 
 func newHarness(t *testing.T, mutate func(cfg *config.Config)) *harness {
 	t.Helper()
-	if _, err := exec.LookPath("python3"); err != nil {
-		t.Skip("python3 required")
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node required")
 	}
 	ctx := context.Background()
 	dbURL := testutil.Database(t)
@@ -593,5 +586,27 @@ func TestFinishRejectsBodylessWriteChecks(t *testing.T) {
 	e := h.run("add things", append(steps, reflectSteps()...)...)
 	if e.Status != memory.Complete {
 		t.Fatalf("status %s err %q", e.Status, e.Error)
+	}
+}
+
+func TestQuestionRoundAcceptsOneAnswer(t *testing.T) {
+	o := &Orchestrator{}
+	o.init()
+	ch := make(chan string, 1)
+	o.answers["evo_x"] = &waiter{ch: ch}
+	if o.WaitingForAnswer() != "evo_x" {
+		t.Fatal("should be waiting")
+	}
+	if err := o.Answer(context.Background(), "evo_x", "first"); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Answer(context.Background(), "evo_x", "second"); err == nil {
+		t.Fatal("a round must accept exactly one answer")
+	}
+	if o.WaitingForAnswer() != "" {
+		t.Fatal("an answered round is no longer waiting")
+	}
+	if got := <-ch; got != "first" {
+		t.Fatalf("got %q", got)
 	}
 }
