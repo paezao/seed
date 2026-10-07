@@ -9,8 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"strings"
 )
 
 type Role string
@@ -102,99 +100,11 @@ func Retryable(err error) bool {
 	return true // network errors, truncated bodies
 }
 
-// Settings selects and configures a provider.
-type Settings struct {
-	Provider  string
-	Name      string
-	BaseURL   string
-	APIKeyEnv string
-	MaxTokens int
-}
-
-// Info describes the resolved provider for display.
+// Info describes the selected model for display.
 type Info struct {
 	Provider   string `json:"provider"`
 	Name       string `json:"name"`
 	Configured bool   `json:"configured"`
-}
-
-var providerKeys = []struct{ provider, env string }{
-	{"anthropic", "ANTHROPIC_API_KEY"},
-	{"openrouter", "OPENROUTER_API_KEY"},
-	{"openai", "OPENAI_API_KEY"},
-}
-
-// Resolve returns the provider, model name and key env var that Settings selects.
-func Resolve(s Settings) (provider, name, keyEnv string) {
-	provider = s.Provider
-	if provider == "" || provider == "auto" {
-		provider = "anthropic"
-		for _, pk := range providerKeys {
-			if os.Getenv(pk.env) != "" {
-				provider = pk.provider
-				break
-			}
-		}
-	}
-	keyEnv = s.APIKeyEnv
-	if keyEnv == "" {
-		for _, pk := range providerKeys {
-			if pk.provider == provider {
-				keyEnv = pk.env
-			}
-		}
-	}
-	name = s.Name
-	if name == "" {
-		switch provider {
-		case "anthropic":
-			name = "claude-sonnet-5-5"
-		case "openrouter":
-			name = "anthropic/claude-sonnet-5.5"
-		case "openai":
-			name = "gpt-5.5"
-		}
-	}
-	return provider, name, keyEnv
-}
-
-// New builds a Model from settings. Missing keys produce a model that fails
-// with a clear message on use, so the Seed can still boot and explain itself.
-func New(s Settings) (Model, Info) {
-	provider, name, keyEnv := Resolve(s)
-	key := ""
-	if keyEnv != "" {
-		key = os.Getenv(keyEnv)
-	}
-	info := Info{Provider: provider, Name: name, Configured: key != "" || provider == "openai-compatible"}
-	maxTokens := s.MaxTokens
-	if maxTokens == 0 {
-		maxTokens = 16000
-	}
-	var m Model
-	switch provider {
-	case "anthropic":
-		m = &Anthropic{APIKey: key, Model: name, BaseURL: s.BaseURL, MaxTokens: maxTokens}
-	case "openrouter":
-		base := s.BaseURL
-		if base == "" {
-			base = "https://openrouter.ai/api/v1"
-		}
-		m = &OpenAI{APIKey: key, Model: name, BaseURL: base, MaxTokens: maxTokens, Provider: "openrouter",
-			PromptCaching: strings.HasPrefix(name, "anthropic/")}
-	case "openai", "openai-compatible":
-		base := s.BaseURL
-		if base == "" {
-			base = "https://api.openai.com/v1"
-		}
-		m = &OpenAI{APIKey: key, Model: name, BaseURL: base, MaxTokens: maxTokens, Provider: provider}
-	default:
-		return unavailable{fmt.Sprintf("unknown model provider %q", provider)}, info
-	}
-	if !info.Configured {
-		return unavailable{fmt.Sprintf("no API key: set %s (provider %s) to give the Seed a mind", keyEnv, provider)}, info
-	}
-	return WithRetry(m, 5), info
 }
 
 type unavailable struct{ reason string }

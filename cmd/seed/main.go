@@ -19,11 +19,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -96,10 +98,25 @@ type exitCode int
 func (e exitCode) Error() string { return fmt.Sprintf("exit %d", int(e)) }
 
 func cmdNew(ctx context.Context, args []string) error {
-	if len(args) != 1 {
-		return errors.New("usage: seed new <name>")
+	fs := flag.NewFlagSet("new", flag.ContinueOnError)
+	noRun := fs.Bool("no-run", false, "only create the Seed; don't start it")
+	addr := fs.String("addr", "", "listen address")
+	// Allow flags before or after the name.
+	var rest []string
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			rest = append([]string{a}, rest...)
+		} else {
+			rest = append(rest, a)
+		}
 	}
-	name := args[0]
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
+	if fs.NArg() != 1 {
+		return errors.New("usage: seed new <name> [--no-run] [--addr host:port]")
+	}
+	name := fs.Arg(0)
 	dir, err := filepath.Abs(name)
 	if err != nil {
 		return err
@@ -107,7 +124,8 @@ func cmdNew(ctx context.Context, args []string) error {
 	if err := template.Create(ctx, dir, filepath.Base(name)); err != nil {
 		return err
 	}
-	fmt.Printf(`🌱 Seed created.
+	if *noRun {
+		fmt.Printf(`🌱 Seed created.
 
 Name: %s
 Generation: 1
@@ -115,24 +133,61 @@ Generation: 1
 Run:
 
   cd %s
-  seed run
-
-Then open:
-
-  http://localhost:8080/_seed
+  seed run --open
 `, filepath.Base(name), name)
-	return nil
+		return nil
+	}
+	fmt.Printf("🌱 Seed created: %s (generation 1). Starting it…\n\n", filepath.Base(name))
+	runArgs := []string{"--dir", dir, "--open"}
+	if *addr != "" {
+		runArgs = append(runArgs, "--addr", *addr)
+	}
+	return cmdRun(ctx, runArgs)
+}
+
+// openWhenUp waits for the kernel to listen, then opens the control plane.
+func openWhenUp(ctx context.Context, dir string) {
+	for i := 0; i < 600; i++ {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(500 * time.Millisecond):
+		}
+		b, err := os.ReadFile(runtime.AddrPath(dir))
+		if err != nil {
+			continue
+		}
+		addr := strings.TrimSpace(string(b))
+		_, port, _ := net.SplitHostPort(addr)
+		url := "http://localhost:" + port + "/_seed/"
+		resp, err := http.Get("http://" + addr + "/_seed/api/identity/logo")
+		if err != nil {
+			continue
+		}
+		resp.Body.Close()
+		fmt.Fprintf(os.Stderr, "\n  Talk to me at %s\n\n", url)
+		opener := "xdg-open"
+		if goruntime.GOOS == "darwin" {
+			opener = "open"
+		}
+		if err := exec.Command(opener, url).Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "  (couldn't open a browser: %v)\n", err)
+		}
+		return
+	}
 }
 
 type runFlags struct {
 	dir, addr string
+	open      bool
 }
 
 func parseRunFlags(name string, args []string) (runFlags, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	var f runFlags
 	fs.StringVar(&f.dir, "dir", ".", "Seed directory")
-	fs.StringVar(&f.addr, "addr", "", "listen address (default from seed.yaml)")
+	fs.StringVar(&f.addr, "addr", "", "listen address (default from seed.yaml; a busy port moves to the next free one)")
+	fs.BoolVar(&f.open, "open", false, "open the control plane in your browser once I'm up")
 	if err := fs.Parse(args); err != nil {
 		return f, err
 	}
@@ -158,6 +213,9 @@ func cmdRun(ctx context.Context, args []string) error {
 		build := exec.CommandContext(ctx, "go", "build", "-o", bin, "./cmd/seed")
 		build.Dir = f.dir
 		build.Stdout, build.Stderr = os.Stderr, os.Stderr
+		// Build exactly the kernel described by go.mod/go.sum: no workspace
+		// files or vendor directories can redirect what gets compiled.
+		build.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=readonly")
 		if err := build.Run(); err != nil {
 			return fmt.Errorf("building kernel: %w", err)
 		}
@@ -167,8 +225,13 @@ func cmdRun(ctx context.Context, args []string) error {
 		if f.addr != "" {
 			child.Env = append(child.Env, "SEED_ADDR="+f.addr)
 		}
+		_ = os.Remove(runtime.AddrPath(f.dir))
 		if err := child.Start(); err != nil {
 			return err
+		}
+		if f.open {
+			go openWhenUp(ctx, f.dir)
+			f.open = false // only the first start, not kernel restarts
 		}
 		done := make(chan error, 1)
 		go func() { done <- child.Wait() }()
@@ -219,11 +282,22 @@ func baseURL() (string, *config.Config, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	return "http://" + cfg.Server.Addr + "/_seed/api", cfg, nil
+	addr := cfg.Server.Addr
+	if b, err := os.ReadFile(runtime.AddrPath(cfg.Root)); err == nil {
+		addr = strings.TrimSpace(string(b))
+	}
+	return "http://" + addr + "/_seed/api", cfg, nil
+}
+
+// controlToken is the running kernel's API token (written to .seed/).
+func controlToken() string {
+	b, _ := os.ReadFile(runtime.ControlTokenPath("."))
+	return strings.TrimSpace(string(b))
 }
 
 func getJSON(ctx context.Context, url string, v any) error {
 	req, _ := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req.Header.Set("X-Seed-Token", controlToken())
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("is the Seed running? (%w)", err)
@@ -236,6 +310,7 @@ func postJSON(ctx context.Context, url string, body, v any) error {
 	b, _ := json.Marshal(body)
 	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(b))
 	req.Header.Set("content-type", "application/json")
+	req.Header.Set("X-Seed-Token", controlToken())
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("is the Seed running? (%w)", err)
@@ -322,6 +397,7 @@ func cmdEvolve(ctx context.Context, args []string) error {
 // follow streams an evolution's progress until it ends.
 func follow(ctx context.Context, base, id string) error {
 	req, _ := http.NewRequestWithContext(ctx, "GET", base+"/events", nil)
+	req.Header.Set("X-Seed-Token", controlToken())
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
@@ -438,7 +514,11 @@ func cmdInfra(ctx context.Context, args []string) error {
 		return errors.New("usage: seed infra up|down")
 	}
 	d := config.Defaults()
-	admin := infra.Admin{URL: d.Database.URL}
+	managed, err := infra.ManagedAdminURL()
+	if err != nil {
+		return err
+	}
+	admin := infra.Admin{URL: managed}
 	if v := os.Getenv("SEED_DATABASE_URL"); v != "" {
 		admin.URL = v
 	}

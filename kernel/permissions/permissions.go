@@ -40,14 +40,15 @@ const (
 // Policy maps risk levels to decisions.
 type Policy struct {
 	Decisions map[Level]Decision
-	// Protected paths (kernel boundary). Directory entries end with "/".
-	Protected []string
+	// Evolvable directories (ending with "/"). Every other path is inside the
+	// kernel boundary.
+	Evolvable []string
 }
 
-func NewPolicy(safe, review, dangerous string, protected []string) *Policy {
+func NewPolicy(safe, review, dangerous string, evolvable []string) *Policy {
 	return &Policy{
 		Decisions: map[Level]Decision{Safe: Decision(safe), Review: Decision(review), Dangerous: Decision(dangerous)},
-		Protected: protected,
+		Evolvable: evolvable,
 	}
 }
 
@@ -62,20 +63,17 @@ func (p *Policy) Decide(l Level) Decision {
 	return d
 }
 
-// IsProtected reports whether a repository-relative path is inside the kernel boundary.
+// IsProtected reports whether a repository-relative path is inside the
+// kernel boundary, i.e. not within an evolvable directory.
 func (p *Policy) IsProtected(rel string) bool {
 	rel = strings.TrimPrefix(path.Clean("/"+strings.ReplaceAll(rel, "\\", "/")), "/")
-	for _, pr := range p.Protected {
-		if strings.HasSuffix(pr, "/") {
-			dir := strings.TrimSuffix(pr, "/")
-			if rel == dir || strings.HasPrefix(rel, dir+"/") {
-				return true
-			}
-		} else if rel == pr {
-			return true
+	for _, ev := range p.Evolvable {
+		dir := strings.Trim(ev, "/")
+		if dir != "" && strings.HasPrefix(rel, dir+"/") {
+			return false
 		}
 	}
-	return false
+	return true
 }
 
 // ProtectedIn returns the protected paths among the given ones.

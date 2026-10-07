@@ -1,5 +1,8 @@
-import { api } from '../api';
-import { ErrorNote, Loading, PageHeader, useLoad } from '../components/ui';
+import { useState } from 'react';
+import { api, errorMessage, type ModelConfig, type ProviderInfo } from '../api';
+import { ModelForm } from '../components/ModelForm';
+import { Badge, ErrorNote, Loading, PageHeader, useLoad } from '../components/ui';
+import { useLive } from '../live';
 
 function Value({ v }: { v: unknown }) {
   if (v === null || v === undefined) return <span className="v-null">null</span>;
@@ -35,15 +38,120 @@ function Tree({ obj }: { obj: Record<string, unknown> }) {
   );
 }
 
+function ForgetKey({ provider, onDone }: { provider: ProviderInfo; onDone: (cfg: ModelConfig) => void }) {
+  const { refreshStatus } = useLive();
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const go = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const cfg = await api.forgetKey(provider.id);
+      setConfirming(false);
+      onDone(cfg);
+      await refreshStatus();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!confirming) {
+    return (
+      <button className="btn btn-sm btn-danger-ghost" onClick={() => setConfirming(true)} aria-label={`Forget stored ${provider.label} key`}>
+        Forget stored key
+      </button>
+    );
+  }
+  return (
+    <span className="inline-confirm">
+      <span className="small">Forget the {provider.label} key for all your Seeds?</span>
+      <button className="btn btn-sm btn-danger" onClick={go} disabled={busy}>{busy ? 'Forgetting…' : 'Forget'}</button>
+      <button className="btn btn-sm btn-ghost" onClick={() => { setConfirming(false); setErr(null); }} disabled={busy}>Cancel</button>
+      {err && <span className="error-text small">{err}</span>}
+    </span>
+  );
+}
+
+function MindPanel() {
+  const load = useLoad(() => api.model(), []);
+  const [editing, setEditing] = useState(false);
+  const cfg = load.data;
+  const current = cfg?.providers.find((p) => p.id === cfg.provider);
+
+  return (
+    <section className="panel mind-panel" aria-labelledby="mind-h">
+      <h2 id="mind-h">Mind</h2>
+      {load.error && !cfg && <ErrorNote error={load.error} onRetry={load.reload} />}
+      {!cfg && load.loading && <Loading />}
+      {cfg && (
+        <>
+          <div className="mind-current">
+            <span className={`dot ${cfg.configured ? 'dot-ok' : 'dot-warn'}`} />
+            {cfg.configured ? (
+              <span>
+                I think with <code className="fg">{cfg.name}</code>
+                <span className="muted"> via {current?.label ?? cfg.provider}</span>
+              </span>
+            ) : (
+              <span>I have no mind yet — choose a model.</span>
+            )}
+            <span className="spacer" />
+            {cfg.configured && !editing && (
+              <button className="btn btn-sm" onClick={() => setEditing(true)}>Change</button>
+            )}
+          </div>
+
+          {(editing || !cfg.configured) && (
+            <div className="mind-edit">
+              <ModelForm
+                key={`${cfg.provider}/${cfg.name}/${cfg.configured}`}
+                config={cfg}
+                submitLabel={cfg.configured ? 'Switch' : 'Wake up'}
+                busyLabel={cfg.configured ? 'Switching…' : 'Waking up…'}
+                onSaved={(c) => { load.setData(c); setEditing(false); }}
+                onCancel={cfg.configured ? () => setEditing(false) : undefined}
+              />
+            </div>
+          )}
+
+          <h3>Your providers</h3>
+          <p className="small muted">
+            Keys live in your user config (<code>~/.config/seed/credentials.json</code>), shared by all your Seeds. They are never shown again.
+          </p>
+          <ul className="provider-list">
+            {cfg.providers.map((p) => (
+              <li key={p.id} className="provider-row">
+                <span className="provider-row-name">{p.label}</span>
+                {p.id === cfg.provider && cfg.configured && <Badge tone="info">in use</Badge>}
+                {!p.needs_key
+                  ? <span className="muted small mono truncate">{p.base_url || 'no key needed'}</span>
+                  : p.has_key ? <Badge tone="ok">key stored</Badge> : <span className="muted small">no key</span>}
+                <span className="spacer" />
+                {p.needs_key && p.has_key && <ForgetKey provider={p} onDone={load.setData} />}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function Settings() {
   const load = useLoad(() => api.settings(), []);
   return (
     <div className="page">
-      <PageHeader title="Settings" sub={<>Read-only. Settings live in <code>seed.yaml</code>; secrets are redacted.</>} />
-      {load.error && <ErrorNote error={load.error} onRetry={load.reload} />}
-      {!load.data && load.loading ? <Loading /> : load.data && (
-        <section className="panel"><Tree obj={load.data} /></section>
-      )}
+      <PageHeader title="Settings" />
+      <MindPanel />
+      <section className="panel" aria-labelledby="config-h">
+        <h2 id="config-h">Configuration <span className="muted small" style={{ fontWeight: 400 }}>Read-only. Lives in <code>seed.yaml</code>; secrets are redacted.</span></h2>
+        {load.error && <ErrorNote error={load.error} onRetry={load.reload} />}
+        {!load.data && load.loading ? <Loading /> : load.data && <Tree obj={load.data} />}
+      </section>
     </div>
   );
 }

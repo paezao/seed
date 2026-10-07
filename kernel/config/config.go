@@ -35,23 +35,22 @@ type Config struct {
 
 type ServerConfig struct {
 	Addr string `yaml:"addr" json:"addr"`
+	// AllowedHosts are extra Host header values accepted (besides localhost,
+	// 127.0.0.1, [::1] and *.localhost). Requests for any other host are
+	// refused, which defeats DNS-rebinding attacks from other websites.
+	AllowedHosts []string `yaml:"allowed_hosts" json:"allowed_hosts"`
 }
 
 type ModelConfig struct {
-	// Provider: auto | anthropic | openai | openrouter. "auto" picks the first
-	// provider with an API key in the environment.
-	Provider  string `yaml:"provider" json:"provider"`
-	Name      string `yaml:"name" json:"name"`
-	BaseURL   string `yaml:"base_url" json:"base_url,omitempty"`
-	MaxTokens int    `yaml:"max_tokens" json:"max_tokens"`
-	// APIKeyEnv names the environment variable holding the key. Keys are never
-	// stored in seed.yaml.
-	APIKeyEnv string `yaml:"api_key_env" json:"api_key_env,omitempty"`
+	// The model itself (provider, model, key) is chosen by the owner in the
+	// control plane and stored outside the repository; see runtime/mind.go.
+	MaxTokens int `yaml:"max_tokens" json:"max_tokens"`
 }
 
 type DatabaseConfig struct {
 	// URL is an administrative connection to the PostgreSQL server used by the
-	// kernel. It must be able to create databases and roles.
+	// kernel. It must be able to create databases and roles. Empty means the
+	// managed local server, whose credentials live in ~/.config/seed.
 	URL string `yaml:"url" json:"-"`
 }
 
@@ -91,9 +90,12 @@ type PermissionsConfig struct {
 }
 
 type KernelConfig struct {
-	// Protected paths (relative to Root; a trailing slash means a directory).
-	// Changing them is a dangerous action.
-	Protected []string `yaml:"protected" json:"protected"`
+	// Evolvable lists the directories (relative to Root, trailing slash) the
+	// Seed may change freely. Everything else is the kernel: changing it is a
+	// dangerous, owner-approved action, and sandboxes see it read-only. An
+	// allowlist, so that new files the kernel would act on (go.work, vendor/,
+	// ...) are protected by default.
+	Evolvable []string `yaml:"evolvable" json:"evolvable"`
 }
 
 // Defaults returns the configuration used for any field seed.yaml leaves empty.
@@ -101,10 +103,8 @@ func Defaults() Config {
 	return Config{
 		Name:   "seed",
 		Server: ServerConfig{Addr: "127.0.0.1:8080"},
-		Model:  ModelConfig{Provider: "auto", MaxTokens: 16000},
-		Database: DatabaseConfig{
-			URL: "postgres://seed:seed@127.0.0.1:55432/postgres?sslmode=disable",
-		},
+		Model:  ModelConfig{MaxTokens: 16000},
+		// Database.URL empty: use the managed local server (seed infra).
 		Sandbox: SandboxConfig{
 			Driver: "docker", Image: "seed-sandbox", Network: "seed-net",
 			DBHost: "seed-postgres:5432", Memory: "4g", CPUs: "4",
@@ -118,10 +118,7 @@ func Defaults() Config {
 		Permissions: PermissionsConfig{
 			Safe: "allow", Review: "allow", Dangerous: "ask",
 		},
-		Kernel: KernelConfig{Protected: []string{
-			"kernel/", "cmd/", "control/", "go.mod", "go.sum", "seed.yaml",
-			"Dockerfile", "Makefile", "docker-compose.yml",
-		}},
+		Kernel: KernelConfig{Evolvable: []string{"organism/", "knowledge/", "skills/"}},
 	}
 }
 
@@ -150,12 +147,6 @@ func (c *Config) applyEnv() {
 	}
 	if v := os.Getenv("SEED_ADDR"); v != "" {
 		c.Server.Addr = v
-	}
-	if v := os.Getenv("SEED_PROVIDER"); v != "" {
-		c.Model.Provider = v
-	}
-	if v := os.Getenv("SEED_MODEL"); v != "" {
-		c.Model.Name = v
 	}
 	if v := os.Getenv("SEED_SANDBOX_DRIVER"); v != "" {
 		c.Sandbox.Driver = v

@@ -135,20 +135,26 @@ func TestRetryGivesUpOnClientError(t *testing.T) {
 	}
 }
 
-func TestResolveAndMissingKey(t *testing.T) {
-	t.Setenv("ANTHROPIC_API_KEY", "")
-	t.Setenv("OPENROUTER_API_KEY", "x")
-	t.Setenv("OPENAI_API_KEY", "")
-	p, name, env := Resolve(Settings{Provider: "auto"})
-	if p != "openrouter" || env != "OPENROUTER_API_KEY" || name == "" {
-		t.Fatalf("resolve: %s %s %s", p, name, env)
+func TestBuildRequiresKeyAndModel(t *testing.T) {
+	if _, err := Build(Selection{Provider: "openrouter", Name: "x"}); err == nil {
+		t.Fatal("missing key should fail")
 	}
-	t.Setenv("OPENROUTER_API_KEY", "")
-	m, info := New(Settings{Provider: "openrouter"})
-	if info.Configured {
-		t.Fatal("should be unconfigured")
+	if _, err := Build(Selection{Provider: "openrouter", APIKey: "k"}); err == nil {
+		t.Fatal("missing model should fail")
 	}
-	if _, err := m.Generate(context.Background(), sampleReq); err == nil || !strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
-		t.Fatalf("expected key hint, got %v", err)
+	if _, err := Build(Selection{Provider: "nope", Name: "x", APIKey: "k"}); err == nil {
+		t.Fatal("unknown provider should fail")
+	}
+	s := NewSwitchable()
+	if _, err := s.Generate(context.Background(), sampleReq); err == nil || !strings.Contains(err.Error(), "no mind") {
+		t.Fatalf("unconfigured model should explain itself, got %v", err)
+	}
+	m, err := Build(Selection{Provider: "openrouter", Name: "anthropic/claude-sonnet-5.5", APIKey: "k"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Set(m, Info{Provider: "openrouter", Name: "anthropic/claude-sonnet-5.5", Configured: true})
+	if !s.Info().Configured {
+		t.Fatal("info not updated")
 	}
 }

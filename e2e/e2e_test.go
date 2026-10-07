@@ -24,9 +24,16 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"seed/kernel/infra"
 )
 
+var token string
+
 type status struct {
+	Model struct {
+		Configured bool `json:"configured"`
+	} `json:"model"`
 	Purpose  string `json:"purpose"`
 	Identity struct {
 		Name string `json:"name"`
@@ -50,6 +57,19 @@ func TestCanonicalDemo(t *testing.T) {
 	if os.Getenv("SEED_E2E") == "" {
 		t.Skip("set SEED_E2E=1 to run the end-to-end demo (uses a real model)")
 	}
+	// A dedicated test key keeps test spend separate from the owner's own.
+	key := os.Getenv("SEED_TEST_OPENROUTER_API_KEY")
+	if key == "" {
+		t.Skip("SEED_TEST_OPENROUTER_API_KEY is needed: the test gives the Seed its mind like an owner would")
+	}
+	model := os.Getenv("SEED_E2E_MODEL")
+	if model == "" {
+		model = "anthropic/claude-sonnet-5.5"
+	}
+	adminURL, err := infra.ManagedAdminURL()
+	if err != nil {
+		t.Fatal(err)
+	}
 	bin, err := filepath.Abs("../bin/seed")
 	if err != nil {
 		t.Fatal(err)
@@ -59,7 +79,7 @@ func TestCanonicalDemo(t *testing.T) {
 	}
 	dir := t.TempDir()
 	name := fmt.Sprintf("e2e%d", time.Now().Unix()%100000)
-	run(t, dir, bin, "new", name)
+	run(t, dir, bin, "new", "--no-run", name)
 	root := filepath.Join(dir, name)
 
 	port := freePort(t)
@@ -68,6 +88,8 @@ func TestCanonicalDemo(t *testing.T) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "run", "--addr", fmt.Sprintf("127.0.0.1:%d", port))
 	cmd.Dir = root
+	// Isolated user config: the test's key never lands in the owner's ~/.config/seed.
+	cmd.Env = append(os.Environ(), "XDG_CONFIG_HOME="+filepath.Join(dir, "config"), "SEED_DATABASE_URL="+adminURL)
 	logf, _ := os.Create(filepath.Join(dir, "seed.log"))
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.Cancel = func() error { return cmd.Process.Signal(os.Interrupt) }
@@ -83,11 +105,17 @@ func TestCanonicalDemo(t *testing.T) {
 		}
 	}()
 
-	// The fresh Seed has no purpose and a running (empty) organism.
+	// The fresh Seed has no purpose, no mind, and a running (empty) organism.
 	var s status
 	waitFor(t, 5*time.Minute, func() bool {
-		return getJSON(base+"/_seed/api/status", &s) == nil && s.Organism["state"] == "running"
+		b, err := os.ReadFile(filepath.Join(root, ".seed", "control-token"))
+		token = strings.TrimSpace(string(b))
+		return err == nil && getJSON(base+"/_seed/api/status", &s) == nil && s.Organism["state"] == "running"
 	})
+	if s.Model.Configured {
+		t.Fatal("a fresh Seed must ask for its mind")
+	}
+	post(t, base+"/_seed/api/model", map[string]string{"provider": "openrouter", "name": model, "api_key": key})
 	if s.Purpose != "" || s.Generation.Number != 1 || s.Identity.Name != "Seed" {
 		t.Fatalf("fresh seed should have no purpose at generation 1: %+v", s)
 	}
@@ -196,7 +224,9 @@ func waitFor(t *testing.T, d time.Duration, cond func() bool) {
 }
 
 func getJSON(url string, v any) error {
-	resp, err := http.Get(url)
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("X-Seed-Token", token)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}
@@ -209,7 +239,10 @@ func getJSON(url string, v any) error {
 
 func post(t *testing.T, url string, body any) {
 	b, _ := json.Marshal(body)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(b))
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Seed-Token", token)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}

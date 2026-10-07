@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+
+	"seed/kernel/fsx"
 )
 
 var fileRe = regexp.MustCompile(`^(\d+)_[A-Za-z0-9_\-]+\.sql$`)
@@ -124,9 +126,16 @@ func Apply(ctx context.Context, conn *pgx.Conn, table string, migs []Migration) 
 	return res, nil
 }
 
-// ApplyURL connects to url and applies migrations from a directory on disk.
-func ApplyURL(ctx context.Context, url, table, dir string) (Result, error) {
-	migs, err := Load(os.DirFS(dir), ".")
+// ApplyRepo connects to url and applies migrations from dir (relative to the
+// repository root). Reads are confined to root, so symlinks written by
+// sandboxed code cannot make the kernel read host files.
+func ApplyRepo(ctx context.Context, url, table, root, dir string) (Result, error) {
+	fsys, closeFS, err := fsx.FS(root)
+	if err != nil {
+		return Result{}, err
+	}
+	defer closeFS()
+	migs, err := Load(fsys, path.Clean(dir))
 	if err != nil {
 		return Result{}, err
 	}

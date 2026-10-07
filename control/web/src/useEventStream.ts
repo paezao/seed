@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { API_BASE, LIVE_EVENT_NAMES, type LiveEvent } from './api';
+import { API_BASE, CONTROL_TOKEN, LIVE_EVENT_NAMES, type LiveEvent } from './api';
 
 /**
  * Subscribes to the kernel's SSE stream. The browser's EventSource retries on its
@@ -26,7 +26,7 @@ export function useEventStream(
 
     const connect = () => {
       if (disposed) return;
-      es = new EventSource(`${API_BASE}/events`);
+      es = new EventSource(`${API_BASE}/events?token=${encodeURIComponent(CONTROL_TOKEN)}`);
       es.onopen = () => {
         backoff = 1000;
         setConnected(true);

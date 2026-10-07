@@ -41,8 +41,7 @@ type Kernel struct {
 	Store        *memory.Store
 	Bus          *events.Bus
 	Repo         *git.Repo
-	Model        models.Model
-	ModelInfo    models.Info
+	Mind         *models.Switchable
 	Driver       sandbox.Driver
 	SandboxImage string
 	Admin        infra.Admin
@@ -54,6 +53,10 @@ type Kernel struct {
 	Logs         *LogBuffer
 
 	restart chan struct{}
+	// Token authorizes control-plane API calls. It is embedded only in the
+	// control plane page and written to .seed/control-token for the CLI, so
+	// organism code (same origin) cannot drive the kernel.
+	Token string
 }
 
 // Boot assembles a kernel for the Seed at root.
@@ -62,7 +65,10 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	if err != nil {
 		return nil, err
 	}
-	k := &Kernel{Cfg: cfg, Bus: events.NewBus(), Logs: logs, restart: make(chan struct{}, 1)}
+	k := &Kernel{Cfg: cfg, Bus: events.NewBus(), Logs: logs, restart: make(chan struct{}, 1), Token: infra.RandomSecret(24)}
+	if err := WriteControlToken(cfg.Root, k.Token); err != nil {
+		return nil, err
+	}
 	k.Repo = git.Open(cfg.Root)
 	if _, err := k.Repo.Head(ctx); err != nil {
 		return nil, fmt.Errorf("%s is not a git repository with history (create Seeds with `seed new`): %w", cfg.Root, err)
@@ -71,9 +77,14 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		lines := strings.Split(roots, "\n")
 		cfg.Instance = lines[len(lines)-1][:8]
 	}
-	k.Policy = permissions.NewPolicy(cfg.Permissions.Safe, cfg.Permissions.Review, cfg.Permissions.Dangerous, cfg.Kernel.Protected)
+	k.Policy = permissions.NewPolicy(cfg.Permissions.Safe, cfg.Permissions.Review, cfg.Permissions.Dangerous, cfg.Kernel.Evolvable)
 
 	// Infrastructure
+	if cfg.Database.URL == "" {
+		if cfg.Database.URL, err = infra.ManagedAdminURL(); err != nil {
+			return nil, fmt.Errorf("database credentials: %w", err)
+		}
+	}
 	k.Admin = infra.Admin{URL: cfg.Database.URL}
 	if cfg.Sandbox.Driver == "docker" {
 		if !infra.DockerAvailable(ctx) {
@@ -129,25 +140,36 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	if err := k.Admin.EnsureDatabase(ctx, cfg.DBName("app"), role); err != nil {
 		return nil, fmt.Errorf("organism database: %w", err)
 	}
+	// Evolutions get their own role: it owns only scratch databases and cannot
+	// connect to the live one, so an experiment can never touch real data.
+	evoRole := cfg.DBName("evolver")
+	evoPass, err := k.Store.Setting(ctx, "evolution_db_password")
+	if err != nil {
+		evoPass = infra.RandomSecret(16)
+		if err := k.Store.SetSetting(ctx, "evolution_db_password", evoPass); err != nil {
+			return nil, err
+		}
+	}
+	if err := k.Admin.EnsureRole(ctx, evoRole, evoPass); err != nil {
+		return nil, fmt.Errorf("evolution role: %w", err)
+	}
 
-	// Mind
-	k.Model, k.ModelInfo = models.New(models.Settings{
-		Provider: cfg.Model.Provider, Name: cfg.Model.Name, BaseURL: cfg.Model.BaseURL,
-		APIKeyEnv: cfg.Model.APIKeyEnv, MaxTokens: cfg.Model.MaxTokens,
-	})
-	if !k.ModelInfo.Configured {
-		slog.Warn("no model API key configured; I can boot but cannot think", "provider", k.ModelInfo.Provider)
+	// Mind: the model this Seed thinks with, chosen by its owner.
+	k.Mind = models.NewSwitchable()
+	k.loadMind(ctx)
+	if !k.Mind.Info().Configured {
+		slog.Info("I have no mind yet: choose a model in my control plane")
 	}
 
 	k.Organism = &Organism{Cfg: cfg, Driver: k.Driver, Admin: k.Admin, Role: role, Pass: pass, Repo: k.Repo, Bus: k.Bus}
 	k.Approvals = &evolution.Approvals{Store: k.Store, Bus: k.Bus}
 	k.Orch = &evolution.Orchestrator{
-		Cfg: cfg, Store: k.Store, Bus: k.Bus, Repo: k.Repo, Model: k.Model, Driver: k.Driver,
+		Cfg: cfg, Store: k.Store, Bus: k.Bus, Repo: k.Repo, Model: k.Mind, Driver: k.Driver,
 		Admin: k.Admin, Policy: k.Policy, Approvals: k.Approvals, Live: k.Organism,
-		DB:              evolution.DBCreds{Role: role, Password: pass},
+		DB:              evolution.DBCreds{Role: evoRole, Password: evoPass},
 		OnKernelChanged: k.requestRestart,
 	}
-	k.Chat = &Chat{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Model: k.Model, Orch: k.Orch, Repo: k.Repo, Policy: k.Policy}
+	k.Chat = &Chat{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Model: k.Mind, Orch: k.Orch, Repo: k.Repo, Policy: k.Policy}
 	return k, nil
 }
 
@@ -223,14 +245,18 @@ func (k *Kernel) Serve(ctx context.Context) error {
 		}
 	}()
 
-	ln, err := net.Listen("tcp", k.Cfg.Server.Addr)
+	ln, err := listen(k.Cfg.Server.Addr, os.Getenv("SEED_ADDR") == "")
 	if err != nil {
+		return err
+	}
+	k.Cfg.Server.Addr = ln.Addr().String()
+	if err := os.WriteFile(AddrPath(k.Cfg.Root), []byte(k.Cfg.Server.Addr), 0o600); err != nil {
 		return err
 	}
 	srv := &http.Server{Handler: k.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
 	go func() { errc <- srv.Serve(ln) }()
-	slog.Info(knowledge.Name(k.Cfg.Root)+" is alive", "slug", k.Cfg.Name, "control_plane", "http://"+k.Cfg.Server.Addr+"/_seed/", "model", k.ModelInfo.Provider+"/"+k.ModelInfo.Name)
+	slog.Info(knowledge.Name(k.Cfg.Root)+" is alive", "slug", k.Cfg.Name, "control_plane", "http://"+k.Cfg.Server.Addr+"/_seed/", "model", k.Mind.Info().Provider+"/"+k.Mind.Info().Name)
 
 	var result error
 	select {
@@ -258,4 +284,40 @@ func redact(u string) string {
 		}
 	}
 	return u
+}
+
+// ControlTokenPath is where the CLI finds the running kernel's token. .seed/
+// is hidden from every sandbox.
+func ControlTokenPath(root string) string { return filepath.Join(root, ".seed", "control-token") }
+
+func WriteControlToken(root, token string) error {
+	p := ControlTokenPath(root)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(p, []byte(token), 0o600)
+}
+
+// AddrPath records where the running kernel listens (for the CLI).
+func AddrPath(root string) string { return filepath.Join(root, ".seed", "addr") }
+
+// listen binds addr. Unless the address was given explicitly, a busy port
+// moves on to the next free one, so several Seeds can run side by side.
+func listen(addr string, flexible bool) (net.Listener, error) {
+	ln, err := net.Listen("tcp", addr)
+	if err == nil || !flexible {
+		return ln, err
+	}
+	host, portStr, splitErr := net.SplitHostPort(addr)
+	port, convErr := strconv.Atoi(portStr)
+	if splitErr != nil || convErr != nil {
+		return nil, err
+	}
+	for p := port + 1; p <= port+50; p++ {
+		if ln, err2 := net.Listen("tcp", net.JoinHostPort(host, strconv.Itoa(p))); err2 == nil {
+			slog.Info("port busy; using the next free one", "wanted", addr, "port", p)
+			return ln, nil
+		}
+	}
+	return nil, err
 }

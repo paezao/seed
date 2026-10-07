@@ -18,7 +18,11 @@ func AdminURL() string {
 	if v := os.Getenv("SEED_TEST_DATABASE_URL"); v != "" {
 		return v
 	}
-	return "postgres://seed:seed@127.0.0.1:55432/postgres?sslmode=disable"
+	u, err := infra.ManagedAdminURL()
+	if err != nil {
+		return ""
+	}
+	return u
 }
 
 // Database creates a fresh, uniquely named database and returns its URL.

@@ -19,12 +19,13 @@ func exercise(t *testing.T, d Driver, server string) {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(root, "kernel", "core.go"), []byte("package kernel"), 0o644)
+	os.MkdirAll(filepath.Join(root, "organism"), 0o755)
 	os.MkdirAll(filepath.Join(root, ".seed"), 0o755)
 	os.WriteFile(filepath.Join(root, ".seed", "secret"), []byte("s3cret"), 0o644)
 
 	sb, err := d.Create(ctx, Spec{
 		Name: "seed-test-" + strings.ToLower(strings.ReplaceAll(t.Name(), "/", "-")), Root: root,
-		ReadOnly: []string{"kernel"}, Hidden: []string{".seed"}, Port: 8080,
+		Writable: []string{"organism"}, Hidden: []string{".seed"}, Port: 8080,
 		Env: map[string]string{"GREETING": "hello"},
 	})
 	if err != nil {
@@ -32,11 +33,11 @@ func exercise(t *testing.T, d Driver, server string) {
 	}
 	defer sb.Close(ctx)
 
-	res, err := sb.Exec(ctx, `echo "$GREETING" && echo out > organism.txt && exit 3`, 30*time.Second, nil)
+	res, err := sb.Exec(ctx, `echo "$GREETING" && echo out > organism/out.txt && exit 3`, 30*time.Second, nil)
 	if err != nil || res.ExitCode != 3 || !strings.Contains(res.Output, "hello") {
 		t.Fatalf("exec: %+v %v", res, err)
 	}
-	if b, _ := os.ReadFile(filepath.Join(root, "organism.txt")); string(b) != "out\n" {
+	if b, _ := os.ReadFile(filepath.Join(root, "organism", "out.txt")); string(b) != "out\n" {
 		t.Fatalf("sandbox writes should reach the workspace, got %q", b)
 	}
 
@@ -49,6 +50,11 @@ func exercise(t *testing.T, d Driver, server string) {
 		res, _ = sb.Exec(ctx, `echo hacked > kernel/core.go`, 10*time.Second, nil)
 		if res.OK() {
 			t.Fatal("kernel path must be read-only inside the sandbox")
+		}
+		// New files outside the evolvable directories (go.work, vendor/) are refused too.
+		res, _ = sb.Exec(ctx, `echo 'go 1.26' > go.work || mkdir vendor`, 10*time.Second, nil)
+		if res.OK() {
+			t.Fatal("the workspace root must be read-only inside the sandbox")
 		}
 		if b, _ := os.ReadFile(filepath.Join(root, "kernel", "core.go")); string(b) != "package kernel" {
 			t.Fatal("kernel file was modified")

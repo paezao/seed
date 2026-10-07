@@ -42,42 +42,71 @@ the owner decides. Plan and apply approvals can also be required (`require_plan_
 
 ## The kernel boundary
 
-`kernel/`, `cmd/`, `control/`, `go.mod`, `go.sum`, `seed.yaml`, `Dockerfile`, `Makefile` and
-`docker-compose.yml` are protected (`kernel.protected`). They are guarded in three layers:
+The boundary is an **allowlist**: only `organism/`, `knowledge/` and `skills/` evolve freely
+(`kernel.evolvable`). Everything else is the kernel. That includes `kernel/`, `cmd/`, `control/`,
+`seed.yaml`, `go.mod` and every root file, as well as *new* files such as `go.work` or `vendor/`,
+which would change what `go build` compiles on the host. The boundary is guarded in four layers:
 
-1. File tools classify protected writes as dangerous, which requires approval by default.
-2. Sandboxes mount them read-only, so shell commands cannot modify them.
+1. File tools classify writes outside the evolvable directories as dangerous, which requires
+   approval by default.
+2. Sandboxes mount the workspace **read-only** except for the evolvable directories, so shell
+   commands cannot touch the kernel or create root files.
 3. At commit time, the kernel diffs the worktree and refuses any protected change that was not
    approved during that evolution ("kernel boundary violated").
+4. `seed run` builds the kernel with `GOWORK=off GOFLAGS=-mod=readonly`.
+
+## Symlinks
+
+Sandboxed code can create symlinks inside evolvable directories. Every host-side read or write of
+repository content goes through Go's `os.Root` (`kernel/fsx`, and the file tools), including
+knowledge, skills, migrations, the logo and extensions. A link such as
+`knowledge/x.md → ~/.ssh/id_rsa` therefore fails instead of leaking a host file into a prompt.
 
 Kernel evolution is therefore possible but deliberate. After an approved kernel change is applied,
 the kernel restarts into its own new source.
 
 ## Data
 
-- Each Seed's organism uses a non-superuser role that owns only its live and scratch databases.
-  `CONNECT` is revoked from `PUBLIC`, so it cannot read kernel memory or other Seeds' data.
+- The shared PostgreSQL superuser has a random password, generated once and stored in
+  `~/.config/seed/postgres.json` (0600). Sandboxes can reach the server, so the password must never be
+  guessable or appear in a repository. Older installs with the default password are rotated
+  automatically.
+- The live organism uses a non-superuser role that owns only its live database. Evolutions use a
+  separate role that owns only scratch databases, so an experiment can never touch live data.
+  `CONNECT` is revoked from `PUBLIC` on every database.
+- Model API keys are entered by the owner and stored per provider in
+  `~/.config/seed/credentials.json` (0600). They never enter a repository or the environment of a
+  sandbox, and the API never returns them.
 - Model API keys come from the environment and are never written to the repository or to
   `seed.yaml`. Settings returned by the API omit the database URL.
 - The logo is generated content. It is served with `Content-Security-Policy: sandbox` and
   rendered via `<img>`, so it cannot run script. Markdown in the control plane renders raw HTML as
   text.
 
-## Control plane API
+## Control plane
 
-State-changing `/_seed/api` requests must be `application/json`, and are refused when the browser
-reports `Sec-Fetch-Site: cross-site`. Other websites therefore cannot drive the kernel. A plain
-form post or `fetch` without a CORS preflight fails, and the kernel never grants preflights.
+The control plane shares an origin with the organism (`/_seed` and `/`). The organism's
+JavaScript is code the Seed wrote, so the kernel does not trust it:
+
+- **Control token.** A random token is generated each time the kernel starts. It is embedded only
+  in the control-plane page and written to `.seed/control-token` (hidden from sandboxes) for the
+  CLI. Every `/_seed/api` call needs it (the logo is the only exception).
+- **Only for navigations.** The page carrying the token is served only for top-level navigations
+  (`Sec-Fetch-Dest: document`), never to `fetch`/XHR. It cannot be framed
+  (`frame-ancestors 'none'`), so the Approve button cannot be clickjacked.
+- **Opener isolation.** The control plane sends `Cross-Origin-Opener-Policy: same-origin`, and the
+  proxy forces `unsafe-none` on organism pages. An organism page that opens `/_seed` in a popup
+  therefore cannot read it.
+- **No service workers.** The organism cannot register them, because a worker at `/` would also
+  control `/_seed`.
+- **Other sites.** Requests for any Host other than localhost, `127.0.0.1`, `[::1]` or `*.localhost` are
+  refused (`server.allowed_hosts` adds more), which defeats DNS rebinding. State-changing calls must
+  be JSON and must come from the same origin.
 
 ## Known limitations (v0.1)
 
-- **Same origin.** The control plane (`/_seed`) and the organism (`/`) share one origin, as the
-  spec requires. JavaScript the Seed generates for its organism runs in the owner's browser on
-  that origin, so it could in principle call the kernel API, for example to approve its own
-  kernel change. Sandboxes and the commit-time boundary check protect against generated code at
-  *build/run* time, but not this browser path. The robust fix is to serve the control plane
-  from its own origin (for example `seed.localhost:8080` or a second port), with `/_seed`
-  redirecting there.
+- **Same origin.** The mitigations above are layered, but a separate origin for the control plane
+  (for example `seed.localhost:8080`) would be stronger still. It is a candidate for v0.2.
 - The control plane has no authentication. It binds to 127.0.0.1 by default; do not expose it.
 - Sandboxes have outbound network access.
 - Rollback does not reverse database migrations.

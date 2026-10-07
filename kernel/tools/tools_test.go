@@ -17,7 +17,7 @@ func ws(t *testing.T) *Workspace {
 	os.MkdirAll(filepath.Join(root, "organism"), 0o755)
 	os.MkdirAll(filepath.Join(root, "kernel"), 0o755)
 	os.WriteFile(filepath.Join(root, "organism", "a.txt"), []byte("one\ntwo\ntwo\n"), 0o644)
-	return &Workspace{Root: root, Policy: permissions.NewPolicy("allow", "allow", "deny", []string{"kernel/", "seed.yaml"})}
+	return &Workspace{Root: root, Policy: permissions.NewPolicy("allow", "allow", "deny", []string{"organism/", "knowledge/", "skills/"})}
 }
 
 func TestResolveConfinement(t *testing.T) {
@@ -98,5 +98,25 @@ func TestWriteFilter(t *testing.T) {
 	}
 	if o := run(t, r, "write_file", map[string]string{"path": "knowledge/x.md", "content": "x"}); o.Result.IsError {
 		t.Fatal(o.Result.Content)
+	}
+}
+
+func TestSymlinksPlantedBySandboxCannotEscape(t *testing.T) {
+	w := ws(t)
+	r := NewRegistry(w.Policy, nil).Add(FileTools(w)...)
+	outside := filepath.Join(t.TempDir(), "bashrc")
+	os.WriteFile(outside, []byte("original"), 0o644)
+	os.Symlink(outside, filepath.Join(w.Root, "organism", "link"))
+	if o := run(t, r, "write_file", map[string]string{"path": "organism/link", "content": "pwned"}); !o.Result.IsError {
+		t.Fatal("writing through an escaping symlink must fail")
+	}
+	if o := run(t, r, "read_file", map[string]string{"path": "organism/link"}); !o.Result.IsError {
+		t.Fatal("reading through an escaping symlink must fail")
+	}
+	if o := run(t, r, "search", map[string]string{"pattern": "original"}); strings.Contains(o.Result.Content, "link") {
+		t.Fatalf("search must not follow symlinks: %s", o.Result.Content)
+	}
+	if b, _ := os.ReadFile(outside); string(b) != "original" {
+		t.Fatal("host file was modified")
 	}
 }

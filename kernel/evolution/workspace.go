@@ -55,14 +55,14 @@ func (o *Orchestrator) prepareWorkspace(ctx context.Context, e *memory.Evolution
 	sandboxDB := o.Admin.DatabaseURL(ws.dbName, o.DB.Role, o.DB.Password, dbHost)
 	hostDB := o.Admin.DatabaseURL(ws.dbName, o.DB.Role, o.DB.Password, "")
 
-	var readOnly []string
-	for _, p := range o.Policy.Protected {
-		readOnly = append(readOnly, strings.TrimSuffix(p, "/"))
+	var writable []string
+	for _, p := range o.Policy.Evolvable {
+		writable = append(writable, strings.Trim(p, "/"))
 	}
 	env := map[string]string{"DATABASE_URL": sandboxDB, "SEED_ENV": "evolution"}
 	sb, err := o.Driver.Create(ctx, sandbox.Spec{
 		Name: o.Cfg.ContainerName("evo-" + short), Root: ws.dir,
-		ReadOnly: readOnly, Hidden: []string{".seed"},
+		Writable: writable, Hidden: []string{".seed"},
 		Port: o.Cfg.Organism.Port, Env: env,
 		Labels: map[string]string{"seed.name": o.Cfg.Name, "seed.evolution": e.ID},
 	})
@@ -83,7 +83,7 @@ func (o *Orchestrator) prepareWorkspace(ctx context.Context, e *memory.Evolution
 }
 
 func (ws *workspace) migrate(ctx context.Context) (migrate.Result, error) {
-	return migrate.ApplyURL(ctx, ws.env.DBURL, tools.OrganismMigrationsTable, filepath.Join(ws.dir, ws.o.Cfg.Organism.Migrations))
+	return migrate.ApplyRepo(ctx, ws.env.DBURL, tools.OrganismMigrationsTable, ws.dir, ws.o.Cfg.Organism.Migrations)
 }
 
 // resetDB recreates the scratch database empty.

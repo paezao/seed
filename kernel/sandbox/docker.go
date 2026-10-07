@@ -16,7 +16,8 @@ import (
 // DockerDriver runs sandboxes as Docker containers.
 //
 // Isolation properties:
-//   - only Spec.Root is mounted (at /workspace); ReadOnly paths are re-mounted :ro
+//   - only Spec.Root is mounted (at /workspace), read-only except for the
+//     Spec.Writable directories
 //   - Hidden paths are masked with tmpfs
 //   - runs as the host user's uid/gid (no root), all capabilities dropped,
 //     no-new-privileges, pid/memory/cpu limits
@@ -47,7 +48,7 @@ func (d *DockerDriver) Create(ctx context.Context, spec Spec) (Sandbox, error) {
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
 		"--pids-limit", "2048",
 		"-w", "/workspace",
-		"-v", spec.Root + ":/workspace",
+		"-v", spec.Root + ":/workspace" + roSuffix(spec),
 		"-v", d.CacheDir + ":/cache",
 		"-e", "HOME=/tmp/home",
 		"-e", "GOPATH=/cache/go",
@@ -66,12 +67,12 @@ func (d *DockerDriver) Create(ctx context.Context, spec Spec) (Sandbox, error) {
 	if d.CPUs != "" {
 		args = append(args, "--cpus", d.CPUs)
 	}
-	for _, ro := range spec.ReadOnly {
-		host := filepath.Join(spec.Root, ro)
-		if _, err := os.Stat(host); err != nil {
-			continue
+	for _, w := range spec.Writable {
+		host := filepath.Join(spec.Root, w)
+		if err := os.MkdirAll(host, 0o755); err != nil {
+			return nil, err
 		}
-		args = append(args, "-v", host+":"+filepath.Join("/workspace", ro)+":ro")
+		args = append(args, "-v", host+":"+filepath.Join("/workspace", w))
 	}
 	for _, h := range spec.Hidden {
 		if _, err := os.Stat(filepath.Join(spec.Root, h)); err != nil {
@@ -225,4 +226,11 @@ func (s *dockerSandbox) Alive(ctx context.Context) bool {
 func (s *dockerSandbox) Close(ctx context.Context) error {
 	_, err := docker(context.WithoutCancel(ctx), "rm", "-f", s.name)
 	return err
+}
+
+func roSuffix(spec Spec) string {
+	if len(spec.Writable) > 0 {
+		return ":ro"
+	}
+	return ""
 }

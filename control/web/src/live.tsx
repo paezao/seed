@@ -19,6 +19,8 @@ type Live = {
   removeApproval: (id: string) => void;
   subscribe: (fn: (e: LiveEvent) => void) => () => void;
   retry: () => void;
+  /** Re-fetch status now (e.g. after changing the model). */
+  refreshStatus: () => Promise<void>;
 };
 
 const LiveContext = createContext<Live | null>(null);
@@ -153,10 +155,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     setReconnectKey((k) => k + 1);
   }, [refresh]);
 
+  const refreshStatus = useCallback(async () => {
+    try { applyStatus(await api.status()); } catch { /* reported by the client */ }
+  }, [applyStatus]);
+
   const value = useMemo<Live>(() => ({
     status, reachable, streaming, thinking, approvals, extensions, evolutions, resync,
-    upsertEvolution, removeApproval, subscribe, retry,
-  }), [status, reachable, streaming, thinking, approvals, extensions, evolutions, resync, upsertEvolution, removeApproval, subscribe, retry]);
+    upsertEvolution, removeApproval, subscribe, retry, refreshStatus,
+  }), [status, reachable, streaming, thinking, approvals, extensions, evolutions, resync, upsertEvolution, removeApproval, subscribe, retry, refreshStatus]);
 
   return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>;
 }

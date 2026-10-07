@@ -18,6 +18,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"seed/kernel/fsx"
 )
 
 type Skill struct {
@@ -68,7 +70,7 @@ func (l Library) Get(name string) (*Skill, error) {
 
 func (l Library) load(dirName string, withContent bool) (*Skill, error) {
 	dir := filepath.Join(l.Root, "skills", dirName)
-	b, err := os.ReadFile(filepath.Join(dir, "SKILL.md"))
+	b, err := fsx.ReadFile(l.Root, filepath.Join("skills", dirName, "SKILL.md"))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, errors.New("missing SKILL.md")

@@ -3,20 +3,24 @@ package runtime
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"seed/control"
+	"seed/kernel/fsx"
 	"seed/kernel/knowledge"
 	"seed/kernel/memory"
 	"seed/kernel/skills"
@@ -48,6 +52,10 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/logs", k.handleLogs)
 	mux.HandleFunc("GET "+api+"/settings", k.handleSettings)
 	mux.HandleFunc("GET "+api+"/extensions", k.handleExtensions)
+	mux.HandleFunc("GET "+api+"/model", k.handleModel)
+	mux.HandleFunc("GET "+api+"/model/options", k.handleModelOptions)
+	mux.HandleFunc("POST "+api+"/model", k.handleSetModel)
+	mux.HandleFunc("POST "+api+"/model/forget-key", k.handleForgetKey)
 	mux.HandleFunc(api+"/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, errors.New("no such endpoint"))
 	})
@@ -56,7 +64,56 @@ func (k *Kernel) Handler() http.Handler {
 		http.Redirect(w, r, "/_seed/", http.StatusFound)
 	})
 	mux.Handle("/", k.Organism)
-	return guardAPI(mux)
+	return guardHost(k.Cfg.Server.AllowedHosts, guardAPI(k.requireToken(mux)))
+}
+
+// requireToken protects the control-plane API with the kernel's token
+// (header X-Seed-Token, or ?token= for EventSource). The logo is public.
+func (k *Kernel) requireToken(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/_seed/api/") && r.URL.Path != "/_seed/api/identity/logo" {
+			tok := r.Header.Get("X-Seed-Token")
+			if tok == "" {
+				tok = r.URL.Query().Get("token")
+			}
+			if subtle.ConstantTimeCompare([]byte(tok), []byte(k.Token)) != 1 {
+				writeErr(w, http.StatusUnauthorized, errors.New("missing or invalid control token (reload the control plane)"))
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// guardHost refuses requests whose Host is not this machine (or explicitly
+// allowed). Without it, a website could rebind its own domain to 127.0.0.1
+// and become "same-origin" with the Seed.
+func guardHost(extra []string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !hostAllowed(r.Host, extra) {
+			http.Error(w, "unknown host", http.StatusMisdirectedRequest)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func hostAllowed(hostport string, extra []string) bool {
+	host := hostport
+	if h, _, err := net.SplitHostPort(hostport); err == nil {
+		host = h
+	}
+	host = strings.ToLower(strings.Trim(host, "[]"))
+	switch {
+	case host == "localhost", host == "127.0.0.1", host == "::1", strings.HasSuffix(host, ".localhost"):
+		return true
+	}
+	for _, e := range extra {
+		if strings.EqualFold(e, host) || strings.EqualFold(e, hostport) {
+			return true
+		}
+	}
+	return false
 }
 
 // guardAPI requires state-changing control-plane requests to be JSON.
@@ -74,6 +131,12 @@ func guardAPI(next http.Handler) http.Handler {
 				writeErr(w, http.StatusForbidden, errors.New("cross-site request refused"))
 				return
 			}
+			if origin := r.Header.Get("Origin"); origin != "" {
+				if u, err := url.Parse(origin); err != nil || u.Host != r.Host {
+					writeErr(w, http.StatusForbidden, errors.New("cross-origin request refused"))
+					return
+				}
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
@@ -84,6 +147,10 @@ func (k *Kernel) controlUI() http.Handler {
 	ui := control.FS()
 	files := http.FileServer(http.FS(ui))
 	return http.StripPrefix("/_seed", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Nothing (including organism pages) may frame the control plane:
+		// that would allow clickjacking the Approve button.
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+		w.Header().Set("X-Frame-Options", "DENY")
 		p := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
 		if p != "" {
 			if st, err := fs.Stat(ui, p); err == nil && !st.IsDir() {
@@ -94,14 +161,26 @@ func (k *Kernel) controlUI() http.Handler {
 				return
 			}
 		}
+		// The page carries the control token, so it is only served to real
+		// top-level navigations: never to fetch()/XHR from organism scripts.
+		if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" && dest != "document" {
+			http.Error(w, "the control plane can only be opened as a page", http.StatusForbidden)
+			return
+		}
 		index, err := fs.ReadFile(ui, "index.html")
 		if err != nil {
 			http.Error(w, "control plane not built (run make control)", http.StatusInternalServerError)
 			return
 		}
+		meta := `<meta name="seed-token" content="` + k.Token + `">`
+		page := strings.Replace(string(index), "<head>", "<head>"+meta, 1)
 		w.Header().Set("content-type", "text/html; charset=utf-8")
-		w.Header().Set("cache-control", "no-cache")
-		_, _ = w.Write(index)
+		w.Header().Set("cache-control", "no-store")
+		// Isolate from organism windows (which the proxy forces to a different
+		// opener policy), so a page cannot open /_seed and read its DOM.
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		_, _ = io.WriteString(w, page)
 	}))
 }
 
@@ -138,7 +217,7 @@ type status struct {
 
 // Status describes the Seed right now.
 func (k *Kernel) Status(ctx context.Context) status {
-	s := status{Name: k.Cfg.Name, Model: k.ModelInfo, Identity: identity{Name: "Seed"}}
+	s := status{Name: k.Cfg.Name, Model: k.Mind.Info(), Identity: identity{Name: "Seed"}}
 	if kn, err := knowledge.Load(k.Cfg.Root); err == nil {
 		s.Purpose = kn.Purpose()
 		if kn.Self != nil {
@@ -149,7 +228,7 @@ func (k *Kernel) Status(ctx context.Context) status {
 			s.Identity.Tagline, s.Identity.Accent = id.Tagline, id.Accent
 		}
 	}
-	if b, err := os.ReadFile(filepath.Join(k.Cfg.Root, knowledge.LogoPath)); err == nil {
+	if b, err := fsx.ReadFile(k.Cfg.Root, knowledge.LogoPath); err == nil {
 		sum := sha256.Sum256(b)
 		s.Identity.LogoURL = "/_seed/api/identity/logo?v=" + hex.EncodeToString(sum[:6])
 	}
@@ -173,7 +252,7 @@ func (k *Kernel) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (k *Kernel) handleLogo(w http.ResponseWriter, r *http.Request) {
-	b, err := os.ReadFile(filepath.Join(k.Cfg.Root, knowledge.LogoPath))
+	b, err := fsx.ReadFile(k.Cfg.Root, knowledge.LogoPath)
 	if err != nil {
 		writeErr(w, 404, errors.New("no logo"))
 		return
@@ -478,7 +557,7 @@ func (k *Kernel) handleLogs(w http.ResponseWriter, r *http.Request) {
 func (k *Kernel) handleSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"config":  k.Cfg,
-		"model":   k.ModelInfo,
+		"model":   k.Mind.Info(),
 		"sandbox": map[string]any{"driver": k.Cfg.Sandbox.Driver, "isolated": k.Driver.Isolated(), "image": k.SandboxImage},
 	})
 }
@@ -493,7 +572,7 @@ func (k *Kernel) handleExtensions(w http.ResponseWriter, r *http.Request) {
 		Path  string `json:"path"`
 	}
 	out := []ext{}
-	b, err := os.ReadFile(filepath.Join(k.Cfg.Root, "organism", "control", "extensions.json"))
+	b, err := fsx.ReadFile(k.Cfg.Root, "organism/control/extensions.json")
 	if err == nil {
 		var list []ext
 		if json.Unmarshal(b, &list) == nil {

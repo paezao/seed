@@ -85,6 +85,20 @@ func (w *Workspace) writeLevel(rel, verb string) (permissions.Level, string) {
 	return permissions.Review, action
 }
 
+// root opens the workspace as an os.Root: every read and write goes through
+// it, so a symlink planted by sandboxed code can never redirect the kernel to
+// a path outside the workspace (no check-then-use race).
+func (w *Workspace) root() (*os.Root, error) { return os.OpenRoot(w.Root) }
+
+func (w *Workspace) readFile(rel string) ([]byte, error) {
+	r, err := w.root()
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return r.ReadFile(rel)
+}
+
 func (w *Workspace) checkWrite(rel string) error {
 	if w.WriteFilter != nil {
 		return w.WriteFilter(rel)
@@ -129,11 +143,11 @@ func ReadOnlyFileTools(w *Workspace) []*Tool {
 				if err := decode(in, &a); err != nil {
 					return "", err
 				}
-				abs, rel, err := w.Resolve(a.Path)
+				_, rel, err := w.Resolve(a.Path)
 				if err != nil {
 					return "", err
 				}
-				b, err := os.ReadFile(abs)
+				b, err := w.readFile(rel)
 				if err != nil {
 					return "", err
 				}
@@ -267,15 +281,18 @@ func ReadOnlyFileTools(w *Workspace) []*Tool {
 							return nil
 						}
 					}
+					if d.Type()&fs.ModeSymlink != 0 {
+						return nil
+					}
 					info, err := d.Info()
 					if err != nil || info.Size() > 1<<20 {
 						return nil
 					}
-					b, err := os.ReadFile(p)
+					rel, _ := filepath.Rel(w.Root, p)
+					b, err := w.readFile(rel)
 					if err != nil {
 						return nil
 					}
-					rel, _ := filepath.Rel(w.Root, p)
 					for i, line := range strings.Split(string(b), "\n") {
 						if re.MatchString(line) {
 							if len(line) > 300 {
@@ -314,18 +331,23 @@ func WriteFileTools(w *Workspace) []*Tool {
 				if err := decode(in, &a); err != nil {
 					return "", err
 				}
-				abs, rel, err := w.Resolve(a.Path)
+				_, rel, err := w.Resolve(a.Path)
 				if err != nil {
 					return "", err
 				}
 				if err := w.checkWrite(rel); err != nil {
 					return "", err
 				}
-				if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+				r, err := w.root()
+				if err != nil {
 					return "", err
 				}
-				_, existed := os.Stat(abs)
-				if err := os.WriteFile(abs, []byte(a.Content), 0o644); err != nil {
+				defer r.Close()
+				if err := r.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
+					return "", err
+				}
+				_, existed := r.Lstat(rel)
+				if err := r.WriteFile(rel, []byte(a.Content), 0o644); err != nil {
 					return "", err
 				}
 				verb := "created"
@@ -355,14 +377,19 @@ func WriteFileTools(w *Workspace) []*Tool {
 				if err := decode(in, &a); err != nil {
 					return "", err
 				}
-				abs, rel, err := w.Resolve(a.Path)
+				_, rel, err := w.Resolve(a.Path)
 				if err != nil {
 					return "", err
 				}
 				if err := w.checkWrite(rel); err != nil {
 					return "", err
 				}
-				b, err := os.ReadFile(abs)
+				r, err := w.root()
+				if err != nil {
+					return "", err
+				}
+				defer r.Close()
+				b, err := r.ReadFile(rel)
 				if err != nil {
 					return "", err
 				}
@@ -382,7 +409,7 @@ func WriteFileTools(w *Workspace) []*Tool {
 				} else {
 					s = strings.Replace(s, a.OldString, a.NewString, 1)
 				}
-				if err := os.WriteFile(abs, []byte(s), 0o644); err != nil {
+				if err := r.WriteFile(rel, []byte(s), 0o644); err != nil {
 					return "", err
 				}
 				return fmt.Sprintf("edited %s (%d replacement(s))", rel, max(1, n*boolInt(a.ReplaceAll))), nil
@@ -398,7 +425,7 @@ func WriteFileTools(w *Workspace) []*Tool {
 				if err := decode(in, &a); err != nil {
 					return "", err
 				}
-				abs, rel, err := w.Resolve(a.Path)
+				_, rel, err := w.Resolve(a.Path)
 				if err != nil {
 					return "", err
 				}
@@ -408,10 +435,15 @@ func WriteFileTools(w *Workspace) []*Tool {
 				if err := w.checkWrite(rel); err != nil {
 					return "", err
 				}
-				if _, err := os.Lstat(abs); err != nil {
+				r, err := w.root()
+				if err != nil {
 					return "", err
 				}
-				return "deleted " + rel, os.RemoveAll(abs)
+				defer r.Close()
+				if _, err := r.Lstat(rel); err != nil {
+					return "", err
+				}
+				return "deleted " + rel, r.RemoveAll(rel)
 			},
 		},
 	}

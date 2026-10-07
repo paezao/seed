@@ -87,13 +87,10 @@ func (o *Organism) sandbox(ctx context.Context) (sandbox.Sandbox, error) {
 	if sb != nil && sb.Alive(ctx) {
 		return sb, nil
 	}
-	readOnly := []string{".git", "knowledge", "skills", "docs"}
-	for _, p := range o.Cfg.Kernel.Protected {
-		readOnly = append(readOnly, strings.TrimSuffix(p, "/"))
-	}
 	sb, err := o.Driver.Create(ctx, sandbox.Spec{
 		Name: o.Cfg.ContainerName("live"), Root: o.Cfg.Root,
-		ReadOnly: readOnly, Hidden: []string{".seed"}, Port: o.Cfg.Organism.Port,
+		// The live organism may write only its own directory (build outputs).
+		Writable: []string{"organism"}, Hidden: []string{".seed"}, Port: o.Cfg.Organism.Port,
 		Env:    map[string]string{"DATABASE_URL": o.sandboxDBURL(), "SEED_ENV": "live"},
 		Labels: map[string]string{"seed.name": o.Cfg.Name, "seed.role": "live"},
 	})
@@ -145,7 +142,7 @@ func (o *Organism) Deploy(ctx context.Context) error {
 		o.setState("failed", msg)
 		return errors.New(msg)
 	}
-	mres, err := migrate.ApplyURL(ctx, o.DatabaseURL(), tools.OrganismMigrationsTable, filepath.Join(o.Cfg.Root, o.Cfg.Organism.Migrations))
+	mres, err := migrate.ApplyRepo(ctx, o.DatabaseURL(), tools.OrganismMigrationsTable, o.Cfg.Root, o.Cfg.Organism.Migrations)
 	if err != nil {
 		o.setState("failed", "migrations: "+err.Error())
 		return fmt.Errorf("migrating live database: %w", err)
@@ -202,6 +199,12 @@ func (o *Organism) Logs(ctx context.Context, tail int) string {
 
 // ServeHTTP proxies requests to the live organism.
 func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// A service worker registered by the organism at "/" would also control
+	// /_seed (same origin) and could intercept the control plane.
+	if r.Header.Get("Service-Worker") == "script" {
+		http.Error(w, "service workers are not allowed (they would control /_seed)", http.StatusForbidden)
+		return
+	}
 	state, msg := o.State()
 	o.mu.Lock()
 	sb, proxy := o.sb, o.proxy
@@ -218,6 +221,13 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		u, _ := url.Parse(target)
 		proxy = httputil.NewSingleHostReverseProxy(u)
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			// Keep organism pages out of the control plane's browsing context
+			// group (see controlUI) whatever the organism asks for.
+			resp.Header.Set("Cross-Origin-Opener-Policy", "unsafe-none")
+			resp.Header.Del("Service-Worker-Allowed")
+			return nil
+		}
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 			o.unavailable(w, "unreachable", err.Error())
 		}

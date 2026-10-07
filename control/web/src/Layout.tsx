@@ -74,10 +74,14 @@ export default function Layout() {
         </nav>
         <div className="sidebar-foot">
           {status && (
-            <div className="model-line" title={status.model.configured ? '' : 'No model configured'}>
+            <Link
+              to="/settings"
+              className="model-line model-link"
+              title={status.model.configured ? 'My mind — change it in Settings' : 'No mind yet — choose a model in Settings'}
+            >
               <span className={`dot ${status.model.configured ? 'dot-ok' : 'dot-warn'}`} />
-              <span className="mono truncate">{status.model.configured ? `${status.model.provider}/${status.model.name}` : 'model not configured'}</span>
-            </div>
+              <span className="mono truncate">{status.model.configured ? `${status.model.provider}/${status.model.name}` : 'no mind yet'}</span>
+            </Link>
           )}
           <div className="model-line">
             <span className={`dot ${streaming ? 'dot-ok' : 'dot-off'}`} />

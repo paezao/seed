@@ -6,6 +6,7 @@ import { EvolutionCard } from '../components/EvolutionCard';
 import { Markdown } from '../components/Markdown';
 import { ErrorNote, Loading, clockTime, useLoad } from '../components/ui';
 import { Logo } from '../components/Logo';
+import { MindSetup } from '../components/MindSetup';
 import type { Identity } from '../api';
 import { useLive, useLiveEvent } from '../live';
 
@@ -102,6 +103,7 @@ export default function Chat() {
 
   const loadedEmpty = load.data !== null && messages.length === 0;
   const firstRun = loadedEmpty && status !== null && !status.purpose;
+  const needsMind = status !== null && !status.model.configured;
 
   if (load.error && !load.data) {
     return <div className="page"><ErrorNote error={load.error} onRetry={load.reload} /></div>;
@@ -114,14 +116,15 @@ export default function Chat() {
         <div className="hero-inner">
           <div className="hero-mark"><Logo identity={identity} size={36} /></div>
           {identity?.name && <h1 className="hero-title">{identity.name}</h1>}
-          <p className="hero-line">I don't have a purpose yet.</p>
-          <p className="hero-question">What should I become?</p>
-          {approvals.map((a) => <ApprovalCard key={a.id} approval={a} />)}
-          <Composer onSend={send} autoFocus large placeholder="Become a…" />
-          {sendError && <div className="error-text small">{sendError}</div>}
-          {thinking && <div className="thinking hero-thinking"><Dots /> {thinkingLabel}</div>}
-          {status && !status.model.configured && (
-            <p className="hero-hint">No model is configured yet — set one in <code>seed.yaml</code>.</p>
+          {needsMind ? <MindSetup /> : (
+            <>
+              <p className="hero-line">I don't have a purpose yet.</p>
+              <p className="hero-question">What should I become?</p>
+              {approvals.map((a) => <ApprovalCard key={a.id} approval={a} />)}
+              <Composer onSend={send} autoFocus large placeholder="Become a…" />
+              {sendError && <div className="error-text small">{sendError}</div>}
+              {thinking && <div className="thinking hero-thinking"><Dots /> {thinkingLabel}</div>}
+            </>
           )}
         </div>
       </div>
@@ -149,9 +152,13 @@ export default function Chat() {
       <div className="chat-bottom">
         <div className="chat-col">
           {approvals.map((a) => <ApprovalCard key={a.id} approval={a} />)}
-          {sendError && <div className="error-text small">{sendError}</div>}
-          <Composer onSend={send} autoFocus placeholder={placeholder} />
-          <div className="composer-hint">Enter to send · Shift+Enter for a new line</div>
+          {needsMind ? <MindSetup compact /> : (
+            <>
+              {sendError && <div className="error-text small">{sendError}</div>}
+              <Composer onSend={send} autoFocus placeholder={placeholder} />
+              <div className="composer-hint">Enter to send · Shift+Enter for a new line</div>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -52,7 +52,7 @@ flowchart TB
 | package | responsibility |
 |---|---|
 | `agent` | The agent harness: a model in a loop with tools, context compaction, prompts (`prompts/*.md`) |
-| `models` | Provider-neutral `Model` interface. Providers: Anthropic Messages, OpenAI-compatible (OpenAI, OpenRouter, local), and a scripted fake for tests. Retries with backoff. |
+| `models` | Provider-neutral `Model` interface. OpenRouter is offered to owners, while Anthropic and OpenAI-compatible are implemented. A `Switchable` model changes live when the owner picks another model. There is a scripted fake for tests. Retries with backoff. |
 | `tools` | Primitive tools and the `Registry`, which classifies every call and enforces permissions |
 | `permissions` | Risk levels, policy, approvals, kernel-path protection |
 | `sandbox` | `Driver`/`Sandbox` interfaces. The Docker driver gives isolation; the local driver is for tests. |
@@ -109,9 +109,11 @@ One PostgreSQL server (`seed-postgres`) holds, per Seed:
 |---|---|---|
 | `<name>_seed` | kernel | operational memory |
 | `<name>_app` | `<name>_organism` role | the live organism's data |
-| `<name>_evo_<id>` | `<name>_organism` role | scratch database per evolution, dropped afterwards |
+| `<name>_evo_<id>` | `<name>_evolver` role | scratch database per evolution, dropped afterwards |
 
-The organism role is not a superuser and has no access to kernel memory.
+Names also carry the Seed's instance id (a short hash of its root commit), so Seeds that share a
+name never share memory. Neither role is a superuser, neither can reach kernel memory, and the
+evolution role cannot connect to the live database.
 
 ## Observation
 

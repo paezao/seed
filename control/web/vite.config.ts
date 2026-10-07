@@ -1,10 +1,21 @@
-import { defineConfig } from 'vite';
-declare const process: { env: Record<string, string | undefined> };
+import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+
+declare const process: { env: Record<string, string | undefined> };
+
+// Dev only: the kernel embeds its control token in the page it serves; when
+// developing against a running kernel, pass it via SEED_TOKEN
+// (cat <seed>/.seed/control-token) and SEED_KERNEL=http://127.0.0.1:<port>.
+const devToken = (): Plugin => ({
+  name: 'seed-dev-token',
+  apply: 'serve',
+  transformIndexHtml: (html) =>
+    process.env.SEED_TOKEN ? html.replace('<head>', `<head><meta name="seed-token" content="${process.env.SEED_TOKEN}">`) : html,
+});
 
 export default defineConfig({
   base: '/_seed/',
-  plugins: [react()],
+  plugins: [react(), devToken()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

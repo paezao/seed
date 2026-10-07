@@ -2,6 +2,10 @@
 
 export const API_BASE = '/_seed/api';
 
+/** The kernel embeds a per-start control token in this page; every API call carries it. */
+export const CONTROL_TOKEN =
+  document.querySelector<HTMLMetaElement>('meta[name="seed-token"]')?.content ?? '';
+
 export type OrganismState = 'stopped' | 'building' | 'starting' | 'running' | 'failed';
 
 export type Identity = {
@@ -133,6 +137,28 @@ export type Logs = { lines: string[] };
 export type Extension = { id: string; title: string; path: string };
 export type Settings = Record<string, unknown>;
 
+// ---- model ("mind") configuration ----
+export type ProviderId = 'anthropic' | 'openrouter' | 'openai' | 'openai-compatible';
+export type ProviderInfo = {
+  id: ProviderId;
+  label: string;
+  /** A key for this provider is stored in the owner's credentials (never returned). */
+  has_key: boolean;
+  needs_key: boolean;
+  needs_base_url: boolean;
+  base_url: string;
+  default_model: string;
+};
+export type ModelConfig = {
+  provider: string;
+  name: string;
+  configured: boolean;
+  providers: ProviderInfo[];
+};
+export type ModelOption = { id: string; name: string; context_length?: number; description?: string };
+export type ModelOptions = { models: ModelOption[]; error?: string };
+export type SetModelBody = { provider: string; name: string; api_key?: string; base_url?: string };
+
 // ---- SSE event payloads ----
 export type LiveEventMap = {
   message: Message;
@@ -181,13 +207,22 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     res = await fetch(API_BASE + path, {
       method,
       // The kernel requires JSON on every state-changing request.
-      headers: method !== 'GET' ? { 'Content-Type': 'application/json' } : undefined,
+      headers: method !== 'GET'
+        ? { 'Content-Type': 'application/json', 'X-Seed-Token': CONTROL_TOKEN }
+        : { 'X-Seed-Token': CONTROL_TOKEN },
       body: method !== 'GET' ? JSON.stringify(body ?? {}) : undefined,
     });
   } catch {
     reportReachable(false);
     throw new NetworkError();
   }
+  // The kernel restarted (new control token): reload to pick up the new page.
+  if (res.status === 401 && !sessionStorage.getItem('seed-reloaded')) {
+    try { sessionStorage.setItem('seed-reloaded', '1'); } catch { /* ignore */ }
+    window.location.reload();
+    throw new NetworkError();
+  }
+  if (res.ok) { try { sessionStorage.removeItem('seed-reloaded'); } catch { /* ignore */ } }
   // A dev proxy (or a reverse proxy) answers with 502/503/504 when the kernel is down.
   if (res.status === 502 || res.status === 503 || res.status === 504) {
     const ct = res.headers.get('content-type') || '';
@@ -236,6 +271,10 @@ export const api = {
   logs: (source: LogSource, tail = 500) => request<Logs>('GET', `/logs?source=${source}&tail=${tail}`),
   settings: () => request<Settings>('GET', '/settings'),
   extensions: () => request<Extension[]>('GET', '/extensions'),
+  model: () => request<ModelConfig>('GET', '/model'),
+  modelOptions: (provider: string) => request<ModelOptions>('GET', `/model/options?provider=${enc(provider)}`),
+  setModel: (body: SetModelBody) => request<ModelConfig>('POST', '/model', body),
+  forgetKey: (provider: string) => request<ModelConfig>('POST', '/model/forget-key', { provider }),
 };
 
 // ---- helpers shared by views ----

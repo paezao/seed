@@ -7,7 +7,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -234,7 +233,7 @@ func DBTools(env *Env) []*Tool {
 			Schema:   Schema(Props{}),
 			Classify: Fixed(permissions.Review, "apply migrations to scratch database"),
 			Run: func(ctx context.Context, in json.RawMessage) (string, error) {
-				res, err := migrate.ApplyURL(ctx, env.DBURL, OrganismMigrationsTable, filepath.Join(env.Root, env.MigrationsDir))
+				res, err := migrate.ApplyRepo(ctx, env.DBURL, OrganismMigrationsTable, env.Root, env.MigrationsDir)
 				if err != nil {
 					return "", err
 				}

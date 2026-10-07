@@ -105,7 +105,7 @@ func newHarness(t *testing.T, mutate func(cfg *config.Config)) *harness {
 	if err := admin.EnsureRole(ctx, role, "pw"); err != nil {
 		t.Fatal(err)
 	}
-	policy := permissions.NewPolicy(cfg.Permissions.Safe, cfg.Permissions.Review, cfg.Permissions.Dangerous, cfg.Kernel.Protected)
+	policy := permissions.NewPolicy(cfg.Permissions.Safe, cfg.Permissions.Review, cfg.Permissions.Dangerous, cfg.Kernel.Evolvable)
 	live := &fakeLive{url: dbURL}
 	model := &models.Scripted{}
 	bus := events.NewBus()
@@ -312,7 +312,7 @@ func TestMigrationFailureIsReported(t *testing.T) {
 func TestKernelBoundary(t *testing.T) {
 	// The file tools refuse kernel writes (dangerous -> deny here)...
 	h := newHarness(t, func(c *config.Config) { c.Permissions.Dangerous = "deny" })
-	h.o.Policy = permissions.NewPolicy("allow", "allow", "deny", h.o.Cfg.Kernel.Protected)
+	h.o.Policy = permissions.NewPolicy("allow", "allow", "deny", h.o.Cfg.Kernel.Evolvable)
 	steps := []step{
 		planStep(),
 		func(r models.Request) (*models.Response, error) {

@@ -17,6 +17,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"seed/kernel/fsx"
 )
 
 // Self is the self model. Unknown fields are preserved by working on the raw
@@ -62,7 +64,7 @@ const (
 // Load reads knowledge from a repository root.
 func Load(root string) (*Knowledge, error) {
 	k := &Knowledge{}
-	b, err := os.ReadFile(filepath.Join(root, SelfPath))
+	b, err := fsx.ReadFile(root, SelfPath)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
 	}
@@ -90,7 +92,7 @@ func ParseSelf(b []byte) (*Self, error) {
 
 // ValidateSelf checks the self model in root.
 func ValidateSelf(root string) error {
-	b, err := os.ReadFile(filepath.Join(root, SelfPath))
+	b, err := fsx.ReadFile(root, SelfPath)
 	if err != nil {
 		return err
 	}
@@ -109,19 +111,18 @@ func listDocs(root, dir string) []Doc {
 			continue
 		}
 		rel := filepath.ToSlash(filepath.Join(dir, e.Name()))
-		docs = append(docs, Doc{Path: rel, Title: title(filepath.Join(root, rel), e.Name())})
+		docs = append(docs, Doc{Path: rel, Title: title(root, rel, e.Name())})
 	}
 	sort.Slice(docs, func(i, j int) bool { return docs[i].Path < docs[j].Path })
 	return docs
 }
 
-func title(path, fallback string) string {
-	f, err := os.Open(path)
+func title(root, rel, fallback string) string {
+	b, err := fsx.ReadFile(root, rel)
 	if err != nil {
 		return fallback
 	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(strings.NewReader(string(b)))
 	for sc.Scan() {
 		line := strings.TrimSpace(sc.Text())
 		if strings.HasPrefix(line, "# ") {
@@ -138,7 +139,7 @@ func ReadFile(root, rel string) (string, error) {
 	if !strings.HasPrefix(clean, "knowledge/") || strings.Contains(clean, "..") {
 		return "", fmt.Errorf("not a knowledge path: %s", rel)
 	}
-	b, err := os.ReadFile(filepath.Join(root, clean))
+	b, err := fsx.ReadFile(root, clean)
 	return string(b), err
 }
 
@@ -161,7 +162,7 @@ func Brief(root string) string {
 	var sb strings.Builder
 	sb.WriteString("### knowledge/self.yaml\n```yaml\n" + strings.TrimSpace(k.SelfRaw) + "\n```\n\n")
 	for _, d := range k.Docs {
-		b, err := os.ReadFile(filepath.Join(root, d.Path))
+		b, err := fsx.ReadFile(root, d.Path)
 		if err != nil {
 			continue
 		}
@@ -183,7 +184,7 @@ func Brief(root string) string {
 
 // Name returns the name the Seed currently goes by ("Seed" until it becomes something).
 func Name(root string) string {
-	b, err := os.ReadFile(filepath.Join(root, SelfPath))
+	b, err := fsx.ReadFile(root, SelfPath)
 	if err != nil {
 		return "Seed"
 	}

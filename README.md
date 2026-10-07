@@ -6,11 +6,11 @@ You plant a Seed, and it starts as almost nothing: a kernel (agent, tools, sandb
 
 ```
 $ seed new tasks
-$ cd tasks
-$ seed run
 ```
 
-Open http://localhost:8080/_seed:
+That plants the Seed in `./tasks`, starts it, and opens its control plane in your browser.
+If port 8080 is taken, it uses the next free one. First it asks for a mind: you
+paste an OpenRouter key and pick a model. Then:
 
 > I don't have a purpose yet.
 > What should I become?
@@ -22,7 +22,8 @@ Say *"Become a todo application. I need to create, complete and delete tasks."* 
 - Linux with Docker (generated code always runs in containers)
 - Go 1.26+ (the Seed compiles its own kernel on `seed run`)
 - Node.js 22+ (only to develop the control plane)
-- A model API key: `ANTHROPIC_API_KEY`, `OPENROUTER_API_KEY` or `OPENAI_API_KEY`
+- An [OpenRouter](https://openrouter.ai/keys) API key. One key gives you any model, and you
+  enter it in the control plane (stored in `~/.config/seed/credentials.json`, never in a repository).
 
 PostgreSQL is started for you in Docker (`seed-postgres`, on 127.0.0.1:55432).
 
@@ -31,16 +32,16 @@ PostgreSQL is started for you in Docker (`seed-postgres`, on 127.0.0.1:55432).
 ```bash
 make build                 # control plane + template + bin/seed
 make install               # copies bin/seed to ~/.local/bin
-seed new myapp && cd myapp
-seed run                   # or: seed run --addr 127.0.0.1:9000
+seed new myapp             # create, start, open the browser (--no-run to only create)
+cd myapp && seed run --open   # later: run it again
 ```
 
 CLI:
 
 | command | |
 |---|---|
-| `seed new <name>` | plant a new Seed (generation 1) |
-| `seed run` | build this Seed's own kernel from its source and run it |
+| `seed new <name>` | plant a new Seed (generation 1), start it, open the control plane |
+| `seed run [--open]` | build this Seed's own kernel from its source and run it |
 | `seed status` | what the Seed is right now |
 | `seed evolve "<intent>"` | evolve from the terminal and follow progress |
 | `seed generations` | list generations (works offline from git) |

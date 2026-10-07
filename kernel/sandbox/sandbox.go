@@ -2,8 +2,8 @@
 //
 // The kernel never executes organism code or agent-issued shell commands on
 // the host. Everything goes through a Sandbox: a container whose only view of
-// the filesystem is the directory it was created for (with kernel paths
-// mounted read-only), on a private network, with resource limits.
+// the filesystem is the directory it was created for (read-only except for
+// the directories it may change), on a private network, with resource limits.
 package sandbox
 
 import (
@@ -19,8 +19,9 @@ type Spec struct {
 	Name string
 	// Root is the host directory exposed to the sandbox as its working directory.
 	Root string
-	// ReadOnly lists paths (relative to Root) that sandboxed code may read but not modify.
-	ReadOnly []string
+	// Writable lists directories (relative to Root) that sandboxed code may
+	// modify. When non-empty, everything else under Root is read-only.
+	Writable []string
 	// Hidden lists paths (relative to Root) masked by an empty tmpfs.
 	Hidden []string
 	// Env is set for every command and process.

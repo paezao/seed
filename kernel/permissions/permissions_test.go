@@ -17,16 +17,21 @@ func (f *fakeApprover) Approve(context.Context, Request) (bool, error) {
 }
 
 func TestIsProtected(t *testing.T) {
-	p := NewPolicy("allow", "allow", "ask", []string{"kernel/", "go.mod", "seed.yaml"})
+	p := NewPolicy("allow", "allow", "ask", []string{"organism/", "knowledge/", "skills/"})
 	cases := map[string]bool{
 		"kernel/agent/loop.go":     true,
 		"kernel":                   true,
 		"./kernel/x.go":            true,
 		"organism/../kernel/x.go":  true,
 		"go.mod":                   true,
+		"go.work":                  true, // new root files are kernel by default
+		"vendor/modules.txt":       true,
+		"organism":                 true, // the directory itself
 		"organism/go.mod":          false,
-		"kernelish/x":              false,
+		"organismx/x":              true,
 		"organism/backend/main.go": false,
+		"knowledge/self.yaml":      false,
+		"skills/new/SKILL.md":      false,
 		"seed.yaml":                true,
 	}
 	for in, want := range cases {

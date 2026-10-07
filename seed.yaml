@@ -5,16 +5,15 @@ server:
   addr: 127.0.0.1:8080
 
 model:
-  # auto picks the first provider with a key in the environment:
-  # ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY.
-  provider: auto
-  name: ""            # provider default (Claude Sonnet 5.5) when empty
+  # Which model I think with is chosen by my owner in my control plane
+  # (stored outside this repository). This only bounds each response.
   max_tokens: 16000
 
 database:
-  # Administrative connection (creates the kernel, organism and scratch databases).
-  # Override with SEED_DATABASE_URL.
-  url: postgres://seed:seed@127.0.0.1:55432/postgres?sslmode=disable
+  # Empty: use the managed local PostgreSQL (started automatically; its random
+  # superuser password lives in ~/.config/seed/postgres.json). Set a URL, or
+  # SEED_DATABASE_URL, to use your own server.
+  url: ""
 
 sandbox:
   driver: docker      # docker (isolated) | local (no isolation; tests only)
@@ -46,13 +45,10 @@ permissions:
   require_apply_approval: false
 
 kernel:
-  protected:
-    - kernel/
-    - cmd/
-    - control/
-    - go.mod
-    - go.sum
-    - seed.yaml
-    - Dockerfile
-    - Makefile
-    - docker-compose.yml
+  # Only these directories evolve freely. Everything else (kernel/, cmd/,
+  # control/, this file, go.mod, root files, and anything new at the root) is
+  # the kernel: read-only in sandboxes, and changing it needs owner approval.
+  evolvable:
+    - organism/
+    - knowledge/
+    - skills/

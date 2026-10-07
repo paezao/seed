@@ -51,6 +51,11 @@ func EnsurePostgres(ctx context.Context, network string, admin Admin) error {
 	if admin.Ping(ctx) == nil {
 		return nil
 	}
+	// An installation from before managed credentials: rotate the password.
+	if rotateLegacy(ctx, admin) == nil && admin.Ping(ctx) == nil {
+		slog.Info("rotated the PostgreSQL superuser password to a managed secret")
+		return nil
+	}
 	if err := EnsureNetwork(ctx, network); err != nil {
 		return err
 	}
@@ -60,7 +65,7 @@ func EnsurePostgres(ctx context.Context, network string, admin Admin) error {
 		slog.Info("starting PostgreSQL container", "name", PostgresContainer, "port", PostgresHostPort)
 		_, err = Docker(ctx, "run", "-d", "--name", PostgresContainer, "--restart", "unless-stopped",
 			"--network", network, "-p", "127.0.0.1:"+PostgresHostPort+":5432",
-			"-e", "POSTGRES_USER=seed", "-e", "POSTGRES_PASSWORD=seed", "-e", "POSTGRES_DB=postgres",
+			"-e", "POSTGRES_USER=seed", "-e", "POSTGRES_PASSWORD="+passwordOf(admin.URL), "-e", "POSTGRES_DB=postgres",
 			"-v", "seed-postgres-data:/var/lib/postgresql/data", PostgresImage)
 		if err != nil {
 			return err
@@ -77,6 +82,7 @@ func EnsurePostgres(ctx context.Context, network string, admin Admin) error {
 		if err := admin.Ping(ctx); err == nil {
 			return nil
 		}
+		_ = rotateLegacy(ctx, admin)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

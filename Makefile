@@ -28,7 +28,9 @@ control:
 # Snapshot the pristine Seed (tracked + untracked, non-ignored files) into
 # the binary so `seed new` can plant it.
 template:
-	git ls-files -co --exclude-standard -z | grep -zv '^kernel/template/assets/template.tar.gz$$' \
+	git ls-files -co --exclude-standard -z \
+	  | xargs -0 sh -c 'for f; do [ -e "$$f" ] && printf "%s\0" "$$f"; done' sh \
+	  | grep -zv '^kernel/template/assets/template.tar.gz$$' \
 	  | tar --null -czf kernel/template/assets/template.tar.gz -T -
 
 install: build

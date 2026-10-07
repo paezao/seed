@@ -12,8 +12,8 @@ make lint     # go vet, gofmt, control-plane typecheck, organism vet
 Run a Seed from a checkout:
 
 ```bash
-bin/seed new /tmp/demo && cd /tmp/demo
-OPENROUTER_API_KEY=… ~/path/to/bin/seed run --addr 127.0.0.1:8090
+bin/seed new /tmp/demo                     # creates, starts, opens the browser
+cd /tmp/demo && ~/path/to/bin/seed status  # CLI talks to the running kernel
 ```
 
 The repository itself is a pristine Seed (`seed.yaml` name `seed`). `seed new` copies it
@@ -22,17 +22,21 @@ non-ignored files.
 
 ## Model configuration
 
-`seed.yaml` → `model`, or the environment:
+A Seed's mind is chosen by its owner in the control plane. A fresh Seed always asks for it
+first; nothing is picked up from the environment. v0.1 offers **OpenRouter**, where one key
+gives any tool-capable model. The model list comes live from OpenRouter, filtered to models
+that support tool calling.
 
-| variable | |
-|---|---|
-| `ANTHROPIC_API_KEY` / `OPENROUTER_API_KEY` / `OPENAI_API_KEY` | first one found selects the provider when `provider: auto` |
-| `SEED_PROVIDER` | `anthropic`, `openrouter`, `openai`, `openai-compatible` |
-| `SEED_MODEL` | model name (defaults: `claude-sonnet-5-5`, `anthropic/claude-sonnet-5.5`, `gpt-5.5`) |
-| `SEED_DATABASE_URL`, `SEED_ADDR`, `SEED_SANDBOX_DRIVER` | infrastructure overrides |
+- Keys are stored per provider in `~/.config/seed/credentials.json` (0600), shared by your Seeds.
+- The per-Seed choice of provider and model is stored in that Seed's memory. It can be changed
+  any time in Settings, without a restart.
+- The kernel validates a choice with a tiny test call before saving it.
+- More providers (Anthropic and OpenAI-compatible, both already implemented in `kernel/models`) are a
+  matter of listing them in `models.Providers`.
 
-`model.base_url` points the OpenAI-compatible provider at a local server (vLLM, Ollama, …).
-New providers implement `models.Model` (one method).
+Infrastructure overrides: `SEED_DATABASE_URL` (your own PostgreSQL), `SEED_ADDR`,
+`SEED_SANDBOX_DRIVER`. The managed PostgreSQL's random superuser password lives in
+`~/.config/seed/postgres.json`.
 
 ## Tests
 
@@ -46,7 +50,7 @@ New providers implement `models.Model` (one method).
 | sandbox boundaries: read-only kernel, masked `.seed`, non-root, timeouts, background processes | `kernel/sandbox/sandbox_test.go` (Docker test needs `SEED_TEST_SANDBOX_IMAGE`) |
 | git: worktrees, fast-forward refusal on divergence, trailers, roll-forward | `kernel/git/git_test.go` |
 | migrations: ordering, transactional failure, checksum protection | `kernel/migrate/migrate_test.go` |
-| canonical demo (Seed → todo → priorities) with a real model | `e2e/` (`make e2e`, needs a model key; costs a few dollars) |
+| canonical demo (Seed → todo → priorities) with a real model | `e2e/` (`make e2e` with `SEED_TEST_OPENROUTER_API_KEY` set: the test gives the Seed its mind through the API, using an isolated config dir; costs a few dollars) |
 
 ## Repository layout
 

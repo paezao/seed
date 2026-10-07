@@ -109,3 +109,87 @@ func TestGuardAPI(t *testing.T) {
 		}
 	}
 }
+
+func TestGuardHostAndOrigin(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	h := guardHost([]string{"seed.lan"}, guardAPI(ok))
+	cases := []struct {
+		host, origin string
+		want         int
+	}{
+		{"127.0.0.1:8080", "", 204},
+		{"localhost:8080", "http://localhost:8080", 204},
+		{"tasks.localhost:8080", "", 204},
+		{"[::1]:8080", "", 204},
+		{"seed.lan", "", 204},
+		{"evil.example:8080", "", http.StatusMisdirectedRequest}, // DNS rebinding
+		{"127.0.0.1:8080", "http://evil.example", 403},
+	}
+	for _, c := range cases {
+		r := httptest.NewRequest("POST", "/_seed/api/messages", strings.NewReader("{}"))
+		r.Host = c.host
+		r.Header.Set("Content-Type", "application/json")
+		if c.origin != "" {
+			r.Header.Set("Origin", c.origin)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != c.want {
+			t.Errorf("host %s origin %s = %d, want %d", c.host, c.origin, rec.Code, c.want)
+		}
+	}
+}
+
+func TestOrganismCannotRegisterServiceWorkers(t *testing.T) {
+	o := &Organism{Cfg: &config.Config{Name: "tasks"}}
+	r := httptest.NewRequest("GET", "/sw.js", nil)
+	r.Header.Set("Service-Worker", "script")
+	rec := httptest.NewRecorder()
+	o.ServeHTTP(rec, r)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("got %d", rec.Code)
+	}
+}
+
+func TestControlToken(t *testing.T) {
+	k := &Kernel{Token: "secret"}
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	h := k.requireToken(ok)
+	check := func(path, header string, want int) {
+		t.Helper()
+		r := httptest.NewRequest("GET", path, nil)
+		if header != "" {
+			r.Header.Set("X-Seed-Token", header)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != want {
+			t.Errorf("%s (token %q) = %d, want %d", path, header, rec.Code, want)
+		}
+	}
+	check("/_seed/api/status", "", 401)
+	check("/_seed/api/status", "wrong", 401)
+	check("/_seed/api/status", "secret", 204)
+	check("/_seed/api/events?token=secret", "", 204)
+	check("/_seed/api/identity/logo", "", 204)
+	check("/api/tasks", "", 204) // organism routes
+}
+
+func TestControlPageOnlyForNavigations(t *testing.T) {
+	k := &Kernel{Token: "secret"}
+	h := k.controlUI()
+	r := httptest.NewRequest("GET", "/_seed/", nil)
+	r.Header.Set("Sec-Fetch-Dest", "empty") // fetch() from an organism script
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	if rec.Code != 403 || strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("token page served to a script: %d", rec.Code)
+	}
+	r = httptest.NewRequest("GET", "/_seed/evolutions", nil)
+	r.Header.Set("Sec-Fetch-Dest", "document")
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `name="seed-token" content="secret"`) || rec.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" {
+		t.Fatalf("navigation should get the page with token and COOP: %d %v", rec.Code, rec.Header())
+	}
+}

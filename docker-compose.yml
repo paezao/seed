@@ -1,5 +1,7 @@
 # Shared local infrastructure for Seeds. `seed run` starts the same thing
-# automatically (seed infra up); use this if you prefer compose.
+# automatically (seed infra up) with a random superuser password kept in
+# ~/.config/seed/postgres.json. If you prefer compose, set SEED_POSTGRES_PASSWORD
+# and point Seeds at it with SEED_DATABASE_URL.
 name: seed-infra
 services:
   postgres:
@@ -8,7 +10,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: seed
-      POSTGRES_PASSWORD: seed
+      POSTGRES_PASSWORD: ${SEED_POSTGRES_PASSWORD:?set SEED_POSTGRES_PASSWORD}
       POSTGRES_DB: postgres
     ports:
       - "127.0.0.1:55432:5432"
