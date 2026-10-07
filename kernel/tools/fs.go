@@ -99,7 +99,24 @@ func (w *Workspace) readFile(rel string) ([]byte, error) {
 	return r.ReadFile(rel)
 }
 
-func (w *Workspace) checkWrite(rel string) error {
+// checkWrite refuses writes the policy does not see correctly: a write must
+// not traverse a symlink (e.g. organism/link -> ../kernel), otherwise the
+// path that was classified is not the path that gets written. When
+// allowFinalLink is set (deleting), the last component may itself be a link.
+func (w *Workspace) checkWrite(rel string, allowFinalLink ...bool) error {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	for i := range parts {
+		if i == len(parts)-1 && len(allowFinalLink) > 0 && allowFinalLink[0] {
+			break
+		}
+		info, err := os.Lstat(filepath.Join(w.Root, filepath.Join(parts[:i+1]...)))
+		if err != nil {
+			break // does not exist yet: nothing below can be a link
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("refusing to write through a symlink (%s is a symlink); write to the real path instead", strings.Join(parts[:i+1], "/"))
+		}
+	}
 	if w.WriteFilter != nil {
 		return w.WriteFilter(rel)
 	}
@@ -432,7 +449,7 @@ func WriteFileTools(w *Workspace) []*Tool {
 				if rel == "." {
 					return "", errors.New("refusing to delete the workspace root")
 				}
-				if err := w.checkWrite(rel); err != nil {
+				if err := w.checkWrite(rel, true); err != nil {
 					return "", err
 				}
 				r, err := w.root()

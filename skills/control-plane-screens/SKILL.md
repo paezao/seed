@@ -28,7 +28,10 @@ signups", "an admin view of all tasks", "stats"), as opposed to a feature for us
    - `path`: an organism URL starting with `/` (never `/_seed`). The kernel ignores invalid entries.
 
 2. Serve the screen from the organism at that path. The control plane shows it in a frame
-   inside its own layout, and the list is refreshed when a new generation is applied.
+   inside its own layout, and the list is refreshed when a new generation is applied. The frame
+   is loaded from my organism's own origin (`organism.localhost:<port>`), not the control
+   plane's, so always use relative URLs (`fetch('/api/admin/...')`). The screen cannot (and must
+   not try to) reach the control plane.
    - The simplest approach is a separate Vite entry or an SPA route. In the SPA, render an
      admin component when `location.pathname` starts with `/admin/`. The Go server already
      falls back to `index.html` for unknown non-API paths.

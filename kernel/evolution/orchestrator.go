@@ -428,7 +428,10 @@ func (o *Orchestrator) evolve(ctx context.Context, e *memory.Evolution) error {
 			return fmt.Errorf("verification still failing after %d attempts:\n%s", attempt, tools.Truncate(feedback, 3000))
 		}
 		transcript = append(transcript, models.Message{Role: models.User, Content: fmt.Sprintf(
-			"The kernel's independent verification failed (attempt %d of %d):\n\n%s\n\nDiagnose the root cause, fix it, verify with your tools, and call finish again.",
+			"The kernel's independent verification failed (attempt %d of %d):\n\n%s\n\n"+
+				"Diagnose the root cause before changing anything. If a check you declared in finish has the wrong expectation "+
+				"(for example the code correctly returns 404 for a missing resource but the check expected 204), fix the check, not the code. "+
+				"Verify with your tools, then call finish again with corrected checks.",
 			attempt, maxAttempts, feedback)})
 	}
 

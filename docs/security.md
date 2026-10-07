@@ -76,7 +76,10 @@ the kernel restarts into its own new source.
   `CONNECT` is revoked from `PUBLIC` on every database.
 - Model API keys are entered by the owner and stored per provider in
   `~/.config/seed/credentials.json` (0600). They never enter a repository or the environment of a
-  sandbox, and the API never returns them.
+  sandbox, and the API never returns them. A stored key is only ever sent to the endpoint it was
+  stored for: fixed-endpoint providers ignore `base_url`, and changing a URL requires re-entering the key.
+- File tools never write through symlinks, so the path that is permission-checked is the path that
+  is written.
 - Model API keys come from the environment and are never written to the repository or to
   `seed.yaml`. Settings returned by the API omit the database URL.
 - The logo is generated content. It is served with `Content-Security-Policy: sandbox` and
@@ -97,6 +100,9 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
 - **Opener isolation.** The control plane sends `Cross-Origin-Opener-Policy: same-origin`, and the
   proxy forces `unsafe-none` on organism pages. An organism page that opens `/_seed` in a popup
   therefore cannot read it.
+- **Admin screens on their own origin.** Organism admin screens shown inside the control plane are
+  framed from `organism.localhost:<port>`, never the control plane's origin. The kernel refuses to
+  serve `/_seed` on that origin. A framed screen therefore cannot reach into the parent page.
 - **No service workers.** The organism cannot register them, because a worker at `/` would also
   control `/_seed`.
 - **Other sites.** Requests for any Host other than localhost, `127.0.0.1`, `[::1]` or `*.localhost` are

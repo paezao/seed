@@ -193,3 +193,42 @@ func TestControlPageOnlyForNavigations(t *testing.T) {
 		t.Fatalf("navigation should get the page with token and COOP: %d %v", rec.Code, rec.Header())
 	}
 }
+
+func TestStoredKeyNeverSentToCallerURL(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var hits []string
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits = append(hits, r.Header.Get("Authorization"))
+		w.WriteHeader(500)
+	}))
+	defer evil.Close()
+	if err := updateCredentials(func(c *credentials) { c.Providers["openrouter"] = credential{APIKey: "sk-or-secret"} }); err != nil {
+		t.Fatal(err)
+	}
+	k := &Kernel{Cfg: &config.Config{}, Mind: models.NewSwitchable()}
+	r := httptest.NewRequest("POST", "/_seed/api/model", strings.NewReader(`{"provider":"openrouter","name":"x/y","base_url":"`+evil.URL+`"}`))
+	rec := httptest.NewRecorder()
+	k.handleSetModel(rec, r)
+	for _, h := range hits {
+		if strings.Contains(h, "sk-or-secret") {
+			t.Fatal("stored key was sent to a caller-supplied URL")
+		}
+	}
+	if len(hits) != 0 {
+		t.Fatalf("openrouter must ignore base_url; evil server was contacted %d times", len(hits))
+	}
+}
+
+func TestControlPlaneNotServedOnOrganismOrigin(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	h := organismOrigin(ok)
+	for path, want := range map[string]int{"/_seed/": 404, "/_seed/api/status": 404, "/_seed": 404, "/admin/stats": 204} {
+		r := httptest.NewRequest("GET", path, nil)
+		r.Host = "organism.localhost:8081"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != want {
+			t.Errorf("%s on organism origin = %d, want %d", path, rec.Code, want)
+		}
+	}
+}

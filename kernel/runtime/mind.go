@@ -142,12 +142,22 @@ func (k *Kernel) handleSetModel(w http.ResponseWriter, r *http.Request) {
 	body.Name = strings.TrimSpace(body.Name)
 	body.APIKey = strings.TrimSpace(body.APIKey)
 	stored := loadCredentials().Providers[p.ID]
-	key, base := body.APIKey, body.BaseURL
-	if key == "" {
-		key = stored.APIKey
+	if !p.NeedsBaseURL {
+		// Fixed-endpoint providers (OpenRouter): the URL is not the caller's to choose.
+		body.BaseURL = ""
 	}
+	key, base := body.APIKey, body.BaseURL
 	if base == "" {
 		base = stored.BaseURL
+	}
+	if key == "" {
+		// Never send a stored key anywhere but where it was stored for: a
+		// caller could otherwise point base_url at itself and receive it.
+		if body.BaseURL != "" && body.BaseURL != stored.BaseURL {
+			writeErr(w, 400, errors.New("enter the API key again to use a different base URL"))
+			return
+		}
+		key = stored.APIKey
 	}
 	if p.NeedsKey && key == "" {
 		writeErr(w, 400, errors.New("enter your "+p.Label+" API key"))

@@ -120,3 +120,32 @@ func TestSymlinksPlantedBySandboxCannotEscape(t *testing.T) {
 		t.Fatal("host file was modified")
 	}
 }
+
+func TestInRootSymlinkCannotBypassKernelBoundary(t *testing.T) {
+	w := ws(t)
+	r := NewRegistry(w.Policy, nil).Add(FileTools(w)...)
+	os.WriteFile(filepath.Join(w.Root, "kernel", "agent.go"), []byte("package kernel"), 0o644)
+	os.Symlink("../kernel", filepath.Join(w.Root, "organism", "link"))
+	os.Symlink("../kernel/new.go", filepath.Join(w.Root, "organism", "dangling.go"))
+	for _, p := range []string{"organism/link/agent.go", "organism/dangling.go"} {
+		if o := run(t, r, "write_file", map[string]string{"path": p, "content": "pwned"}); !o.Result.IsError {
+			t.Fatalf("write via %s must be refused: %+v", p, o.Result)
+		}
+		if o := run(t, r, "edit_file", map[string]string{"path": "organism/link/agent.go", "old_string": "package", "new_string": "x"}); !o.Result.IsError {
+			t.Fatalf("edit via symlink must be refused")
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(w.Root, "kernel", "agent.go")); string(b) != "package kernel" {
+		t.Fatal("kernel file modified through an in-root symlink")
+	}
+	if _, err := os.Stat(filepath.Join(w.Root, "kernel", "new.go")); err == nil {
+		t.Fatal("kernel file created through a dangling symlink")
+	}
+	// Deleting the link itself is fine and leaves the target alone.
+	if o := run(t, r, "delete_path", map[string]string{"path": "organism/link"}); o.Result.IsError {
+		t.Fatal(o.Result.Content)
+	}
+	if _, err := os.Stat(filepath.Join(w.Root, "kernel", "agent.go")); err != nil {
+		t.Fatal("deleting a link must not delete its target")
+	}
+}

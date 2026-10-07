@@ -64,7 +64,28 @@ func (k *Kernel) Handler() http.Handler {
 		http.Redirect(w, r, "/_seed/", http.StatusFound)
 	})
 	mux.Handle("/", k.Organism)
-	return guardHost(k.Cfg.Server.AllowedHosts, guardAPI(k.requireToken(mux)))
+	return guardHost(k.Cfg.Server.AllowedHosts, organismOrigin(guardAPI(k.requireToken(mux))))
+}
+
+// OrganismFrameHost is the separate origin admin screens are framed from.
+// Framed same-origin, an organism page could read window.parent and take
+// the control token; on organism.localhost the browser walls it off.
+const OrganismFrameHost = "organism.localhost"
+
+// organismOrigin serves only the organism on the organism origin: never the
+// control plane or its API.
+func organismOrigin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		if strings.EqualFold(host, OrganismFrameHost) && (r.URL.Path == "/_seed" || strings.HasPrefix(r.URL.Path, "/_seed/")) {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // requireToken protects the control-plane API with the kernel's token
