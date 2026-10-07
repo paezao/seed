@@ -275,3 +275,15 @@ func TestEvolutionKeepsOwnersWords(t *testing.T) {
 		t.Fatal("no duplication when the intent already quotes the owner")
 	}
 }
+
+func TestNextRoadmapStage(t *testing.T) {
+	root := t.TempDir()
+	if nextRoadmapStage(root) != "" {
+		t.Fatal("no roadmap, no next stage")
+	}
+	os.MkdirAll(filepath.Join(root, "knowledge"), 0o755)
+	os.WriteFile(filepath.Join(root, "knowledge", "roadmap.md"), []byte("# Roadmap\n\n- [x] **Stage 1: Catalog** (generation 2): browse\n- [ ] **Stage 2: Cart** (next): add to cart\n- [ ] **Stage 3: Checkout**\n"), 0o644)
+	if got := nextRoadmapStage(root); got != "Stage 2: Cart" {
+		t.Fatalf("got %q", got)
+	}
+}

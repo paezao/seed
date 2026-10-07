@@ -26,6 +26,7 @@ export function PhaseList({ evolution, horizontal }: { evolution: Evolution; hor
 /** A phase note; when it has an explanation, clicking it shows why. */
 function Note({ note: n }: { note: PhaseNote }) {
   const [open, setOpen] = useState(false);
+  if (n.wait) return <span className="phase-note wait">{n.text}</span>;
   const mark = n.ok ? '✓' : '✗';
   if (!n.explain?.length) {
     return <span className={`phase-note ${n.ok ? 'ok' : 'bad'}`} title={n.detail || undefined}>{mark} {n.text}</span>;

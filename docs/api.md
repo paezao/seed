@@ -49,7 +49,15 @@ type Plan = {
   steps: { title: string; detail?: string }[];
   capabilities: string[];           // capabilities the Seed will have afterwards
   risks: string[];
+  // Staging (absent for single-step evolutions): the owner's whole goal, the
+  // full ordered roadmap, and the 1-based stage this evolution builds.
+  goal?: string;
+  stages?: { title: string; summary?: string }[];
+  stage?: number;
 };
+
+type Question = { question: string; why?: string; options?: string[] };  // options: suggested answers, recommended first
+type Clarification = { questions: Question[]; answer: string };
 
 type Check = {
   name: string;                     // build | migrate | test | launch | health | http:<path>
@@ -86,6 +94,8 @@ type Evolution = {
   summary?: string;                 // what the builder says it did
   error?: string;
   kind: "evolve" | "rollback";
+  questions?: Question[];           // set while status is "needs_input" because the Seed asked its owner
+  clarifications?: Clarification[]; // earlier question/answer rounds
   created_at: string;
   updated_at: string;
   completed_at?: string;
@@ -94,7 +104,7 @@ type Evolution = {
 type EvolutionEvent = {
   id: number;
   evolution_id: string;
-  kind: "phase" | "plan" | "tool_call" | "tool_result" | "check" | "note" | "error" | "approval" | "agent_text";
+  kind: "phase" | "plan" | "tool_call" | "tool_result" | "check" | "note" | "error" | "approval" | "agent_text" | "question";
   summary: string;                  // one line, suitable for a progress list
   data: any;                        // details (tool input/output, etc.)
   created_at: string;
@@ -140,6 +150,7 @@ type Skill = { name: string; description: string; path: string; files: string[];
 | GET | `/evolutions/:id` | | `{evolution: Evolution, events: EvolutionEvent[]}` |
 | GET | `/evolutions/:id/diff` | | `{stat: string, diff: string}` |
 | POST | `/evolutions/:id/cancel` | | `Evolution` |
+| POST | `/evolutions/:id/answer` | `{answer}` | `Message` (stored as the owner's message). 409 if the evolution is not waiting. While an evolution waits on questions, a normal `POST /messages` is also routed to it as the answer. |
 | GET | `/approvals` | | `Approval[]` (pending) |
 | POST | `/approvals/:id` | `{approved: boolean}` | `Approval` |
 | GET | `/generations` | | `Generation[]` (newest first) |

@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, errorMessage, isActive, shortCommit, type Diff, type EvolutionEvent } from '../api';
+import { api, errorMessage, isActive, isWaitingOnOwner, shortCommit, type Diff, type EvolutionEvent } from '../api';
+import { ActivityTicker } from '../components/ActivityTicker';
 import { DiffView } from '../components/DiffView';
 import { EventList, isToolEvent, mergeEvents } from '../components/EventList';
 import { PhaseList } from '../components/PhaseList';
+import { Clarifications, QuestionPrompt } from '../components/Questions';
+import { Roadmap, StageBadge } from '../components/Roadmap';
+import { Sprout } from '../components/Sprout';
 import { ErrorNote, EvolutionBadge, Loading, PageHeader, Time, absTime, useLoad } from '../components/ui';
 import { useEvolution, useLiveEvent } from '../live';
 import { dedupeChecks } from '../phases';
@@ -59,7 +63,7 @@ export default function EvolutionDetail() {
     <div className="page">
       <div className="crumbs"><Link to="/evolutions">Evolutions</Link> <span className="muted">/</span> <code>{evo.id}</code></div>
       <PageHeader
-        title={<>{evo.kind === 'rollback' && <span className="tag">rollback</span>}{evo.title || evo.plan?.title || evo.intent}</>}
+        title={<>{evo.kind === 'rollback' && <span className="tag">rollback</span>}{evo.title || evo.plan?.title || evo.intent}<StageBadge plan={evo.plan} /></>}
         sub={
           <span className="meta-row">
             <EvolutionBadge status={evo.status} />
@@ -79,10 +83,26 @@ export default function EvolutionDetail() {
 
       <div className="detail-grid">
         <div className="detail-main">
+          {isWaitingOnOwner(evo) && <QuestionPrompt key={JSON.stringify(evo.questions)} evolution={evo} />}
+
           <section className="panel">
             <h2>Intent</h2>
             <p className="intent-text">{evo.intent || <span className="muted">—</span>}</p>
           </section>
+
+          {!!evo.clarifications?.length && (
+            <section className="panel">
+              <h2>What you told me</h2>
+              <Clarifications items={evo.clarifications} />
+            </section>
+          )}
+
+          {evo.plan?.stages?.length ? (
+            <section className="panel">
+              <h2>Roadmap <span className="muted small">this evolution builds stage {evo.plan.stage} of {evo.plan.stages.length}</span></h2>
+              <Roadmap plan={evo.plan} full currentDone={evo.status === 'complete'} />
+            </section>
+          ) : null}
 
           {evo.error && (
             <section className="panel panel-bad">
@@ -174,6 +194,8 @@ export default function EvolutionDetail() {
 
         <aside className="detail-side">
           <section className="panel sticky">
+            <div className="detail-sprout"><Sprout evolution={evo} size={104} /></div>
+            {isActive(evo.status) && evo.status !== 'needs_input' && <ActivityTicker events={events} status={evo.status} />}
             <h2>Progress</h2>
             <PhaseList evolution={evo} />
           </section>

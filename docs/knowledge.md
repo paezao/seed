@@ -20,6 +20,7 @@ knowledge/
 ├── identity.md        who/what it is
 ├── product.md         what it does for its owner; features, domain model, rules
 ├── architecture.md    how the organism is built: packages, routes, tables, conventions
+├── roadmap.md         the owner's larger goal and its stages (kernel-maintained; present when staged)
 └── decisions/         decision records (context, decision, consequences)
 ```
 

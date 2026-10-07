@@ -1,9 +1,10 @@
-import type { Check, Evolution, EvolutionEvent, EvolutionStatus } from './api';
+import { isWaitingOnOwner, type Check, type Evolution, type EvolutionEvent, type EvolutionStatus } from './api';
 
 export type PhaseKey = 'plan' | 'evolve' | 'build' | 'test' | 'launch' | 'health' | 'reflect' | 'apply';
 export type PhaseState = 'done' | 'active' | 'failed' | 'waiting' | 'repairing' | 'pending' | 'skipped';
 /** A line under a phase. `explain` makes it expandable (click to see why). */
-export type PhaseNote = { ok: boolean; text: string; detail?: string; explain?: string[] };
+/** `wait` marks a note about the Seed waiting on its owner (no ✓/✗). */
+export type PhaseNote = { ok: boolean; text: string; detail?: string; explain?: string[]; wait?: boolean };
 export type PhaseView = { key: PhaseKey; label: string; state: PhaseState; notes: PhaseNote[] };
 
 export const PHASES: { key: PhaseKey; label: string }[] = [
@@ -87,7 +88,9 @@ export function derivePhases(evo: Evolution): PhaseView[] {
   const status = evo.status;
   const known = STATUS_INDEX[status];
   const terminalStop = status === 'failed' || status === 'cancelled' || status === 'rolled_back';
-  const cur = known ?? reachedIndex(evo, checks);
+  // Questions come from planning: the Seed waits there for its owner's answer.
+  const asking = isWaitingOnOwner(evo);
+  const cur = asking ? 0 : known ?? reachedIndex(evo, checks);
   const live = known !== undefined && status !== 'complete';
 
   return PHASES.map((p, i) => {
@@ -98,7 +101,9 @@ export function derivePhases(evo: Evolution): PhaseView[] {
       .filter((c) => !c.ok || !phaseChecks.some((o) => o.name === c.name && o.attempt > c.attempt))
       .map((c) => ({ ok: c.ok, text: checkText(c), detail: c.detail, explain: !c.ok && c.detail ? [c.detail] : undefined }));
 
-    if (p.key === 'plan' && evo.plan && evo.plan.steps?.length) {
+    if (p.key === 'plan' && asking) {
+      notes.push({ ok: true, wait: true, text: 'Waiting for your answer' });
+    } else if (p.key === 'plan' && evo.plan && evo.plan.steps?.length) {
       notes.push({ ok: true, text: `Plan ready — ${evo.plan.steps.length} step${evo.plan.steps.length === 1 ? '' : 's'}` });
     }
     if (p.key === 'reflect' && evo.reflection) {
@@ -163,4 +168,21 @@ export function stepProgress(evo: Evolution, events: EvolutionEvent[]): { done: 
   }
   cur = Math.min(cur, Math.max(steps - 1, 0));
   return { done: cur, active: cur };
+}
+
+/**
+ * How far the Seed has grown in this evolution, for the sprout visual:
+ * 0 seed (requested/planning) · 1 sprout (mutating) · 2 leaves (building/testing)
+ * · 3 bud (running…applying) · 4 bloom (complete).
+ */
+export type GrowthStage = 0 | 1 | 2 | 3 | 4;
+export type GrowthMood = 'growing' | 'waiting' | 'wilted' | 'bloomed';
+
+export function growth(evo: Evolution): { stage: GrowthStage; mood: GrowthMood } {
+  const s = evo.status;
+  if (s === 'complete') return { stage: 4, mood: 'bloomed' };
+  const idx = isWaitingOnOwner(evo) ? 0 : STATUS_INDEX[s] ?? reachedIndex(evo, dedupeChecks(evo.checks));
+  const stage: GrowthStage = idx <= 0 ? 0 : idx === 1 ? 1 : idx <= 3 ? 2 : 3;
+  const mood: GrowthMood = s === 'failed' || s === 'cancelled' || s === 'rolled_back' ? 'wilted' : s === 'needs_input' ? 'waiting' : 'growing';
+  return { stage, mood };
 }

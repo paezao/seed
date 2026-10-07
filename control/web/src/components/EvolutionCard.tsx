@@ -1,52 +1,60 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, errorMessage, isActive, shortCommit, type EvolutionEvent } from '../api';
+import { api, errorMessage, isActive, isWaitingOnOwner, shortCommit, type EvolutionEvent } from '../api';
 import { useEvolution, useLiveEvent } from '../live';
 import { stepProgress } from '../phases';
+import { ActivityTicker } from './ActivityTicker';
 import { EventList, isToolEvent, mergeEvents } from './EventList';
 import { PhaseList } from './PhaseList';
+import { Clarifications, QuestionPrompt } from './Questions';
+import { Roadmap, StageBadge } from './Roadmap';
+import { Sprout } from './Sprout';
 import { EvolutionBadge } from './ui';
 
 export function EvolutionCard({ id }: { id: string }) {
   const evo = useEvolution(id);
-  const evoStatus = useRef(evo?.status);
-  evoStatus.current = evo?.status;
   const [events, setEvents] = useState<EvolutionEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [open, setOpen] = useState(false);
   const [loadErr, setLoadErr] = useState<string | null>(null);
-  const [latest, setLatest] = useState<{ status: string; text: string } | null>(null);
+  const active = evo ? isActive(evo.status) : false;
 
   useLiveEvent('evolution_event', (e) => {
     if (e.evolution_id !== id) return;
-    if (e.kind !== 'tool_result') setLatest({ status: evoStatus.current ?? '', text: e.summary });
     setEvents((prev) => mergeEvents(prev, [e]));
   });
 
+  // Load the timeline when the details open, or right away while the Seed is
+  // working so the activity line and plan checklist start from the truth.
   useEffect(() => {
-    if (!open || loaded) return;
+    if ((!open && !active) || loaded) return;
     let cancelled = false;
     api.evolution(id)
       .then((r) => { if (!cancelled) { setEvents((prev) => mergeEvents(prev, r.events)); setLoaded(true); } })
       .catch((e) => { if (!cancelled) setLoadErr(errorMessage(e)); });
     return () => { cancelled = true; };
-  }, [open, loaded, id]);
+  }, [open, active, loaded, id]);
 
   if (!evo) {
     return <div className="evo-card evo-card-loading"><span className="spinner" /> <span className="muted">Loading evolution…</span></div>;
   }
 
-  const active = isActive(evo.status);
+  const waiting = isWaitingOnOwner(evo);
+  const working = active && evo.status !== 'needs_input';
   const steps = evo.plan?.steps ?? [];
   const prog = stepProgress(evo, events);
   const isRollback = evo.kind === 'rollback';
 
   return (
-    <div className={`evo-card${active ? ' is-active' : ''} evo-${evo.status}`}>
+    <div className={`evo-card${active ? ' is-active' : ''}${waiting ? ' is-waiting' : ''} evo-${evo.status}`}>
       <div className="evo-card-head">
+        <Sprout evolution={evo} size={40} />
         <div className="evo-card-title">
           <span className="evo-kicker">{isRollback ? 'Rollback' : 'Evolution'}</span>
-          <Link to={`/evolutions/${evo.id}`} className="evo-title">{evo.plan?.title || evo.title || evo.intent}</Link>
+          <span className="evo-title-row">
+            <Link to={`/evolutions/${evo.id}`} className="evo-title">{evo.plan?.title || evo.title || evo.intent}</Link>
+            <StageBadge plan={evo.plan} />
+          </span>
         </div>
         <EvolutionBadge status={evo.status} />
       </div>
@@ -55,6 +63,10 @@ export function EvolutionCard({ id }: { id: string }) {
       )}
 
       {evo.plan?.summary && <p className="evo-summary">{evo.plan.summary}</p>}
+
+      {waiting && <QuestionPrompt key={JSON.stringify(evo.questions)} evolution={evo} />}
+
+      <Roadmap plan={evo.plan} currentDone={evo.status === 'complete'} />
 
       <div className="evo-grid">
         {steps.length > 0 && (
@@ -79,7 +91,7 @@ export function EvolutionCard({ id }: { id: string }) {
         </div>
       </div>
 
-      {active && latest && latest.status === evo.status && <div className="evo-latest"><span className="spinner" /> {latest.text}</div>}
+      {working && <ActivityTicker events={events} status={evo.status} />}
 
       {evo.status === 'complete' && evo.new_generation != null && (
         <div className="evo-done">
@@ -88,7 +100,8 @@ export function EvolutionCard({ id }: { id: string }) {
           {evo.commit && <code className="commit">{shortCommit(evo.commit)}</code>}
         </div>
       )}
-      {evo.status === 'needs_input' && <div className="evo-warn">Waiting for your input.</div>}
+      {evo.status === 'needs_input' && !waiting && <div className="evo-warn">Waiting for your input.</div>}
+      {!!evo.clarifications?.length && <div className="evo-clar"><Clarifications items={evo.clarifications} collapsed /></div>}
       {evo.error && <div className="evo-error">{evo.error}</div>}
 
       <details className="evo-details" onToggle={(e) => setOpen((e.target as HTMLDetailsElement).open)}>

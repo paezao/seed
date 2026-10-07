@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { api, errorMessage, type Message } from '../api';
+import { api, errorMessage, isWaitingOnOwner, type Message } from '../api';
 import { ApprovalCard } from '../components/ApprovalCard';
 import { Composer } from '../components/Composer';
 import { EvolutionCard } from '../components/EvolutionCard';
@@ -48,10 +48,14 @@ function MessageView({ m, showCard, identity }: { m: Message; showCard: boolean;
 }
 
 export default function Chat() {
-  const { status, thinking, approvals, upsertEvolution } = useLive();
+  const { status, thinking, approvals, evolutions, upsertEvolution } = useLive();
   const identity = status?.identity ?? null;
   const thinkingLabel = identity?.name ? `${identity.name} is thinking…` : 'Thinking…';
-  const placeholder = identity?.name ? `Message ${identity.name}…` : 'Message…';
+  // While an evolution waits on questions, the kernel routes the next chat message to it as the answer.
+  const asking = useMemo(() => Object.values(evolutions).some(isWaitingOnOwner), [evolutions]);
+  const placeholder = asking
+    ? (identity?.name ? `Answer ${identity.name}'s question…` : 'Answer the question…')
+    : (identity?.name ? `Message ${identity.name}…` : 'Message…');
   const [messages, setMessages] = useState<Message[]>([]);
   const [sendError, setSendError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);

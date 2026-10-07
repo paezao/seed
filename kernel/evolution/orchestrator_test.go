@@ -472,3 +472,126 @@ func TestCountTests(t *testing.T) {
 		t.Fatalf("vitest mixed: %d %d", p, f)
 	}
 }
+
+func TestAskOwnerAndStagedRoadmap(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	go func() {
+		// The owner answers when asked.
+		for i := 0; i < 400; i++ {
+			if id := h.o.WaitingForAnswer(); id != "" {
+				e, _ := h.o.Store.Evolution(ctx, id)
+				if e.Status != memory.NeedsInput || len(e.Questions) != 1 {
+					t.Errorf("waiting evolution should be needs_input with questions: %+v", e)
+				}
+				_ = h.o.Answer(ctx, id, "Start with stage 1")
+				return
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		t.Error("never asked")
+	}()
+	steps := []step{
+		models.Call("ask_owner", map[string]any{"questions": []map[string]any{{
+			"question": "This is big. Start with a small first stage?", "why": "so you get something working sooner",
+			"options": []string{"Start with stage 1", "Build it all at once"},
+		}}}),
+		func(r models.Request) (*models.Response, error) {
+			res := r.Messages[len(r.Messages)-1].ToolResults[0]
+			if !strings.Contains(res.Content, "Start with stage 1") {
+				return nil, errors.New("planner did not receive the owner's answer: " + res.Content)
+			}
+			return models.Call("submit_plan", map[string]any{
+				"title": "Become a shop: catalog", "scope": "catalog", "summary": "A product catalog.",
+				"steps": []map[string]string{{"title": "Products"}},
+				"goal":  "An online shop with catalog, cart and checkout.",
+				"stages": []map[string]string{
+					{"title": "Catalog", "summary": "browse products"},
+					{"title": "Cart", "summary": "add to cart"},
+					{"title": "Checkout"},
+				},
+				"stage": 1,
+			})(r)
+		},
+		models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "catalog"}),
+		finishStep(),
+	}
+	e := h.run("become an online shop", append(steps, reflectSteps()...)...)
+	if e.Status != memory.Complete {
+		t.Fatalf("status %s err %q", e.Status, e.Error)
+	}
+	if len(e.Clarifications) != 1 || e.Clarifications[0].Answer != "Start with stage 1" || len(e.Questions) != 0 {
+		t.Fatalf("clarifications not recorded: %+v", e.Clarifications)
+	}
+	roadmap, err := os.ReadFile(filepath.Join(h.o.Cfg.Root, RoadmapPath))
+	if err != nil {
+		t.Fatal("roadmap should be committed with the generation")
+	}
+	for _, want := range []string{"online shop", "[x] **Stage 1: Catalog** (generation 2)", "[ ] **Stage 2: Cart** (next)", "[ ] **Stage 3: Checkout**"} {
+		if !strings.Contains(string(roadmap), want) {
+			t.Errorf("roadmap missing %q:\n%s", want, roadmap)
+		}
+	}
+	msgs, _ := h.o.Store.Messages(ctx, memory.DefaultConversation, 20)
+	var asked, next bool
+	for _, m := range msgs {
+		asked = asked || strings.Contains(m.Content, "This is big")
+		next = next || strings.Contains(m.Content, "Next up, stage 2 of 3:** Cart")
+	}
+	if !asked || !next {
+		t.Fatalf("expected the question and the next-stage note in chat (asked=%v next=%v)", asked, next)
+	}
+}
+
+func TestAskOwnerIsBounded(t *testing.T) {
+	h := newHarness(t, nil)
+	ctx := context.Background()
+	go func() {
+		for n := 0; n < 2; {
+			if id := h.o.WaitingForAnswer(); id != "" && h.o.Answer(ctx, id, "whatever you think") == nil {
+				n++
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}()
+	q := map[string]any{"questions": []map[string]any{{"question": "?"}}}
+	steps := []step{
+		models.Call("ask_owner", q), models.Call("ask_owner", q),
+		func(r models.Request) (*models.Response, error) {
+			return models.Call("ask_owner", q)(r) // third round: refused
+		},
+		func(r models.Request) (*models.Response, error) {
+			res := r.Messages[len(r.Messages)-1].ToolResults[0]
+			if !res.IsError || !strings.Contains(res.Content, "asked enough") {
+				return nil, errors.New("third question round should be refused")
+			}
+			return planStep()(r)
+		},
+		models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "v1"}),
+		finishStep(),
+	}
+	e := h.run("something", append(steps, reflectSteps()...)...)
+	if e.Status != memory.Complete || len(e.Clarifications) != 2 {
+		t.Fatalf("status %s clarifications %d err %q", e.Status, len(e.Clarifications), e.Error)
+	}
+}
+
+func TestFinishRejectsBodylessWriteChecks(t *testing.T) {
+	h := newHarness(t, nil)
+	steps := []step{
+		planStep(),
+		models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "v1"}),
+		finishStep(map[string]any{"method": "POST", "path": "/api/things", "expect_status": 201}),
+		func(r models.Request) (*models.Response, error) {
+			res := r.Messages[len(r.Messages)-1].ToolResults[0]
+			if !res.IsError || !strings.Contains(res.Content, "sends no body") {
+				return nil, errors.New("bodyless POST check should be rejected: " + res.Content)
+			}
+			return finishStep(map[string]any{"method": "POST", "path": "/api/things", "body": `{"name":"x"}`, "expect_status": 200})(r)
+		},
+	}
+	e := h.run("add things", append(steps, reflectSteps()...)...)
+	if e.Status != memory.Complete {
+		t.Fatalf("status %s err %q", e.Status, e.Error)
+	}
+}

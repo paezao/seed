@@ -49,7 +49,18 @@ export type Plan = {
   steps: PlanStep[];
   capabilities: string[];
   risks: string[];
+  /** Staging (absent for single-step evolutions): the owner's whole goal, the full ordered roadmap, and the 1-based stage this evolution builds. */
+  goal?: string;
+  stages?: PlanStage[];
+  stage?: number;
 };
+
+export type PlanStage = { title: string; summary?: string };
+
+/** Something the Seed asks its owner. `options` are suggested answers, recommended first. */
+export type Question = { question: string; why?: string; options?: string[] };
+/** An earlier question/answer round. */
+export type Clarification = { questions: Question[]; answer: string };
 
 export type Check = {
   name: string;
@@ -86,13 +97,16 @@ export type Evolution = {
   summary?: string;
   error?: string;
   kind: 'evolve' | 'rollback';
+  /** Set while status is "needs_input" because the Seed asked its owner. */
+  questions?: Question[];
+  clarifications?: Clarification[];
   created_at: string;
   updated_at: string;
   completed_at?: string;
 };
 
 export type EvolutionEventKind =
-  | 'phase' | 'plan' | 'tool_call' | 'tool_result' | 'check' | 'note' | 'error' | 'approval' | 'agent_text';
+  | 'phase' | 'plan' | 'tool_call' | 'tool_result' | 'check' | 'note' | 'error' | 'approval' | 'agent_text' | 'question';
 
 export type EvolutionEvent = {
   id: number;
@@ -261,6 +275,8 @@ export const api = {
   evolution: (id: string) => request<{ evolution: Evolution; events: EvolutionEvent[] }>('GET', `/evolutions/${enc(id)}`),
   evolutionDiff: (id: string) => request<Diff>('GET', `/evolutions/${enc(id)}/diff`),
   cancelEvolution: (id: string) => request<Evolution>('POST', `/evolutions/${enc(id)}/cancel`),
+  /** Answer the questions an evolution is waiting on (stored as the owner's message). */
+  answer: (id: string, answer: string) => request<Message>('POST', `/evolutions/${enc(id)}/answer`, { answer }),
   approvals: () => request<Approval[]>('GET', '/approvals'),
   decide: (id: string, approved: boolean) => request<Approval>('POST', `/approvals/${enc(id)}`, { approved }),
   generations: () => request<Generation[]>('GET', '/generations'),
@@ -282,5 +298,7 @@ export const api = {
 
 export const TERMINAL_STATUSES: EvolutionStatus[] = ['complete', 'failed', 'cancelled', 'rolled_back'];
 export const isActive = (s: EvolutionStatus) => !TERMINAL_STATUSES.includes(s);
+/** The Seed is waiting for its owner to answer questions on this evolution. */
+export const isWaitingOnOwner = (e: Evolution | null | undefined) => !!e && e.status === 'needs_input' && !!e.questions?.length;
 export const shortCommit = (c?: string) => (c ? c.slice(0, 7) : '');
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));

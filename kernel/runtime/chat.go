@@ -11,6 +11,7 @@ import (
 	"seed/kernel/agent"
 	"seed/kernel/events"
 	"seed/kernel/evolution"
+	"seed/kernel/fsx"
 	"seed/kernel/git"
 	"seed/kernel/knowledge"
 	"seed/kernel/memory"
@@ -38,6 +39,19 @@ func (c *Chat) Post(ctx context.Context, content string) (*memory.Message, error
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return nil, fmt.Errorf("empty message")
+	}
+	// An evolution waiting on questions takes the owner's next message as
+	// its answer, deterministically: no model decides where it goes.
+	if waiting := c.Orch.WaitingForAnswer(); waiting != "" {
+		m, err := c.Store.AddMessage(ctx, memory.DefaultConversation, "user", content, waiting)
+		if err != nil {
+			return nil, err
+		}
+		c.Bus.Publish("message", m)
+		if err := c.Orch.Answer(ctx, waiting, content); err != nil {
+			return nil, err
+		}
+		return m, nil
 	}
 	m, err := c.Store.AddMessage(ctx, memory.DefaultConversation, "user", content, "")
 	if err != nil {
@@ -104,6 +118,31 @@ func (c *Chat) respond(ctx context.Context) {
 			return sb.String(), nil
 		},
 	})
+
+	// Continuing a roadmap is only possible when one exists: the tool appears
+	// only then, and the kernel writes the intent from the roadmap itself.
+	if next := nextRoadmapStage(c.Root); next != "" {
+		reg.Add(&tools.Tool{
+			Name:        "continue_roadmap",
+			Description: "Start the next stage of my roadmap (knowledge/roadmap.md): " + next + ". Use it when the owner asks me to continue.",
+			Schema:      tools.Schema(tools.Props{"note": tools.Str("optional extra wishes from the owner for this stage")}),
+			Classify:    tools.Fixed(permissions.Safe, "continue roadmap"),
+			Run: func(ctx context.Context, in json.RawMessage) (string, error) {
+				var a struct{ Note string }
+				_ = json.Unmarshal(in, &a)
+				intent := "Continue my roadmap (knowledge/roadmap.md) with the next stage: " + next + "."
+				if strings.TrimSpace(a.Note) != "" {
+					intent += "\n\nOwner's wishes for this stage: " + a.Note
+				}
+				e, err := c.Orch.Request(ctx, memory.DefaultConversation, withOwnerWords(intent, lastOwnerMessage(history)))
+				if err != nil {
+					return "", err
+				}
+				started = e.ID
+				return "evolution " + e.ID + " started for " + next, nil
+			},
+		})
+	}
 
 	a := &agent.Agent{
 		Model: c.Model, Tools: reg, MaxTurns: 15, MaxTokens: 4000,
@@ -186,4 +225,28 @@ func withOwnerWords(intent, owner string) string {
 		return intent
 	}
 	return intent + "\n\nThe owner's exact words: \"" + owner + "\""
+}
+
+// nextRoadmapStage returns the roadmap's next unfinished stage ("Stage 2:
+// Cart"), or "" when there is no roadmap or it is done.
+func nextRoadmapStage(root string) string {
+	b, err := fsx.ReadFile(root, evolution.RoadmapPath)
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "- [ ] ") {
+			stage := strings.TrimPrefix(line, "- [ ] ")
+			stage = strings.ReplaceAll(stage, "**", "")
+			stage = strings.TrimSuffix(strings.SplitN(stage, " (next)", 2)[0], ".")
+			if i := strings.Index(stage, ": "); i >= 0 {
+				if j := strings.Index(stage[i+2:], ": "); j >= 0 {
+					stage = stage[:i+2+j] // drop the summary
+				}
+			}
+			return stage
+		}
+	}
+	return ""
 }

@@ -46,6 +46,10 @@ type status struct {
 }
 
 type evolution struct {
+	Questions []struct {
+		Question string   `json:"question"`
+		Options  []string `json:"options"`
+	} `json:"questions"`
 	ID            string `json:"id"`
 	Intent        string `json:"intent"`
 	Status        string `json:"status"`
@@ -151,6 +155,20 @@ func TestCanonicalDemo(t *testing.T) {
 				return false
 			}
 			evo = d.Evolution
+			// The Seed may ask its owner; answer like an owner who takes its recommendations.
+			if evo.Status == "needs_input" && len(evo.Questions) > 0 {
+				var parts []string
+				for i, q := range evo.Questions {
+					choice := "go with your recommendation"
+					if len(q.Options) > 0 {
+						choice = q.Options[0]
+					}
+					parts = append(parts, fmt.Sprintf("%d. %s", i+1, choice))
+				}
+				t.Logf("the Seed asked %d question(s); answering with its recommendations", len(evo.Questions))
+				post(t, base+"/_seed/api/evolutions/"+evo.ID+"/answer", map[string]string{"answer": strings.Join(parts, "\n")})
+				return false
+			}
 			switch evo.Status {
 			case "complete":
 				return true

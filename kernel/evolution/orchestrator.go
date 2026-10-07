@@ -26,6 +26,7 @@ import (
 	"seed/kernel/agent"
 	"seed/kernel/config"
 	"seed/kernel/events"
+	"seed/kernel/fsx"
 	"seed/kernel/git"
 	"seed/kernel/infra"
 	"seed/kernel/knowledge"
@@ -71,6 +72,8 @@ type Orchestrator struct {
 	wake    chan struct{}
 	cancels map[string]context.CancelFunc
 	running string
+	// answers delivers the owner's answer to an evolution waiting on questions.
+	answers map[string]chan string
 }
 
 func (o *Orchestrator) init() {
@@ -79,6 +82,7 @@ func (o *Orchestrator) init() {
 	if o.wake == nil {
 		o.wake = make(chan struct{}, 1)
 		o.cancels = map[string]context.CancelFunc{}
+		o.answers = map[string]chan string{}
 	}
 }
 
@@ -446,6 +450,11 @@ func (o *Orchestrator) evolve(ctx context.Context, e *memory.Evolution) error {
 	_ = o.save(ctx, e)
 	o.event(ctx, e, "note", "Reflection: "+firstLine(refl.Summary), refl)
 
+	if e.Plan != nil && len(e.Plan.Stages) > 0 {
+		if err := writeRoadmap(ws.dir, e); err != nil {
+			return fmt.Errorf("recording the roadmap: %w", err)
+		}
+	}
 	commit, kernelChanged, err := o.commit(ctx, e, ws)
 	if err != nil {
 		return err
@@ -534,7 +543,13 @@ type planInput struct {
 	Steps        []memory.PlanStep `json:"steps"`
 	Capabilities []string          `json:"capabilities"`
 	Risks        []string          `json:"risks"`
+	Goal         string            `json:"goal"`
+	Stages       []memory.Stage    `json:"stages"`
+	Stage        int               `json:"stage"`
 }
+
+// maxQuestionRounds bounds how often planning may stop to ask the owner.
+const maxQuestionRounds = 2
 
 func (o *Orchestrator) plan(ctx context.Context, e *memory.Evolution) (*memory.Plan, error) {
 	ws := &tools.Workspace{Root: o.Cfg.Root, Policy: o.Policy}
@@ -550,6 +565,10 @@ func (o *Orchestrator) plan(ctx context.Context, e *memory.Evolution) (*memory.P
 				"type": "object", "properties": map[string]any{"title": tools.Str("step"), "detail": tools.Str("optional detail")}, "required": []string{"title"}}},
 			"capabilities": tools.StrList("capabilities I will have afterwards"),
 			"risks":        tools.StrList("risks and assumptions"),
+			"goal":         tools.Str("only when staging: the owner's whole goal, in one or two sentences"),
+			"stages": map[string]any{"type": "array", "description": "only when staging: the full ordered roadmap for the goal (including stages already done and this one)", "items": map[string]any{
+				"type": "object", "properties": map[string]any{"title": tools.Str("stage title"), "summary": tools.Str("what this stage delivers")}, "required": []string{"title"}}},
+			"stage": tools.Int("only when staging: the 1-based number of the stage this evolution builds"),
 		}, "title", "scope", "summary", "steps"),
 		Classify: tools.Fixed(permissions.Safe, "submit plan"),
 		Terminal: true,
@@ -565,14 +584,57 @@ func (o *Orchestrator) plan(ctx context.Context, e *memory.Evolution) (*memory.P
 			if p.Scope == "" {
 				p.Scope = "organism"
 			}
-			plan = &memory.Plan{Title: p.Title, Scope: p.Scope, Summary: p.Summary, Steps: p.Steps, Capabilities: p.Capabilities, Risks: p.Risks}
+			if len(p.Stages) > 0 && (p.Stage < 1 || p.Stage > len(p.Stages)) {
+				return "", fmt.Errorf("stage must be between 1 and %d", len(p.Stages))
+			}
+			if len(p.Stages) == 1 {
+				p.Stages, p.Stage, p.Goal = nil, 0, ""
+			}
+			plan = &memory.Plan{Title: p.Title, Scope: p.Scope, Summary: p.Summary, Steps: p.Steps, Capabilities: p.Capabilities,
+				Risks: p.Risks, Goal: p.Goal, Stages: p.Stages, Stage: p.Stage}
 			return "plan recorded", nil
 		},
 	}
 	reg := tools.NewRegistry(o.Policy, nil)
 	reg.EvolutionID = e.ID
+	rounds := 0
+	ask := &tools.Tool{
+		Name: "ask_owner",
+		Description: "Ask your owner questions before planning, and wait for the answer. Use it only for decisions that really change what you build " +
+			"(or to propose starting with a smaller first stage). At most 3 questions, each with why it matters and suggested answers.",
+		Schema: tools.Schema(tools.Props{
+			"questions": map[string]any{"type": "array", "minItems": 1, "maxItems": 3, "items": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"question": tools.Str("the question, short and concrete"),
+					"why":      tools.Str("why the answer matters for what you build"),
+					"options":  tools.StrList("2-4 suggested answers, the recommended one first"),
+				},
+				"required": []string{"question"},
+			}},
+		}, "questions"),
+		Classify: tools.Fixed(permissions.Safe, "ask the owner"),
+		Run: func(ctx context.Context, in json.RawMessage) (string, error) {
+			var a struct{ Questions []memory.Question }
+			if err := json.Unmarshal(in, &a); err != nil {
+				return "", err
+			}
+			if len(a.Questions) == 0 {
+				return "", errors.New("ask at least one question")
+			}
+			if rounds >= maxQuestionRounds {
+				return "", errors.New("you have asked enough; make sensible assumptions, record them as risks, and submit your plan")
+			}
+			rounds++
+			answer, err := o.askOwner(ctx, e, a.Questions)
+			if err != nil {
+				return "", err
+			}
+			return "The owner answered:\n\n" + answer, nil
+		},
+	}
 	reg.Add(tools.ReadOnlyFileTools(ws)...).Add(tools.SkillTools(skills.Library{Root: o.Cfg.Root})...).
-		Add(tools.GitTools(o.Repo, "HEAD")[2]).Add(submit)
+		Add(tools.GitTools(o.Repo, "HEAD")[2]).Add(ask, submit)
 	a := o.newAgent(ctx, e, "plan", reg, 40)
 	msg := fmt.Sprintf("Owner's intent:\n\n> %s\n\n%s", strings.ReplaceAll(e.Intent, "\n", "\n> "), o.SelfContext(ctx, o.Cfg.Root))
 	if _, err := a.Run(ctx, []models.Message{{Role: models.User, Content: msg}}); err != nil {
@@ -630,6 +692,14 @@ func (o *Orchestrator) mutate(ctx context.Context, e *memory.Evolution, ws *work
 			}
 			if strings.TrimSpace(f.Summary) == "" {
 				return "", errors.New("summary is required")
+			}
+			for _, c := range f.Checks {
+				switch strings.ToUpper(c.Method) {
+				case "POST", "PUT", "PATCH":
+					if strings.TrimSpace(c.Body) == "" && c.ExpectStatus >= 200 && c.ExpectStatus < 300 {
+						return "", fmt.Errorf("check %s %s expects %d but sends no body: include the JSON body the request needs, e.g. {\"title\":\"Buy milk\"}", c.Method, c.Path, c.ExpectStatus)
+					}
+				}
 			}
 			changes, _ := ws.repo.WorkingChanges(ctx)
 			if len(changes) == 0 {
@@ -838,10 +908,10 @@ func (o *Orchestrator) verify(ctx context.Context, e *memory.Evolution, ws *work
 			return fail(memory.Check{Name: name, Detail: fmt.Sprintf("%s %s: %v", c.Method, c.Path, err), Attempt: attempt}, ws.sb.Logs(ctx, "organism", 50)), nil
 		case c.ExpectStatus != 0 && status != c.ExpectStatus:
 			return fail(memory.Check{Name: name, Detail: fmt.Sprintf("%s %s returned %d, expected %d", c.Method, c.Path, status, c.ExpectStatus), Attempt: attempt},
-				"response body:\n"+tools.Truncate(body, 2000)+"\n\nlogs:\n"+ws.sb.Logs(ctx, "organism", 40)), nil
+				"request sent: "+describeRequest(c)+"\n\nresponse body:\n"+tools.Truncate(body, 2000)+"\n\nlogs:\n"+ws.sb.Logs(ctx, "organism", 40)), nil
 		case c.ExpectContains != "" && !strings.Contains(body, c.ExpectContains):
 			return fail(memory.Check{Name: name, Detail: fmt.Sprintf("%s %s did not contain %q", c.Method, c.Path, c.ExpectContains), Attempt: attempt},
-				"response body:\n"+tools.Truncate(body, 2000)), nil
+				"request sent: "+describeRequest(c)+"\n\nresponse body:\n"+tools.Truncate(body, 2000)), nil
 		}
 		detail := fmt.Sprintf("%s %s → %d", c.Method, c.Path, status)
 		if i == 0 {
@@ -1006,6 +1076,14 @@ func completionMessage(e *memory.Evolution) string {
 	fmt.Fprintf(&sb, "I am now **generation %d**: %s (`%s`).", *e.NewGeneration, e.Title, short(e.Commit))
 	if e.Reflection != nil && e.Reflection.Summary != "" {
 		sb.WriteString("\n\n" + e.Reflection.Summary)
+	}
+	if p := e.Plan; p != nil && len(p.Stages) > 0 && p.Stage < len(p.Stages) {
+		next := p.Stages[p.Stage]
+		fmt.Fprintf(&sb, "\n\n**Next up, stage %d of %d:** %s.", p.Stage+1, len(p.Stages), next.Title)
+		if next.Summary != "" {
+			sb.WriteString(" " + next.Summary)
+		}
+		sb.WriteString(" Say *continue* whenever you want me to grow further.")
 	}
 	if e.Reflection != nil && !e.Reflection.GoalSatisfied && len(e.Reflection.Gaps) > 0 {
 		sb.WriteString("\n\n**Not fully done yet:**")
@@ -1206,3 +1284,135 @@ func (o *Orchestrator) workspacesDir() string {
 }
 
 func ensureDir(p string) error { return os.MkdirAll(p, 0o755) }
+
+// ---- human in the loop
+
+// askOwner pauses the evolution in needs_input with questions for the owner
+// and blocks until they answer (or the evolution is cancelled).
+func (o *Orchestrator) askOwner(ctx context.Context, e *memory.Evolution, qs []memory.Question) (string, error) {
+	ch := make(chan string, 1)
+	o.mu.Lock()
+	o.answers[e.ID] = ch
+	o.mu.Unlock()
+	defer func() {
+		o.mu.Lock()
+		delete(o.answers, e.ID)
+		o.mu.Unlock()
+	}()
+	prev := e.Status
+	e.Questions = qs
+	if err := o.transition(ctx, e, memory.NeedsInput); err != nil {
+		return "", err
+	}
+	o.event(ctx, e, "question", fmt.Sprintf("Asked the owner %d question(s)", len(qs)), qs)
+	o.say(ctx, e, questionsMessage(qs))
+	var answer string
+	select {
+	case answer = <-ch:
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+	e.Clarifications = append(e.Clarifications, memory.Clarification{Questions: qs, Answer: answer})
+	e.Questions = nil
+	if err := o.transition(ctx, e, prev); err != nil {
+		return "", err
+	}
+	o.event(ctx, e, "note", "Owner answered: "+firstLine(answer), map[string]string{"answer": answer})
+	return answer, nil
+}
+
+func questionsMessage(qs []memory.Question) string {
+	var sb strings.Builder
+	sb.WriteString("Before I change myself, I'd like your input:\n")
+	for i, q := range qs {
+		fmt.Fprintf(&sb, "\n%d. **%s**", i+1, q.Question)
+		if q.Why != "" {
+			fmt.Fprintf(&sb, " _(%s)_", q.Why)
+		}
+		if len(q.Options) > 0 {
+			fmt.Fprintf(&sb, "\n   Options: %s", strings.Join(q.Options, " · "))
+		}
+	}
+	sb.WriteString("\n\nAnswer here, in your own words.")
+	return sb.String()
+}
+
+// WaitingForAnswer returns the id of an evolution waiting on its owner's answer.
+func (o *Orchestrator) WaitingForAnswer() string {
+	o.init()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	for id := range o.answers {
+		return id
+	}
+	return ""
+}
+
+// Answer delivers the owner's answer to an evolution waiting on questions.
+func (o *Orchestrator) Answer(ctx context.Context, id, answer string) error {
+	o.init()
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return errors.New("the answer is empty")
+	}
+	o.mu.Lock()
+	ch := o.answers[id]
+	o.mu.Unlock()
+	if ch == nil {
+		return fmt.Errorf("evolution %s is not waiting for an answer", id)
+	}
+	select {
+	case ch <- answer:
+		return nil
+	default:
+		return errors.New("an answer was already given")
+	}
+}
+
+// RoadmapPath holds the owner's larger goal and its stages. The kernel keeps
+// it in the generation (so it survives restarts, rolls back with the code and
+// is part of every prompt through knowledge), updated by each staged evolution.
+const RoadmapPath = "knowledge/roadmap.md"
+
+func writeRoadmap(root string, e *memory.Evolution) error {
+	p := e.Plan
+	gen := e.BaseGeneration + 1
+	var sb strings.Builder
+	sb.WriteString("# Roadmap\n\n")
+	sb.WriteString("_Maintained by my kernel: my owner's larger goal, broken into stages I grow through one evolution at a time._\n\n")
+	if p.Goal != "" {
+		fmt.Fprintf(&sb, "**Goal:** %s\n\n", p.Goal)
+	}
+	for i, s := range p.Stages {
+		n := i + 1
+		mark, note := "[ ]", ""
+		switch {
+		case n < p.Stage:
+			mark = "[x]"
+		case n == p.Stage:
+			mark, note = "[x]", fmt.Sprintf(" (generation %d)", gen)
+		case n == p.Stage+1:
+			note = " (next)"
+		}
+		fmt.Fprintf(&sb, "- %s **Stage %d: %s**%s", mark, n, s.Title, note)
+		if s.Summary != "" {
+			sb.WriteString(": " + s.Summary)
+		}
+		sb.WriteString("\n")
+	}
+	if p.Stage >= len(p.Stages) {
+		sb.WriteString("\nAll stages are done.\n")
+	} else {
+		fmt.Fprintf(&sb, "\nWhen my owner says *continue*, I plan stage %d.\n", p.Stage+1)
+	}
+	return fsx.WriteFileNoFollow(root, RoadmapPath, []byte(sb.String()), 0o644)
+}
+
+// describeRequest shows exactly what a declared check sent, so a builder can
+// tell a wrong check (e.g. a POST without a body) from wrong code.
+func describeRequest(c httpCheck) string {
+	if strings.TrimSpace(c.Body) == "" {
+		return fmt.Sprintf("%s %s with no body", c.Method, c.Path)
+	}
+	return fmt.Sprintf("%s %s with body %s", c.Method, c.Path, tools.Truncate(c.Body, 500))
+}

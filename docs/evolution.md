@@ -75,6 +75,29 @@ stateDiagram-v2
 9. **Complete.** A generation record is created, `seed/gen-N` is tagged, and the Seed posts *"I am now
    generation N"*. The control plane shows the new identity.
 
+## Human in the loop
+
+Planning is where the owner and the Seed agree on what to build.
+
+- **Questions.** The planner can call `ask_owner` with up to 3 questions. Each one says why it
+  matters and offers suggested answers. The evolution moves to `needs_input`, the questions appear
+  in chat and on the evolution card, and the planner waits. The owner's next chat message (or a
+  click on a suggested answer, via `POST /evolutions/:id/answer`) is routed to the evolution as its
+  answer: the kernel does this deterministically, with no model choosing where it goes. Planning
+  then continues. Each round is stored in the evolution's `clarifications`. There are at most two
+  rounds, after which the planner must assume and record its assumptions as risks. Questions are
+  meant for decisions that change *what* is built, not for things the Seed can decide well itself.
+- **Starting smaller.** When a request is too big to build and verify well in one evolution, the
+  planner breaks the goal into 2–6 stages that each leave the Seed working. It recommends starting
+  with stage 1 (through `ask_owner`), then plans only that stage, passing the whole `goal`, the
+  `stages` and the current `stage`.
+- **The roadmap is never lost.** The kernel writes `knowledge/roadmap.md` (the goal, with each stage
+  marked done, next or later) into the generation, so it survives restarts, rolls back with the code,
+  and is part of every future prompt. The completion message names the next stage. When the owner
+  says *continue*, the next evolution plans that stage and updates the roadmap.
+- **Approvals** still gate dangerous actions such as kernel changes. `require_plan_approval` and
+  `require_apply_approval` can also put a human gate before mutation and before applying.
+
 ## Generations and rollback
 
 A generation is a commit on main with `Generation:` and `Evolution:` trailers. Git is the source

@@ -44,6 +44,31 @@ type Plan struct {
 	Steps        []PlanStep `json:"steps"`
 	Capabilities []string   `json:"capabilities"`
 	Risks        []string   `json:"risks"`
+	// Staging: when the owner's goal is bigger than one evolution, Goal is the
+	// whole goal, Stages the full ordered roadmap, and Stage the 1-based stage
+	// this evolution builds. Empty for single-step evolutions.
+	Goal   string  `json:"goal,omitempty"`
+	Stages []Stage `json:"stages,omitempty"`
+	Stage  int     `json:"stage,omitempty"`
+}
+
+// Stage is one step of a larger goal.
+type Stage struct {
+	Title   string `json:"title"`
+	Summary string `json:"summary,omitempty"`
+}
+
+// Question is something the Seed asks its owner during an evolution.
+type Question struct {
+	Question string   `json:"question"`
+	Why      string   `json:"why,omitempty"`
+	Options  []string `json:"options,omitempty"`
+}
+
+// Clarification is one round of questions and the owner's answer.
+type Clarification struct {
+	Questions []Question `json:"questions"`
+	Answer    string     `json:"answer"`
 }
 
 type PlanStep struct {
@@ -92,9 +117,12 @@ type Evolution struct {
 	Summary          string      `json:"summary,omitempty"`
 	Error            string      `json:"error,omitempty"`
 	Usage            Usage       `json:"usage"`
-	CreatedAt        time.Time   `json:"created_at"`
-	UpdatedAt        time.Time   `json:"updated_at"`
-	CompletedAt      *time.Time  `json:"completed_at,omitempty"`
+	// Questions the evolution is waiting on (needs_input), if any.
+	Questions      []Question      `json:"questions,omitempty"`
+	Clarifications []Clarification `json:"clarifications,omitempty"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
 }
 
 type Usage struct {
@@ -207,14 +235,14 @@ func (s *Store) Messages(ctx context.Context, conv string, limit int) ([]Message
 
 const evoCols = `id, coalesce(conversation_id, ''), kind, intent, title, status, plan, base_generation, new_generation,
 	target_generation, base_commit, branch, worktree, commit, attempts, checks, reflection, summary, error, usage,
-	created_at, updated_at, completed_at`
+	created_at, updated_at, completed_at, questions, clarifications`
 
 func scanEvolution(r pgx.Row) (*Evolution, error) {
 	var e Evolution
-	var plan, checks, refl, usage []byte
+	var plan, checks, refl, usage, questions, clar []byte
 	err := r.Scan(&e.ID, &e.ConversationID, &e.Kind, &e.Intent, &e.Title, &e.Status, &plan, &e.BaseGeneration,
 		&e.NewGeneration, &e.TargetGeneration, &e.BaseCommit, &e.Branch, &e.Worktree, &e.Commit, &e.Attempts,
-		&checks, &refl, &e.Summary, &e.Error, &usage, &e.CreatedAt, &e.UpdatedAt, &e.CompletedAt)
+		&checks, &refl, &e.Summary, &e.Error, &usage, &e.CreatedAt, &e.UpdatedAt, &e.CompletedAt, &questions, &clar)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -234,6 +262,10 @@ func scanEvolution(r pgx.Row) (*Evolution, error) {
 		_ = json.Unmarshal(refl, e.Reflection)
 	}
 	_ = json.Unmarshal(usage, &e.Usage)
+	if len(questions) > 0 && string(questions) != "null" {
+		_ = json.Unmarshal(questions, &e.Questions)
+	}
+	_ = json.Unmarshal(clar, &e.Clarifications)
 	return &e, nil
 }
 
@@ -261,11 +293,19 @@ func (s *Store) SaveEvolution(ctx context.Context, e *Evolution) error {
 	checks, _ := json.Marshal(e.Checks)
 	refl, _ := json.Marshal(e.Reflection)
 	usage, _ := json.Marshal(e.Usage)
+	var questions []byte
+	if len(e.Questions) > 0 {
+		questions, _ = json.Marshal(e.Questions)
+	}
+	if e.Clarifications == nil {
+		e.Clarifications = []Clarification{}
+	}
+	clar, _ := json.Marshal(e.Clarifications)
 	return s.Pool.QueryRow(ctx, `UPDATE evolutions SET title=$2, status=$3, plan=$4, base_generation=$5, new_generation=$6,
 		base_commit=$7, branch=$8, worktree=$9, commit=$10, attempts=$11, checks=$12, reflection=$13, summary=$14,
-		error=$15, usage=$16, completed_at=$17, updated_at=now() WHERE id=$1 RETURNING updated_at`,
+		error=$15, usage=$16, completed_at=$17, questions=$18, clarifications=$19, updated_at=now() WHERE id=$1 RETURNING updated_at`,
 		e.ID, e.Title, e.Status, plan, e.BaseGeneration, e.NewGeneration, e.BaseCommit, e.Branch, e.Worktree,
-		e.Commit, e.Attempts, checks, refl, e.Summary, e.Error, usage, e.CompletedAt).Scan(&e.UpdatedAt)
+		e.Commit, e.Attempts, checks, refl, e.Summary, e.Error, usage, e.CompletedAt, questions, clar).Scan(&e.UpdatedAt)
 }
 
 func (s *Store) Evolution(ctx context.Context, id string) (*Evolution, error) {

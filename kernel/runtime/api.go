@@ -41,6 +41,7 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/evolutions/{id}", k.handleEvolution)
 	mux.HandleFunc("GET "+api+"/evolutions/{id}/diff", k.handleDiff)
 	mux.HandleFunc("POST "+api+"/evolutions/{id}/cancel", k.handleCancel)
+	mux.HandleFunc("POST "+api+"/evolutions/{id}/answer", k.handleAnswer)
 	mux.HandleFunc("GET "+api+"/approvals", k.handleApprovals)
 	mux.HandleFunc("POST "+api+"/approvals/{id}", k.handleDecide)
 	mux.HandleFunc("GET "+api+"/generations", k.handleGenerations)
@@ -605,4 +606,30 @@ func (k *Kernel) handleExtensions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, 200, out)
+}
+
+// handleAnswer answers the questions an evolution is waiting on (e.g. by
+// picking a suggested option on its card).
+func (k *Kernel) handleAnswer(w http.ResponseWriter, r *http.Request) {
+	var body struct{ Answer string }
+	if err := decodeBody(r, &body); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	id := r.PathValue("id")
+	if k.Orch.WaitingForAnswer() != id {
+		writeErr(w, 409, errors.New("that evolution is not waiting for an answer"))
+		return
+	}
+	m, err := k.Store.AddMessage(r.Context(), memory.DefaultConversation, "user", strings.TrimSpace(body.Answer), id)
+	if err != nil {
+		writeErr(w, 500, err)
+		return
+	}
+	k.Bus.Publish("message", m)
+	if err := k.Orch.Answer(r.Context(), id, body.Answer); err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	writeJSON(w, 200, m)
 }
