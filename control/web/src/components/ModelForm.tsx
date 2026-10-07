@@ -147,10 +147,11 @@ type Props = {
   submitLabel?: string;
   busyLabel?: string;
   onCancel?: () => void;
+  cancelLabel?: string;
 };
 
 /** Choose provider, key, base URL and model; POST /model (the kernel test-calls the model). */
-export function ModelForm({ config, onSaved, submitLabel = 'Save', busyLabel = 'Testing…', onCancel }: Props) {
+export function ModelForm({ config, onSaved, submitLabel = 'Save', busyLabel = 'Testing…', onCancel, cancelLabel = 'Cancel' }: Props) {
   const { refreshStatus } = useLive();
   const uid = useId();
   const start = initialProvider(config);
@@ -320,7 +321,7 @@ export function ModelForm({ config, onSaved, submitLabel = 'Save', busyLabel = '
       <div className="mf-actions">
         {busy && <span className="mf-busy muted small"><span className="spinner" /> Making a tiny test call…</span>}
         <span className="spacer" />
-        {onCancel && <button type="button" className="btn" onClick={onCancel} disabled={busy}>Cancel</button>}
+        {onCancel && <button type="button" className="btn" onClick={onCancel} disabled={busy}>{cancelLabel}</button>}
         <button type="submit" className="btn btn-primary" disabled={!canSubmit}>{busy ? busyLabel : submitLabel}</button>
       </div>
     </form>

@@ -3,7 +3,7 @@
 The evolution was implemented and verified. Before it becomes your new generation, update your durable knowledge so that a future you understands what you are without having to re-derive it from source code.
 
 Look at the diff (`git_diff`, use `stat` first) and at the existing knowledge files. Then answer for yourself, concretely:
-- What changed? Did it satisfy the owner's intent?
+- What changed? Did it fully satisfy the owner's intent? Be honest. If not, set `goal_satisfied` to false and list each gap with its reason (what is missing or different from what was asked, and why), so your owner can see exactly what falls short.
 - What am I now? Update `knowledge/self.yaml`: set `purpose.description` and the `capabilities` list (each entry a short name plus a one-line description), and adjust `architecture`, `constraints` and `goals` if they changed. Keep it valid YAML and keep `identity.name`.
 - Update `knowledge/product.md` (what I do for my owner, my features and domain model) and `knowledge/architecture.md` (how the organism is structured: packages, API routes, tables, frontend structure, conventions) so they are accurate and concise. Rewrite sections rather than appending changelog prose. `knowledge/identity.md` changes only if my nature or purpose changed.
 - Did this evolution introduce a real architectural or product decision (a data model choice, a library, a convention, a trade-off)? If so, add a short decision record `knowledge/decisions/NNNN-title.md` with Context, Decision and Consequences. Skip this when nothing was really decided.

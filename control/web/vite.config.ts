@@ -13,6 +13,8 @@ const devToken = (): Plugin => ({
     process.env.SEED_TOKEN ? html.replace('<head>', `<head><meta name="seed-token" content="${process.env.SEED_TOKEN}">`) : html,
 });
 
+const kernel = process.env.SEED_KERNEL ?? 'http://127.0.0.1:8080';
+
 export default defineConfig({
   base: '/_seed/',
   plugins: [react(), devToken()],
@@ -25,7 +27,12 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/_seed/api': { target: process.env.SEED_KERNEL ?? 'http://127.0.0.1:8080', changeOrigin: true },
+      '/_seed/api': {
+        target: kernel,
+        changeOrigin: true,
+        // The kernel refuses cross-origin writes; present proxied requests as its own origin.
+        headers: { origin: kernel },
+      },
     },
   },
 });

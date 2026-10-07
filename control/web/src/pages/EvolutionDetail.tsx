@@ -141,6 +141,12 @@ export default function EvolutionDetail() {
             <section className="panel">
               <h2>Reflection <span className={`small ${r.goal_satisfied ? 'ok-text' : 'warn-text'}`}>{r.goal_satisfied ? '✓ goal satisfied' : 'goal not fully satisfied'}</span></h2>
               {r.summary && <p>{r.summary}</p>}
+              {!r.goal_satisfied && (r.gaps?.length ?? 0) > 0 && (
+                <div className="gaps">
+                  <h3>What falls short</h3>
+                  <List items={r.gaps ?? []} />
+                </div>
+              )}
               <div className="two-col">
                 <div><h3>Decisions</h3><List items={r.decisions} /></div>
                 <div><h3>Learnings</h3><List items={r.learnings} /></div>

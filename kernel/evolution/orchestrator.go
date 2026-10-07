@@ -861,7 +861,8 @@ func (o *Orchestrator) reflect(ctx context.Context, e *memory.Evolution, ws *wor
 		Description: "Submit your reflection once knowledge/ and skills/ are updated.",
 		Schema: tools.Schema(tools.Props{
 			"summary":        tools.Str("what changed and what I am now, 1-3 sentences"),
-			"goal_satisfied": tools.Bool("did the evolution satisfy the owner's intent"),
+			"goal_satisfied": tools.Bool("did the evolution fully satisfy the owner's intent"),
+			"gaps":           tools.StrList("if not fully satisfied: each thing that falls short and why (required then), e.g. 'Filtering is server-side only; the UI has no filter control because …'"),
 			"decisions":      tools.StrList("decisions recorded (paths or one-liners)"),
 			"learnings":      tools.StrList("what future evolutions should know"),
 			"skills":         tools.StrList("skills created or improved"),
@@ -873,6 +874,9 @@ func (o *Orchestrator) reflect(ctx context.Context, e *memory.Evolution, ws *wor
 			var r memory.Reflection
 			if err := json.Unmarshal(in, &r); err != nil {
 				return "", err
+			}
+			if !r.GoalSatisfied && len(r.Gaps) == 0 {
+				return "", errors.New("goal_satisfied is false: list the gaps (what falls short of the owner's intent, and why)")
 			}
 			if err := knowledge.ValidateSelf(ws.dir); err != nil {
 				return "", fmt.Errorf("fix knowledge/self.yaml first: %w", err)
@@ -1002,6 +1006,12 @@ func completionMessage(e *memory.Evolution) string {
 	fmt.Fprintf(&sb, "I am now **generation %d**: %s (`%s`).", *e.NewGeneration, e.Title, short(e.Commit))
 	if e.Reflection != nil && e.Reflection.Summary != "" {
 		sb.WriteString("\n\n" + e.Reflection.Summary)
+	}
+	if e.Reflection != nil && !e.Reflection.GoalSatisfied && len(e.Reflection.Gaps) > 0 {
+		sb.WriteString("\n\n**Not fully done yet:**")
+		for _, g := range e.Reflection.Gaps {
+			sb.WriteString("\n- " + g)
+		}
 	}
 	return sb.String()
 }

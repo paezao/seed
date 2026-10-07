@@ -2,7 +2,8 @@ import type { Check, Evolution, EvolutionEvent, EvolutionStatus } from './api';
 
 export type PhaseKey = 'plan' | 'evolve' | 'build' | 'test' | 'launch' | 'health' | 'reflect' | 'apply';
 export type PhaseState = 'done' | 'active' | 'failed' | 'waiting' | 'repairing' | 'pending' | 'skipped';
-export type PhaseNote = { ok: boolean; text: string; detail?: string };
+/** A line under a phase. `explain` makes it expandable (click to see why). */
+export type PhaseNote = { ok: boolean; text: string; detail?: string; explain?: string[] };
 export type PhaseView = { key: PhaseKey; label: string; state: PhaseState; notes: PhaseNote[] };
 
 export const PHASES: { key: PhaseKey; label: string }[] = [
@@ -95,13 +96,20 @@ export function derivePhases(evo: Evolution): PhaseView[] {
     const phaseChecks = checks.filter((c) => checkPhase(c.name) === p.key);
     const notes: PhaseNote[] = phaseChecks
       .filter((c) => !c.ok || !phaseChecks.some((o) => o.name === c.name && o.attempt > c.attempt))
-      .map((c) => ({ ok: c.ok, text: checkText(c), detail: c.detail }));
+      .map((c) => ({ ok: c.ok, text: checkText(c), detail: c.detail, explain: !c.ok && c.detail ? [c.detail] : undefined }));
 
     if (p.key === 'plan' && evo.plan && evo.plan.steps?.length) {
       notes.push({ ok: true, text: `Plan ready — ${evo.plan.steps.length} step${evo.plan.steps.length === 1 ? '' : 's'}` });
     }
     if (p.key === 'reflect' && evo.reflection) {
-      notes.push({ ok: evo.reflection.goal_satisfied, text: evo.reflection.goal_satisfied ? 'Goal satisfied' : 'Goal not fully satisfied' });
+      const r = evo.reflection;
+      // Older reflections have no gaps: fall back to the summary and recorded debt.
+      const why = r.gaps?.length ? r.gaps : [r.summary, ...(r.debt ?? [])].filter(Boolean);
+      notes.push({
+        ok: r.goal_satisfied,
+        text: r.goal_satisfied ? 'Goal satisfied' : 'Goal not fully satisfied',
+        explain: r.goal_satisfied ? undefined : why,
+      });
     }
     if (p.key === 'apply' && status === 'complete' && evo.new_generation != null) {
       notes.push({ ok: true, text: `Generation ${evo.new_generation} committed` });

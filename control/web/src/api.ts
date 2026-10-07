@@ -63,6 +63,7 @@ export type Check = {
 export type Reflection = {
   summary: string;
   goal_satisfied: boolean;
+  gaps?: string[];
   decisions: string[];
   learnings: string[];
   skills: string[];

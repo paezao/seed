@@ -63,6 +63,7 @@ type Check = {
 type Reflection = {
   summary: string;
   goal_satisfied: boolean;
+  gaps?: string[];                  // when not fully satisfied: what falls short, and why
   decisions: string[];
   learnings: string[];
   skills: string[];                 // skills created or improved

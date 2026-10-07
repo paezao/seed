@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
-import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
-import { shortCommit } from './api';
+import { useEffect, useRef, useState } from 'react';
+import { NavLink, Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
+import Welcome from './pages/Welcome';
+import { api, shortCommit } from './api';
 import { Logo } from './components/Logo';
 import { SeedMark } from './components/SeedMark';
 import { useApplyIdentity } from './identity';
@@ -43,8 +44,22 @@ export default function Layout() {
   const identity = status?.identity ?? null;
   useApplyIdentity(identity);
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const contentRef = useRef<HTMLElement>(null);
   useEffect(() => { contentRef.current?.scrollTo(0, 0); }, [pathname]);
+
+  // First run is a fullscreen experience: until the Seed has a brain and its
+  // owner has said what it should become, there is no control plane chrome.
+  const [welcomeDone, setWelcomeDone] = useState(false);
+  const [hasMessages, setHasMessages] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!status || status.purpose) return;
+    api.messages(1).then((m) => setHasMessages(m.length > 0)).catch(() => setHasMessages(true));
+  }, [status?.purpose, status == null]); // eslint-disable-line react-hooks/exhaustive-deps
+  const firstRun = !welcomeDone && !!status && (!status.model.configured || (!status.purpose && hasMessages === false));
+  if (firstRun) {
+    return <Welcome onDone={() => { setWelcomeDone(true); navigate('/'); }} />;
+  }
 
   return (
     <div className="app">

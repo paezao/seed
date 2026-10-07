@@ -61,12 +61,14 @@ type Check struct {
 }
 
 type Reflection struct {
-	Summary       string   `json:"summary"`
-	GoalSatisfied bool     `json:"goal_satisfied"`
-	Decisions     []string `json:"decisions"`
-	Learnings     []string `json:"learnings"`
-	Skills        []string `json:"skills"`
-	Debt          []string `json:"debt"`
+	Summary       string `json:"summary"`
+	GoalSatisfied bool   `json:"goal_satisfied"`
+	// Gaps say what was not satisfied and why (required when GoalSatisfied is false).
+	Gaps      []string `json:"gaps,omitempty"`
+	Decisions []string `json:"decisions"`
+	Learnings []string `json:"learnings"`
+	Skills    []string `json:"skills"`
+	Debt      []string `json:"debt"`
 }
 
 type Evolution struct {
