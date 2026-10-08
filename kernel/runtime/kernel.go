@@ -165,7 +165,7 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 			return nil, err
 		}
 	}
-	if err := k.Admin.EnsureReader(ctx, readRole, readPass, cfg.DBName("app")); err != nil {
+	if err := k.Admin.EnsureReader(ctx, readRole, readPass, cfg.DBName("app"), role); err != nil {
 		return nil, fmt.Errorf("reader role: %w", err)
 	}
 

@@ -116,6 +116,16 @@ func (r *Registry) Execute(ctx context.Context, call models.ToolCall) Outcome {
 		out.Result.Content = "invalid JSON arguments (if you were writing a large file, your output may have been cut off by the token limit: write it in smaller pieces)"
 		return out
 	}
+	// One canonical form of the arguments is classified, shown for approval
+	// and executed: no key the schema doesn't know, no case variants (Go
+	// would match "SQL" and "sql" to the same field), sorted, exact numbers.
+	canon, err := canonicalInput(t.Schema, input)
+	if err != nil {
+		out.Result.IsError = true
+		out.Result.Content = "invalid arguments: " + err.Error()
+		return out
+	}
+	input = canon
 	level, action := permissions.Safe, t.Name
 	if t.Classify != nil {
 		level, action = t.Classify(input)
@@ -133,7 +143,7 @@ func (r *Registry) Execute(ctx context.Context, call models.ToolCall) Outcome {
 		}
 		detail = string(input)
 	}
-	err := permissions.Check(ctx, r.Policy, r.Approver, permissions.Request{
+	err = permissions.Check(ctx, r.Policy, r.Approver, permissions.Request{
 		EvolutionID: r.EvolutionID, Action: action, Level: level, Detail: detail,
 	})
 	if err != nil {
@@ -203,4 +213,37 @@ func Enum(desc string, values ...string) map[string]any {
 // Fixed returns a classifier that always reports the same level.
 func Fixed(level permissions.Level, action string) func(json.RawMessage) (permissions.Level, string) {
 	return func(json.RawMessage) (permissions.Level, string) { return level, action }
+}
+
+// canonicalInput validates a tool call's arguments against the tool's schema
+// properties (exact names only) and re-encodes them canonically.
+func canonicalInput(schema json.RawMessage, input json.RawMessage) (json.RawMessage, error) {
+	dec := json.NewDecoder(strings.NewReader(string(input)))
+	dec.UseNumber()
+	var args map[string]any
+	if err := dec.Decode(&args); err != nil {
+		return nil, fmt.Errorf("arguments must be a JSON object: %w", err)
+	}
+	var sch struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+	}
+	_ = json.Unmarshal(schema, &sch)
+	if len(sch.Properties) > 0 {
+		for k := range args {
+			if _, ok := sch.Properties[k]; !ok {
+				return nil, fmt.Errorf("unknown field %q", k)
+			}
+		}
+	}
+	lower := map[string]string{}
+	for k := range args {
+		if prev, ok := lower[strings.ToLower(k)]; ok {
+			return nil, fmt.Errorf("fields %q and %q differ only in case", prev, k)
+		}
+		lower[strings.ToLower(k)] = k
+	}
+	if args == nil {
+		args = map[string]any{}
+	}
+	return json.Marshal(args) // map keys are sorted
 }

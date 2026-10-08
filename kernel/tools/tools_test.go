@@ -195,3 +195,28 @@ func TestDangerousApprovalsShowEverything(t *testing.T) {
 		t.Fatal("requests too large to review must be refused without asking")
 	}
 }
+
+func TestArgumentsAreCanonical(t *testing.T) {
+	var ran string
+	r := NewRegistry(permissions.NewPolicy("allow", "allow", "allow", nil), nil)
+	r.Add(&Tool{Name: "change", Schema: Schema(Props{"sql": Str(""), "reason": Str("")}, "sql"),
+		Classify: Fixed(permissions.Dangerous, "change"),
+		Run: func(_ context.Context, in json.RawMessage) (string, error) {
+			var a struct{ SQL string }
+			_ = json.Unmarshal(in, &a)
+			ran = a.SQL
+			return "ok", nil
+		}})
+	call := func(raw string) Outcome {
+		return r.Execute(context.Background(), models.ToolCall{ID: "x", Name: "change", Input: json.RawMessage(raw)})
+	}
+	if o := call(`{"sql":"SELECT 1","SQL":"DROP TABLE recipes"}`); !o.Result.IsError || ran != "" {
+		t.Fatalf("case-variant keys must be rejected: %+v ran=%q", o.Result, ran)
+	}
+	if o := call(`{"sql":"SELECT 1","extra":"x"}`); !o.Result.IsError {
+		t.Fatal("unknown fields must be rejected")
+	}
+	if o := call(`{"sql":"SELECT 2"}`); o.Result.IsError || ran != "SELECT 2" {
+		t.Fatalf("valid call: %+v ran=%q", o.Result, ran)
+	}
+}

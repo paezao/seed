@@ -85,24 +85,42 @@ func (a Admin) EnsureDatabase(ctx context.Context, name, owner string) error {
 	return nil
 }
 
-// EnsureReader makes role a login role that can read every table in db and
-// change nothing (pg_read_all_data, CONNECT on db only).
-func (a Admin) EnsureReader(ctx context.Context, role, password, db string) error {
+// EnsureReader makes role a login role that can read the tables of db's
+// public schema (owned by owner, including tables it creates later) and
+// nothing else: no other database, no writes.
+func (a Admin) EnsureReader(ctx context.Context, role, password, db, owner string) error {
 	if err := a.EnsureRole(ctx, role, password); err != nil {
 		return err
 	}
+	r := pgx.Identifier{role}.Sanitize()
 	c, err := a.conn(ctx)
 	if err != nil {
 		return err
 	}
-	defer c.Close(ctx)
-	r := pgx.Identifier{role}.Sanitize()
 	for _, stmt := range []string{
-		"GRANT pg_read_all_data TO " + r,
+		"REVOKE pg_read_all_data FROM " + r, // granted by earlier versions
 		"GRANT CONNECT ON DATABASE " + pgx.Identifier{db}.Sanitize() + " TO " + r,
 		"ALTER ROLE " + r + " SET default_transaction_read_only = on",
 	} {
 		if _, err := c.Exec(ctx, stmt); err != nil {
+			c.Close(ctx)
+			return fmt.Errorf("%s: %w", stmt, err)
+		}
+	}
+	c.Close(ctx)
+	// Privileges inside the database itself.
+	in, err := pgx.Connect(ctx, a.DatabaseURL(db, "", "", ""))
+	if err != nil {
+		return err
+	}
+	defer in.Close(ctx)
+	o := pgx.Identifier{owner}.Sanitize()
+	for _, stmt := range []string{
+		"GRANT USAGE ON SCHEMA public TO " + r,
+		"GRANT SELECT ON ALL TABLES IN SCHEMA public TO " + r,
+		"ALTER DEFAULT PRIVILEGES FOR ROLE " + o + " IN SCHEMA public GRANT SELECT ON TABLES TO " + r,
+	} {
+		if _, err := in.Exec(ctx, stmt); err != nil {
 			return fmt.Errorf("%s: %w", stmt, err)
 		}
 	}
