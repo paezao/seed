@@ -163,7 +163,11 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   script (`/_seed/badge.js`). The script asks `/_seed/badge` whether this browser is the
   owner's: the session cookie is sent, and the answer is only yes (200) or no (204), never a
   token. It then shows a small floating link back to `/_seed/` in a closed shadow root. The
-  organism's own scripts can ask the same question and learn only whether the owner is looking.
+  organism's own scripts can ask the same question, so **an organism can tell when its owner is
+  the one looking**: compromised organism code could behave well only then. That's the price of
+  showing something only to the owner on the organism's own page. The badge is on by default and
+  can be switched off in Settings. Turned off, `/_seed/badge` answers no to everyone and nothing
+  is injected.
   Pages are rewritten only when uncompressed and under 8 MB. Admin screens (the
   `organism.localhost` origin) and API responses are never touched.
 

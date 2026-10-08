@@ -20,6 +20,7 @@ import (
 	"seed/kernel/update"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"seed/kernel/config"
@@ -74,6 +75,8 @@ type Kernel struct {
 	Routines *Scheduler
 	// Updates brings me new kernels from signed releases.
 	Updates *KernelUpdates
+	// badgeOff: my owner turned off the badge on my organism's pages.
+	badgeOff atomic.Bool
 	// cookieName is unique per Seed: browsers share cookies across ports, so
 	// Seeds on the same machine must not overwrite each other's sessions.
 	cookieName string
@@ -282,6 +285,10 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	k.Routines = &Scheduler{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Agent: k.Chat, Jobs: k.Organism}
 	k.Chat.Routines = k.Routines
 	k.Organism.JobToken = randomHex(24)
+	if v, err := k.Store.Setting(ctx, settingBadge); err == nil && v == "off" {
+		k.badgeOff.Store(true)
+	}
+	k.Organism.Badge = func() bool { return !k.badgeOff.Load() }
 	k.Updates = &KernelUpdates{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Restart: k.requestRestart,
 		Busy: func() bool { return k.Orch.Active(context.Background()) != nil }}
 	if os.Getenv("SEED_UPDATES") != "off" {

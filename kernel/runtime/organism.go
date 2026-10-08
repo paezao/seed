@@ -48,6 +48,8 @@ type Organism struct {
 	// calls from anyone else's. AfterDeploy runs once a generation is live.
 	JobToken    string
 	AfterDeploy func()
+	// Badge reports whether my owner wants the badge on my pages (badge.go).
+	Badge func() bool
 
 	mu     sync.Mutex
 	sb     sandbox.Sandbox
@@ -265,6 +267,9 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			resp.Header.Set("Cross-Origin-Opener-Policy", "unsafe-none")
 			resp.Header.Del("Service-Worker-Allowed")
 			restrictFraming(resp.Header, resp.Request.Host)
+			if o.Badge != nil && !o.Badge() {
+				return nil
+			}
 			return injectBadge(resp)
 		}
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {

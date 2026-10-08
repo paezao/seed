@@ -62,7 +62,16 @@ func TestBadgeAnswersOnlyYesOrNo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	k.badgeOff.Store(true)
+	off := httptest.NewRequest("GET", "/_seed/badge", nil)
+	off.AddCookie(&http.Cookie{Name: k.cookieName, Value: secret})
 	w := httptest.NewRecorder()
+	k.handleBadge(w, off)
+	if w.Code != http.StatusNoContent {
+		t.Fatal("turned off: no badge, even for my owner")
+	}
+	k.badgeOff.Store(false)
+	w = httptest.NewRecorder()
 	k.handleBadge(w, httptest.NewRequest("GET", "/_seed/badge", nil))
 	if w.Code != http.StatusNoContent || w.Body.Len() != 0 {
 		t.Fatalf("visitors: no badge: %d", w.Code)

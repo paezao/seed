@@ -1334,3 +1334,10 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 .evo-compact { display: grid; gap: 8px; }
 .evo-compact > * { margin-top: 0; margin-bottom: 0; }
 .evo-compact .evo-expand { justify-self: start; }
+
+/* Settings: badge switch */
+.badge-switch { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.switch-row { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; }
+.switch-row input { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--accent); flex-shrink: 0; }
+.switch-row > span { display: grid; gap: 3px; }
+.switch-title { font-size: 14px; font-weight: 500; }

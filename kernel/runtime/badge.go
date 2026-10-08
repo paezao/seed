@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -87,10 +88,13 @@ func injectBadge(resp *http.Response) error {
 	return nil
 }
 
+const settingBadge = "owner_badge"
+
 // handleBadge answers whether this browser is my owner's (yes: 200, no: 204).
+// Turned off, it answers no to everyone.
 func (k *Kernel) handleBadge(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if _, ok := k.pageToken(r); !ok {
+	if _, ok := k.pageToken(r); !ok || k.badgeOff.Load() {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -170,3 +174,26 @@ const badgeJS = `(() => {
   }).catch(() => {});
 })();
 `
+
+// handleBadgeSetting shows or sets whether the badge is on (Settings).
+func (k *Kernel) handleBadgeSetting(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		v := "on"
+		if !body.Enabled {
+			v = "off"
+		}
+		if err := k.Store.SetSetting(r.Context(), settingBadge, v); err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+		k.badgeOff.Store(!body.Enabled)
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"enabled": !k.badgeOff.Load()})
+}

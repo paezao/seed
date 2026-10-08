@@ -372,6 +372,8 @@ export const api = {
   revokeOutbound: (kind: 'host' | 'secret', value: string) => request<Outbound>('POST', '/outbound/revoke', { kind, value }),
   ownerSessions: () => request<OwnerSession[]>('GET', '/owner/sessions'),
   revokeSession: (id: string) => request<{ ok: boolean }>('POST', `/owner/sessions/${enc(id)}/revoke`),
+  badgeSetting: () => request<{ enabled: boolean }>('GET', '/owner/badge'),
+  setBadge: (enabled: boolean) => request<{ enabled: boolean }>('POST', '/owner/badge', { enabled }),
   logout: () => request<{ ok: boolean }>('POST', '/owner/logout'),
   loginLink: () => request<{ path: string; expires_at: string }>('POST', '/login-links'),
 };

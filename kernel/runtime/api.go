@@ -77,6 +77,8 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/owner/sessions", k.handleOwnerSessions)
 	mux.HandleFunc("POST "+api+"/owner/sessions/{id}/revoke", k.handleRevokeSession)
 	mux.HandleFunc("POST "+api+"/owner/logout", k.handleLogout)
+	mux.HandleFunc("GET "+api+"/owner/badge", k.handleBadgeSetting)
+	mux.HandleFunc("POST "+api+"/owner/badge", k.handleBadgeSetting)
 	mux.HandleFunc(api+"/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, errors.New("no such endpoint"))
 	})
