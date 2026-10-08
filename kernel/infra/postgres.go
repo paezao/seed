@@ -216,6 +216,12 @@ func (a Admin) ListDatabases(ctx context.Context, prefix string) ([]string, erro
 // DatabaseURL derives a connection URL for database db from the admin URL,
 // optionally replacing credentials and host. host may be "host:port" or an
 // absolute Unix socket directory (e.g. the socket as mounted in a sandbox).
+//
+// A URL for another role (user set) carries none of the admin's connection
+// parameters except an allowlist: query parameters can hold credentials too
+// (password=, user=, passfile=, service=, client keys) and take precedence
+// over the URL's user part, so they would hand the admin's identity to code
+// that gets this URL (my organism, evolutions).
 func (a Admin) DatabaseURL(db, user, password, host string) string {
 	u, err := url.Parse(a.URL)
 	if err != nil {
@@ -224,13 +230,20 @@ func (a Admin) DatabaseURL(db, user, password, host string) string {
 	u.Path = "/" + db
 	if user != "" {
 		u.User = url.UserPassword(user, password)
+		kept := url.Values{}
+		for k, v := range u.Query() {
+			if safeParams[k] {
+				kept[k] = v
+			}
+		}
+		u.RawQuery = kept.Encode()
 	}
 	switch {
 	case strings.HasPrefix(host, "/"):
 		// A Unix socket: TLS settings (and certificate paths, which are
 		// mine, not the sandbox's) don't apply.
 		q := u.Query()
-		for _, k := range []string{"sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword", "port"} {
+		for _, k := range []string{"sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword", "port", "hostaddr"} {
 			q.Del(k)
 		}
 		q.Set("host", host)
@@ -241,6 +254,9 @@ func (a Admin) DatabaseURL(db, user, password, host string) string {
 	}
 	return u.String()
 }
+
+// safeParams may be copied from the admin URL into another role's URL.
+var safeParams = map[string]bool{"sslmode": true, "connect_timeout": true, "application_name": true, "target_session_attrs": true}
 
 func quoteLiteral(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
