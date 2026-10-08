@@ -4,8 +4,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"seed/kernel/knowledge"
 )
 
 func pageResp(t *testing.T, host, dest, ctype, enc, body string) *http.Response {
@@ -96,5 +100,31 @@ func TestInjectBadgeIndexesTheOriginalBytes(t *testing.T) {
 	got := bodyOf(t, r)
 	if !strings.Contains(got, "<p>end</p>"+badgeScriptTag+"</BODY>") {
 		t.Fatalf("the script goes right before </BODY>: %q", got[len(got)-120:])
+	}
+}
+
+func TestBadgeShowsWhoIAmNow(t *testing.T) {
+	k, _ := ownerKernel(t)
+	secret, _ := k.Owner.Redeem(t.Context(), k.Owner.NewLoginCode(), "")
+	ask := func() string {
+		req := httptest.NewRequest("GET", "/_seed/badge", nil)
+		req.AddCookie(&http.Cookie{Name: k.cookieName, Value: secret})
+		w := httptest.NewRecorder()
+		k.handleBadge(w, req)
+		return w.Body.String()
+	}
+	if strings.Contains(ask(), "logo") {
+		t.Fatal("no logo yet: the badge is the seed")
+	}
+	p := filepath.Join(k.Cfg.Root, knowledge.LogoPath)
+	os.MkdirAll(filepath.Dir(p), 0o755)
+	os.WriteFile(p, []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`), 0o644)
+	first := ask()
+	if !strings.Contains(first, `"logo":"/_seed/api/identity/logo?v=`) {
+		t.Fatalf("my logo, versioned: %s", first)
+	}
+	os.WriteFile(p, []byte(`<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>`), 0o644)
+	if ask() == first {
+		t.Fatal("a new logo gets a new address (no stale cached logo)")
 	}
 }

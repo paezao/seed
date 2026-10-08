@@ -162,7 +162,7 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
 - **The owner's badge.** On organism pages loaded as top-level navigations, the kernel adds one
   script (`/_seed/badge.js`). The script asks `/_seed/badge` whether this browser is the
   owner's: the session cookie is sent, and the answer is only yes (200) or no (204), never a
-  token. It then shows a small floating link back to `/_seed/` in a closed shadow root. The
+  token. It then shows a small floating link back to `/_seed/` in a closed shadow root: the Seed's current logo (as an image, which cannot run script), or the seed when it has none. The
   organism's own scripts can ask the same question, so **an organism can tell when its owner is
   the one looking**: compromised organism code could behave well only then. That's the price of
   showing something only to the owner on the organism's own page. The badge is on by default and

@@ -11,6 +11,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"seed/kernel/fsx"
+	"seed/kernel/knowledge"
 )
 
 // The owner's way back: on my organism's pages, a small floating seed that
@@ -98,8 +101,15 @@ func (k *Kernel) handleBadge(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	// The badge shows who I am now (my logo, versioned so a new one isn't
+	// hidden behind a cached old one); with no logo yet, the seed.
+	out := map[string]any{"owner": true}
+	if b, err := fsx.ReadFile(k.Cfg.Root, knowledge.LogoPath); err == nil {
+		sum := sha256.Sum256(b)
+		out["logo"] = "/_seed/api/identity/logo?v=" + hex.EncodeToString(sum[:6])
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_, _ = io.WriteString(w, `{"owner":true}`)
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 func (k *Kernel) handleBadgeScript(w http.ResponseWriter, r *http.Request) {
@@ -110,8 +120,8 @@ func (k *Kernel) handleBadgeScript(w http.ResponseWriter, r *http.Request) {
 
 const badgeJS = `(() => {
   if (window.top !== window || document.getElementById('seed-badge')) return;
-  fetch('/_seed/badge', { credentials: 'same-origin', cache: 'no-store' }).then((r) => {
-    if (r.status !== 200 || document.getElementById('seed-badge')) return;
+  fetch('/_seed/badge', { credentials: 'same-origin', cache: 'no-store' }).then((r) => r.status === 200 ? r.json() : null).then((me) => {
+    if (!me || document.getElementById('seed-badge')) return;
     const host = document.createElement('div');
     host.id = 'seed-badge';
     Object.assign(host.style, { position: 'fixed', right: '16px', bottom: '16px', zIndex: '2147483647' });
@@ -130,9 +140,9 @@ const badgeJS = `(() => {
     let swaying = null;
     const sway = () => {
       a.style.opacity = '1';
-      if (still.matches || !svg.animate || swaying) return;
+      if (still.matches || !face.animate || swaying) return;
       // A sprout in a breeze: lean, sway back, settle.
-      swaying = svg.animate([
+      swaying = face.animate([
         { transform: 'rotate(0deg) scale(1)' },
         { transform: 'rotate(-14deg) scale(1.12)', offset: 0.25 },
         { transform: 'rotate(10deg) scale(1.12)', offset: 0.5 },
@@ -143,7 +153,7 @@ const badgeJS = `(() => {
     };
     const rest = () => {
       a.style.opacity = '.9';
-      if (!still.matches && svg.animate) svg.animate([{ transform: 'scale(1.1)' }, { transform: 'scale(1)' }], { duration: 200, fill: 'forwards' });
+      if (!still.matches && face.animate) face.animate([{ transform: 'scale(1.1)' }, { transform: 'scale(1)' }], { duration: 200, fill: 'forwards' });
     };
     a.addEventListener('mouseenter', sway);
     a.addEventListener('focus', sway);
@@ -165,7 +175,18 @@ const badgeJS = `(() => {
       for (const [k, v] of Object.entries(attrs)) p.setAttribute(k, v);
       svg.appendChild(p);
     }
-    a.appendChild(svg);
+    // Who I am now: my logo (an image can't run script), or the seed.
+    let face = svg;
+    if (typeof me.logo === 'string' && me.logo.startsWith('/_seed/api/identity/logo')) {
+      const img = document.createElement('img');
+      img.src = me.logo;
+      img.alt = '';
+      img.width = 34; img.height = 34;
+      Object.assign(img.style, { display: 'block', width: '34px', height: '34px', borderRadius: '8px', transformOrigin: '50% 90%' });
+      img.addEventListener('error', () => { img.replaceWith(svg); face = svg; });
+      face = img;
+    }
+    a.appendChild(face);
     root.appendChild(a);
     const media = window.matchMedia('print');
     const print = () => { host.style.display = media.matches ? 'none' : ''; };
