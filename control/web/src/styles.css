@@ -1246,3 +1246,9 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 .active-evo.is-leaving { opacity: 0; transform: translateY(-4px); }
 @keyframes pop { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .active-evo, .active-evo-mark { transition: none; animation: none; } }
+
+.approval-warning { margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12.5px;
+  background: color-mix(in srgb, var(--bad) 12%, transparent); border: 1px solid color-mix(in srgb, var(--bad) 40%, transparent); }
+.approval-invisible, .approval-nonascii { border-radius: 3px; padding: 0 2px; color: var(--fg);
+  background: color-mix(in srgb, var(--bad) 22%, transparent); outline: 1px solid color-mix(in srgb, var(--bad) 50%, transparent); }
+.approval-nonascii sub { font-size: 9px; margin-left: 2px; opacity: 0.8; }

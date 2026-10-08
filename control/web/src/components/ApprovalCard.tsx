@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errorMessage, type Approval } from '../api';
 import { useLive } from '../live';
@@ -51,9 +51,10 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
 
 /**
  * The exact request being approved. The kernel sends the canonical arguments
- * it will execute; each field is shown verbatim (never reformatted), with
- * invisible and direction-changing characters made visible so nothing can
- * hide in plain sight.
+ * it will execute; each field is shown verbatim (never reformatted). Nothing
+ * may hide in it: invisible characters are replaced by visible ⟨U+XXXX⟩
+ * markers, and every other non-ASCII character (possible look-alikes, e.g. a
+ * Cyrillic "о" in DROP) is highlighted with its code point.
  */
 function ApprovalDetail({ detail }: { detail: string }) {
   let fields: [string, string][] | null = null;
@@ -63,23 +64,55 @@ function ApprovalDetail({ detail }: { detail: string }) {
       fields = Object.entries(parsed).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]);
     }
   } catch { /* not JSON: show as is */ }
-  if (!fields) return <pre className="approval-detail">{reveal(detail)}</pre>;
+  const all = fields ? fields : [['request', detail] as [string, string]];
+  const suspicious = all.some(([k, v]) => hasNonASCII(k) || hasNonASCII(v));
   return (
-    <dl className="approval-fields">
-      {fields.map(([k, v]) => (
-        <div key={k}>
-          <dt>{k}</dt>
-          <dd><pre className="approval-detail">{reveal(v)}</pre></dd>
+    <>
+      {suspicious && (
+        <div className="approval-warning">
+          This request contains non-ASCII characters (highlighted below). Check them carefully: some look
+          like ordinary letters or are invisible.
         </div>
-      ))}
-    </dl>
+      )}
+      <dl className="approval-fields">
+        {all.map(([k, v]) => (
+          <div key={k}>
+            <dt><Revealed text={k} /></dt>
+            <dd><pre className="approval-detail"><Revealed text={v} /></pre></dd>
+          </div>
+        ))}
+      </dl>
+    </>
   );
 }
 
-// Bidi controls, zero-width characters, other format/control characters
-// (except newline and tab) and the BOM are shown as ⟨U+XXXX⟩.
-const HIDDEN = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u00AD\u061C\u180E\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u206F\uFEFF]/g;
+function hasNonASCII(s: string): boolean {
+  return /[^\x09\x0A\x20-\x7E]/u.test(s);
+}
 
-function reveal(s: string): string {
-  return s.replace(HIDDEN, (c) => `⟨U+${c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}⟩`);
+// Invisible: control (except tab/newline), format (incl. bidi controls, zero
+// widths, tag characters), private use, surrogates, line/paragraph
+// separators, non-standard spaces, variation selectors, and other code points
+// that render as nothing.
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Co}\p{Cs}\p{Zl}\p{Zp}\p{Zs}\u{034F}\u{115F}\u{1160}\u{17B4}\u{17B5}\u{180B}-\u{180F}\u{3164}\u{FE00}-\u{FE0F}\u{FFA0}\u{E0100}-\u{E01EF}]/u;
+
+function codePoint(c: string): string {
+  return 'U+' + c.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0');
+}
+
+function Revealed({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let plain = '';
+  let i = 0;
+  for (const c of text) { // iterates code points (keeps astral characters whole)
+    const ascii = c === '\n' || c === '\t' || (c >= ' ' && c <= '~');
+    if (ascii) { plain += c; continue; }
+    if (plain) { parts.push(plain); plain = ''; }
+    const cp = codePoint(c);
+    parts.push(INVISIBLE.test(c)
+      ? <mark key={i++} className="approval-invisible" title={`invisible character ${cp}`}>⟨{cp}⟩</mark>
+      : <mark key={i++} className="approval-nonascii" title={cp}>{c}<sub>{cp}</sub></mark>);
+  }
+  if (plain) parts.push(plain);
+  return <>{parts}</>;
 }
