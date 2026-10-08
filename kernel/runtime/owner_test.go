@@ -265,6 +265,13 @@ func TestPasswordSignIn(t *testing.T) {
 	if w := postLogin(h, "owner", "correct horse battery", map[string]string{"Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors"}); w.Code != http.StatusForbidden {
 		t.Fatal("fetch() (organism scripts) must not sign in")
 	}
+	if w := postLogin(h, "owner", "correct horse battery", map[string]string{"Origin": "null", "Sec-Fetch-Site": "cross-site"}); w.Code != http.StatusForbidden {
+		t.Fatal("Origin: null from another site must be refused")
+	}
+	// What a real browser sends from the sign-in page when the referrer is hidden.
+	if w := postLogin(h, "owner", "correct horse battery", map[string]string{"Origin": "null"}); w.Code != http.StatusSeeOther {
+		t.Fatalf("Origin: null with Sec-Fetch-Site: same-origin is my own form: %d", w.Code)
+	}
 	w := postLogin(h, "owner", "correct horse battery", map[string]string{"X-Forwarded-Proto": "https"})
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("right password: %d %s", w.Code, w.Body)

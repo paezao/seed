@@ -812,7 +812,9 @@ func (k *Kernel) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, navigationOnly, http.StatusForbidden)
 		return
 	}
-	if origin := r.Header.Get("Origin"); origin != "" {
+	// Browsers send "Origin: null" when the page's referrer policy hides it;
+	// then Sec-Fetch-Site (same-origin, checked above) decides.
+	if origin := r.Header.Get("Origin"); origin != "" && origin != "null" {
 		if u, err := url.Parse(origin); err != nil || u.Host != r.Host {
 			http.Error(w, "cross-origin sign-in refused", http.StatusForbidden)
 			return
@@ -891,7 +893,8 @@ func (k *Kernel) privatePage(w http.ResponseWriter, r *http.Request, status int,
 	}
 	w.Header().Set("content-type", "text/html; charset=utf-8")
 	w.Header().Set("cache-control", "no-store")
-	w.Header().Set("Referrer-Policy", "no-referrer")
+	// same-origin (not no-referrer): the sign-in form then carries a real Origin.
+	w.Header().Set("Referrer-Policy", "same-origin")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	// My organism shares this origin: without this, an organism page could
