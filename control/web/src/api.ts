@@ -14,6 +14,14 @@ export type OwnerSession = {
   current: boolean;
 };
 
+export type OutboundGrant = { kind: 'host' | 'secret'; value: string; reason: string; granted_at: string };
+export type Outbound = {
+  hosts: OutboundGrant[];
+  secrets: (OutboundGrant & { passed: boolean })[];
+  denied: { host: string; reason: string; at: string }[];
+  available_secrets: string[];
+};
+
 export type OrganismState = 'stopped' | 'building' | 'starting' | 'running' | 'failed';
 
 export type Identity = {
@@ -309,6 +317,9 @@ export const api = {
   modelOptions: (provider: string) => request<ModelOptions>('GET', `/model/options?provider=${enc(provider)}`),
   setModel: (body: SetModelBody) => request<ModelConfig>('POST', '/model', body),
   forgetKey: (provider: string) => request<ModelConfig>('POST', '/model/forget-key', { provider }),
+  outbound: () => request<Outbound>('GET', '/outbound'),
+  grantOutbound: (body: { hosts?: string[]; secrets?: string[]; reason?: string }) => request<Outbound>('POST', '/outbound/grant', body),
+  revokeOutbound: (kind: 'host' | 'secret', value: string) => request<Outbound>('POST', '/outbound/revoke', { kind, value }),
   ownerSessions: () => request<OwnerSession[]>('GET', '/owner/sessions'),
   revokeSession: (id: string) => request<{ ok: boolean }>('POST', `/owner/sessions/${enc(id)}/revoke`),
   logout: () => request<{ ok: boolean }>('POST', '/owner/logout'),

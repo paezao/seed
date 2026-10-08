@@ -167,6 +167,9 @@ type Skill = { name: string; description: string; path: string; files: string[];
 | GET | `/logs?source=organism\|kernel&tail=500` | | `{lines: string[]}` |
 | GET | `/settings` | | redacted configuration object |
 | GET | `/extensions` | | `{id, title, path}[]` — control-plane pages contributed by the organism |
+| GET | `/outbound` | | `{hosts, secrets, denied, available_secrets}`: what the live organism may reach and read, and recently refused connections |
+| POST | `/outbound/grant` | `{hosts?, secrets?, reason?}` | same as GET, after granting |
+| POST | `/outbound/revoke` | `{kind: "host"\|"secret", value}` | same as GET, after revoking |
 | POST | `/login-links` | | `{path, expires_at}`: a one-time sign-in link (one use, 15 minutes) |
 | GET | `/owner/sessions` | | `{id, label, created_at, last_seen_at, current}[]`: signed-in browsers |
 | POST | `/owner/sessions/:id/revoke` | | `{ok}`: signs that browser out |

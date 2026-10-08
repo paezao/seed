@@ -159,6 +159,30 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   refused (`server.allowed_hosts` adds more), which defeats DNS rebinding. State-changing calls must
   be JSON and must come from the same origin.
 
+## Outbound access
+
+The live organism runs in its own network namespace with no network. Its only way out is the
+kernel's proxy, reached through a socket and exposed inside as `HTTPS_PROXY` (Go and Node honor
+it; `NODE_USE_ENV_PROXY=1` is set for Node's `fetch`):
+- **HTTPS to approved hosts only.** The proxy allows only `CONNECT` to port 443, for hosts the owner
+  approved (`api.example.com`, or `*.example.com` for subdomains). Plain HTTP, other ports and IP
+  addresses are refused. Approved hosts cannot be internal names (`localhost`, `.internal`, `.local`
+  and so on).
+- **Never somewhere private.** The proxy resolves the name itself and refuses it if any address
+  is private, loopback, link-local (cloud metadata), CGNAT, documentation or NAT64/6to4. It then
+  dials exactly the address it checked, so DNS cannot change the answer in between.
+- **Asking.** Evolutions and the chat ask with `request_outbound_access` (hosts, secret names and
+  a reason). That is a dangerous action: the owner sees exactly the request and approves or
+  denies it. The owner can also grant and revoke in Settings, where refused connections are listed.
+  Revoking a host takes effect for new connections at once.
+- **Secrets.** The organism's environment holds only the secrets the owner granted, and only if they
+  were passed at start. The owner's sign-in credentials (`SEED_*`) and the kernel's own variables
+  can never be granted. Granting or revoking a secret restarts the organism. Evolution test runs
+  never get secrets. A granted secret can be sent anywhere the organism may reach, so grant secrets
+  together with the hosts they are meant for.
+- Limits: 64 concurrent connections, 5 minutes idle. Evolution sandboxes keep general network
+  access (they install dependencies); this applies to the live organism.
+
 ## Operating on live data
 
 The chat can read live data with `query_data` or a GET `call_api`. Reads are enforced by the

@@ -6,6 +6,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 )
 
 // BwrapDriver isolates sandboxes with bubblewrap (Linux namespaces, no
@@ -28,6 +30,9 @@ type BwrapDriver struct {
 	// NoNetwork cuts network access (dependency installs then fail).
 	NoNetwork bool
 }
+
+// egressSocket is where a PrivateNetwork sandbox finds the outbound proxy's socket.
+const egressSocket = "/run/seed-egress.sock"
 
 // SandboxSocketDir is where sandboxes find the PostgreSQL socket.
 const SandboxSocketDir = "/run/seed-db"
@@ -64,6 +69,11 @@ func (d *BwrapDriver) Create(ctx context.Context, spec Spec) (Sandbox, error) {
 			// Inside the private namespace, socat bridges the socket to the
 			// process's port; it goes away with the process.
 			wrapped := `rm -f /run/organism/http.sock; socat UNIX-LISTEN:/run/organism/http.sock,fork,mode=600 TCP:127.0.0.1:$PORT & bridge=$!; trap 'kill $bridge 2>/dev/null' EXIT; ` + line
+			if spec.Egress != "" {
+				// The way out: the kernel's outbound proxy, as a local port.
+				wrapped = `socat TCP-LISTEN:` + strconv.Itoa(EgressPort) + `,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:` + egressSocket + ` & egress=$!; trap 'kill $egress 2>/dev/null' EXIT; ` + wrapped
+				wrapped = strings.Replace(wrapped, `trap 'kill $bridge 2>/dev/null' EXIT;`, `trap 'kill $bridge $egress 2>/dev/null' EXIT;`, 1)
+			}
 			return exec.Command("bwrap", d.args(spec, s.env, extra, wrapped, dir)...)
 		}
 	}
@@ -110,6 +120,9 @@ func (d *BwrapDriver) args(spec Spec, base, extra map[string]string, line, bridg
 	}
 	if bridgeDir != "" {
 		a = append(a, "--bind", bridgeDir, "/run/organism")
+		if spec.Egress != "" {
+			a = append(a, "--ro-bind", spec.Egress, egressSocket)
+		}
 	}
 
 	env := map[string]string{

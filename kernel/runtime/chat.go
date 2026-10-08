@@ -23,6 +23,8 @@ import (
 
 // Chat is the Seed's conversational interface with its owner.
 type Chat struct {
+	// Egress lets the chat ask the owner for outbound access for the organism.
+	Egress *Egress
 	Root   string
 	Store  *memory.Store
 	Bus    *events.Bus
@@ -82,6 +84,9 @@ func (c *Chat) respond(ctx context.Context) {
 	ws := &tools.Workspace{Root: c.Root, Policy: c.Policy}
 	reg.Add(tools.ReadOnlyFileTools(ws)...).Add(tools.SkillTools(skills.Library{Root: c.Root})...).Add(tools.GitTools(c.Repo, "HEAD")[2])
 	reg.Add(c.opsTools()...)
+	if c.Egress != nil {
+		reg.Add(c.Egress.RequestTool())
+	}
 	reg.Add(&tools.Tool{
 		Name:        "start_evolution",
 		Description: "Start evolving myself according to the owner's intent. The intent must be self-contained: include every relevant detail from the conversation.",

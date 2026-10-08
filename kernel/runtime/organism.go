@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,11 @@ type Organism struct {
 	Bus    *events.Bus
 	// ReaderRole can only read the live database (used to answer questions).
 	ReaderRole, ReaderPass string
+	// Egress is the organism's only way out (see egress.go); EgressSocket
+	// is where it listens. Secrets supplies the values of granted secrets.
+	Egress       *Egress
+	EgressSocket string
+	Secrets      *Secrets
 
 	mu     sync.Mutex
 	sb     sandbox.Sandbox
@@ -102,7 +108,8 @@ func (o *Organism) sandbox(ctx context.Context) (sandbox.Sandbox, error) {
 		// The live organism is unreachable from anything else in my body
 		// (in particular from evolution sandboxes running experimental code).
 		PrivateNetwork: o.Cfg.Sandbox.Driver == "bwrap",
-		Env:            map[string]string{"DATABASE_URL": o.sandboxDBURL(), "SEED_ENV": "live"},
+		Env:            o.env(),
+		Egress:         o.egressSocket(),
 		Labels:         map[string]string{"seed.name": o.Cfg.Name, "seed.role": "live"},
 	})
 	if err != nil {
@@ -297,4 +304,42 @@ func restrictFraming(h http.Header, host string) {
 	}
 	h.Add("Content-Security-Policy", "frame-ancestors 'none'")
 	h.Set("X-Frame-Options", "DENY")
+}
+
+func (o *Organism) egressSocket() string {
+	if o.Egress == nil || o.Cfg.Sandbox.Driver != "bwrap" {
+		return ""
+	}
+	return o.EgressSocket
+}
+
+// env is the live organism's environment: its database, its way out, and
+// the secrets my owner granted it (only those, and only if passed at start).
+func (o *Organism) env() map[string]string {
+	env := map[string]string{"DATABASE_URL": o.sandboxDBURL(), "SEED_ENV": "live"}
+	if o.egressSocket() != "" {
+		proxy := "http://127.0.0.1:" + strconv.Itoa(sandbox.EgressPort)
+		for _, k := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
+			env[k] = proxy
+		}
+		env["NO_PROXY"], env["no_proxy"] = "localhost,127.0.0.1", "localhost,127.0.0.1"
+		env["NODE_USE_ENV_PROXY"] = "1" // Node's fetch ignores HTTPS_PROXY without it
+	}
+	if o.Egress != nil {
+		for _, name := range o.Egress.SecretNames() {
+			if v := o.Secrets.Get(name); v != "" {
+				env[name] = v
+			}
+		}
+	}
+	return env
+}
+
+// Recreate restarts the live organism in a fresh sandbox (e.g. after its
+// granted secrets changed).
+func (o *Organism) Recreate(ctx context.Context) error {
+	o.deploy.Lock()
+	defer o.deploy.Unlock()
+	o.Stop(ctx)
+	return o.restart(ctx)
 }

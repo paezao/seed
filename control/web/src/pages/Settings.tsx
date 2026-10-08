@@ -153,6 +153,106 @@ function MindPanel() {
   );
 }
 
+const SECRET_NAME = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+function OutboundPanel() {
+  const load = useLoad(() => api.outbound(), []);
+  const [entry, setEntry] = useState('');
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const data = load.data;
+
+  const act = async (key: string, fn: () => Promise<Awaited<ReturnType<typeof api.outbound>>>) => {
+    setBusy(key);
+    setErr(null);
+    try {
+      load.setData(await fn());
+      return true;
+    } catch (e) {
+      setErr(errorMessage(e));
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  };
+  const allow = (value: string) => {
+    const v = value.trim();
+    if (!v) return;
+    const body = SECRET_NAME.test(v) ? { secrets: [v] } : { hosts: [v] };
+    void act('add', () => api.grantOutbound(body)).then((ok) => { if (ok) setEntry(''); });
+  };
+  const allowedHosts = new Set(data?.hosts.map((h) => h.value) ?? []);
+
+  return (
+    <section className="panel" aria-labelledby="outbound-h">
+      <h2 id="outbound-h">Outbound access</h2>
+      <p className="small muted">
+        My app can't reach the internet except over HTTPS to hosts you allow here, and it only sees the secrets you give it.
+        When I need more while evolving, I'll ask you first. Tests never get secrets.
+      </p>
+      {load.error && !data && <ErrorNote error={load.error} onRetry={load.reload} />}
+      {!data && load.loading && <Loading />}
+      {data && (
+        <>
+          <ul className="provider-list">
+            {data.hosts.map((h) => (
+              <li key={'h' + h.value} className="provider-row">
+                <code className="fg">{h.value}</code>
+                <span className="muted small truncate" title={h.reason}>{h.reason}</span>
+                <span className="spacer" />
+                <button className="btn btn-sm btn-danger-ghost" disabled={busy !== null} onClick={() => act('h' + h.value, () => api.revokeOutbound('host', h.value))}
+                  aria-label={`Stop allowing ${h.value}`}>{busy === 'h' + h.value ? 'Removing…' : 'Remove'}</button>
+              </li>
+            ))}
+            {data.secrets.map((s) => (
+              <li key={'s' + s.value} className="provider-row">
+                <Badge tone="warn">secret</Badge>
+                <code className="fg">{s.value}</code>
+                {!s.passed && <span className="muted small">not passed at this start</span>}
+                <span className="muted small truncate" title={s.reason}>{s.reason}</span>
+                <span className="spacer" />
+                <button className="btn btn-sm btn-danger-ghost" disabled={busy !== null} onClick={() => act('s' + s.value, () => api.revokeOutbound('secret', s.value))}
+                  aria-label={`Take ${s.value} away from the app`}>{busy === 's' + s.value ? 'Removing…' : 'Remove'}</button>
+              </li>
+            ))}
+            {data.hosts.length + data.secrets.length === 0 && (
+              <li className="provider-row muted small">Nothing yet: my app is fully offline.</li>
+            )}
+          </ul>
+          <form className="outbound-add" onSubmit={(e) => { e.preventDefault(); allow(entry); }}>
+            <label htmlFor="outbound-entry" className="small">Allow a host (<code>api.example.com</code>, <code>*.example.com</code>) or give a secret (<code>STRIPE_SECRET_KEY</code>)</label>
+            <div className="outbound-add-row">
+              <input id="outbound-entry" className="input" value={entry} onChange={(e) => setEntry(e.target.value)} placeholder="api.example.com" spellCheck={false} autoComplete="off" />
+              <button className="btn btn-sm" type="submit" disabled={busy !== null || !entry.trim()}>{busy === 'add' ? 'Allowing…' : 'Allow'}</button>
+            </div>
+            {data.available_secrets.length > 0 && (
+              <p className="small muted">Secrets you passed at start: {data.available_secrets.map((n, i) => <span key={n}>{i > 0 && ', '}<code>{n}</code></span>)}</p>
+            )}
+          </form>
+          {err && <p className="error-text small">{err}</p>}
+          {data.denied.length > 0 && (
+            <>
+              <h3>Recently refused</h3>
+              <ul className="provider-list">
+                {data.denied.slice(0, 8).map((d, i) => (
+                  <li key={i} className="provider-row">
+                    <code className="fg">{d.host || '(unknown)'}</code>
+                    <span className="muted small truncate" title={d.reason}>{d.reason} · {relTime(d.at)}</span>
+                    <span className="spacer" />
+                    {d.host && !allowedHosts.has(d.host) && d.reason.includes('not allowed') && (
+                      <button className="btn btn-sm" disabled={busy !== null} onClick={() => allow(d.host)}>Allow</button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 function SignInLink() {
   const [link, setLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -245,6 +345,7 @@ export default function Settings() {
     <div className="page">
       <PageHeader title="Settings" />
       <MindPanel />
+      <OutboundPanel />
       <OwnerPanel />
       <section className="panel" aria-labelledby="config-h">
         <h2 id="config-h">Configuration <span className="muted small" style={{ fontWeight: 400 }}>Read-only. Lives in <code>seed.yaml</code>; secrets are redacted.</span></h2>

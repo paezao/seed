@@ -16,6 +16,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -58,6 +59,9 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/model/options", k.handleModelOptions)
 	mux.HandleFunc("POST "+api+"/model", k.handleSetModel)
 	mux.HandleFunc("POST "+api+"/model/forget-key", k.handleForgetKey)
+	mux.HandleFunc("GET "+api+"/outbound", k.handleOutbound)
+	mux.HandleFunc("POST "+api+"/outbound/grant", k.handleOutboundGrant)
+	mux.HandleFunc("POST "+api+"/outbound/revoke", k.handleOutboundRevoke)
 	mux.HandleFunc("POST "+api+"/login-links", k.handleLoginLink)
 	mux.HandleFunc("GET "+api+"/owner/sessions", k.handleOwnerSessions)
 	mux.HandleFunc("POST "+api+"/owner/sessions/{id}/revoke", k.handleRevokeSession)
@@ -915,4 +919,81 @@ const navigationOnly = "the control plane can only be opened as a page, in a cur
 // refused rather than trusted.
 func isNavigation(r *http.Request) bool {
 	return r.Header.Get("Sec-Fetch-Dest") == "document" && r.Header.Get("Sec-Fetch-Mode") == "navigate"
+}
+
+// ---- outbound access
+
+type outboundSecret struct {
+	memory.EgressGrant
+	Passed bool `json:"passed"`
+}
+
+func (k *Kernel) handleOutbound(w http.ResponseWriter, r *http.Request) {
+	hosts, secrets := k.Egress.Grants()
+	passed := map[string]bool{}
+	var available []string
+	for _, n := range k.Secrets.Names() {
+		passed[n] = true
+		if _, err := ValidateSecretName(n); err == nil {
+			available = append(available, n)
+		}
+	}
+	sort.Strings(available)
+	out := struct {
+		Hosts     []memory.EgressGrant `json:"hosts"`
+		Secrets   []outboundSecret     `json:"secrets"`
+		Denied    []Denial             `json:"denied"`
+		Available []string             `json:"available_secrets"`
+	}{Hosts: hosts, Denied: k.Egress.Denials(), Available: available}
+	if out.Hosts == nil {
+		out.Hosts = []memory.EgressGrant{}
+	}
+	out.Secrets = []outboundSecret{}
+	for _, s := range secrets {
+		out.Secrets = append(out.Secrets, outboundSecret{EgressGrant: s, Passed: passed[s.Value]})
+	}
+	if out.Denied == nil {
+		out.Denied = []Denial{}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// handleOutboundGrant is my owner granting access directly (Settings).
+func (k *Kernel) handleOutboundGrant(w http.ResponseWriter, r *http.Request) {
+	var body outboundRequest
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(body.Reason) == "" {
+		body.Reason = "allowed by my owner"
+	}
+	b, _ := json.Marshal(body)
+	hosts, secrets, reason, err := k.Egress.parse(b)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := k.Egress.Grant(r.Context(), hosts, secrets, reason); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	k.handleOutbound(w, r)
+}
+
+func (k *Kernel) handleOutboundRevoke(w http.ResponseWriter, r *http.Request) {
+	var body struct{ Kind, Value string }
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&body); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	if body.Kind != "host" && body.Kind != "secret" {
+		writeErr(w, http.StatusBadRequest, errors.New("kind must be host or secret"))
+		return
+	}
+	if err := k.Egress.Revoke(r.Context(), body.Kind, body.Value); err != nil {
+		writeErr(w, http.StatusNotFound, errors.New("no such grant"))
+		return
+	}
+	k.handleOutbound(w, r)
 }

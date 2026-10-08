@@ -547,3 +547,44 @@ func (s *Store) DeleteOwnerSession(ctx context.Context, id string) error {
 	_, err := s.Pool.Exec(ctx, `DELETE FROM owner_sessions WHERE id=$1`, id)
 	return err
 }
+
+// ---- outbound access
+
+// EgressGrant is one thing the owner allowed the live organism: a host it
+// may reach, or a secret it may read.
+type EgressGrant struct {
+	Kind      string    `json:"kind"` // "host" or "secret"
+	Value     string    `json:"value"`
+	Reason    string    `json:"reason"`
+	GrantedAt time.Time `json:"granted_at"`
+}
+
+func (s *Store) EgressGrants(ctx context.Context) ([]EgressGrant, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT kind, value, reason, granted_at FROM egress_grants ORDER BY kind, value`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []EgressGrant
+	for rows.Next() {
+		var g EgressGrant
+		if err := rows.Scan(&g.Kind, &g.Value, &g.Reason, &g.GrantedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) AddEgressGrant(ctx context.Context, kind, value, reason string) error {
+	_, err := s.Pool.Exec(ctx, `INSERT INTO egress_grants (kind, value, reason) VALUES ($1,$2,$3) ON CONFLICT (kind, value) DO UPDATE SET reason=EXCLUDED.reason`, kind, value, reason)
+	return err
+}
+
+func (s *Store) DeleteEgressGrant(ctx context.Context, kind, value string) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM egress_grants WHERE kind=$1 AND value=$2`, kind, value)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}

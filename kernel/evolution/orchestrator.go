@@ -67,6 +67,10 @@ type Orchestrator struct {
 	// OnKernelChanged is called after applying a generation that changed
 	// kernel files (the running kernel binary is now stale).
 	OnKernelChanged func()
+	// ExtraTools are kernel tools every evolution gets (e.g. asking the owner
+	// for outbound access); ExtraContext adds to what I know about myself.
+	ExtraTools   func() []*tools.Tool
+	ExtraContext func(ctx context.Context) string
 
 	mu      sync.Mutex
 	wake    chan struct{}
@@ -737,6 +741,9 @@ func (o *Orchestrator) workspaceRegistry(e *memory.Evolution, ws *workspace) *to
 		Add(tools.DBTools(ws.env)...).
 		Add(tools.GitTools(ws.repo, "HEAD")...).
 		Add(tools.SkillTools(skills.Library{Root: ws.dir})...)
+	if o.ExtraTools != nil {
+		reg.Add(o.ExtraTools()...)
+	}
 	return reg
 }
 
@@ -788,6 +795,9 @@ func (o *Orchestrator) SelfContext(ctx context.Context, root string) string {
 		} else {
 			sb.WriteString("(unavailable: " + err.Error() + ")\n")
 		}
+	}
+	if o.ExtraContext != nil {
+		sb.WriteString(o.ExtraContext(ctx))
 	}
 	sb.WriteString("\n## My organism's files\n```\n" + tools.Tree(root, "organism", 300) + "\n```\n")
 	return sb.String()

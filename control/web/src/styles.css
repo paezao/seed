@@ -1256,3 +1256,8 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 /* Settings: owner sign-in */
 .owner-actions { margin-top: 12px; }
 .signin-link { display: grid; gap: 6px; }
+
+/* Settings: outbound access */
+.outbound-add { display: grid; gap: 6px; margin-top: 12px; }
+.outbound-add-row { display: flex; gap: 8px; }
+.outbound-add-row .input { flex: 1; min-width: 0; }

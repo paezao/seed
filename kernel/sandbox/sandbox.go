@@ -37,7 +37,14 @@ type Spec struct {
 	// experimental code can never call it. Exec commands keep network access
 	// (builds install dependencies).
 	PrivateNetwork bool
+	// Egress is a Unix socket (on the kernel's side) to the kernel's outbound
+	// proxy. With PrivateNetwork, long-lived processes reach it at
+	// 127.0.0.1:EgressPort inside their namespace: their only way out.
+	Egress string
 }
+
+// EgressPort is where a PrivateNetwork process finds the outbound proxy.
+const EgressPort = 3128
 
 type ExecResult struct {
 	Output   string        `json:"output"`

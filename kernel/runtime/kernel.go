@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"seed/kernel/tools"
 	"strconv"
 	"strings"
 	"time"
@@ -65,6 +66,8 @@ type Kernel struct {
 	Token string
 	// Owner holds the browsers my owner signed in with (see owner.go).
 	Owner *Owner
+	// Egress is the live organism's only way out.
+	Egress *Egress
 	// cookieName is unique per Seed: browsers share cookies across ports, so
 	// Seeds on the same machine must not overwrite each other's sessions.
 	cookieName string
@@ -210,15 +213,45 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 
 	k.Organism = &Organism{Cfg: cfg, Driver: k.Driver, Admin: k.Admin, Role: role, Pass: pass, Repo: k.Repo, Bus: k.Bus,
 		ReaderRole: readRole, ReaderPass: readPass}
+	// The organism's only way out (see egress.go), on a socket in my own
+	// /tmp (sandboxes get a private /tmp, so only the organism's bind sees it).
+	if k.Egress, err = NewEgress(ctx, k.Store); err != nil {
+		return nil, fmt.Errorf("outbound access: %w", err)
+	}
+	egressDir, err := os.MkdirTemp("", "seed-egress-")
+	if err != nil {
+		return nil, err
+	}
+	egressSock := filepath.Join(egressDir, "egress.sock")
+	egressL, err := net.Listen("unix", egressSock)
+	if err != nil {
+		return nil, fmt.Errorf("outbound proxy: %w", err)
+	}
+	_ = os.Chmod(egressSock, 0o600)
+	go func() {
+		if err := k.Egress.Serve(egressL); err != nil {
+			slog.Error("outbound proxy stopped", "err", err)
+		}
+	}()
+	k.Organism.Egress, k.Organism.EgressSocket, k.Organism.Secrets = k.Egress, egressSock, k.Secrets
+	k.Egress.OnSecretsChanged = func() {
+		go func() {
+			if err := k.Organism.Recreate(context.Background()); err != nil {
+				slog.Warn("restarting the organism with its new secrets failed", "err", err)
+			}
+		}()
+	}
 	k.Approvals = &evolution.Approvals{Store: k.Store, Bus: k.Bus}
 	k.Orch = &evolution.Orchestrator{
 		Cfg: cfg, Store: k.Store, Bus: k.Bus, Repo: k.Repo, Model: k.Mind, Driver: k.Driver,
 		Admin: k.Admin, Policy: k.Policy, Approvals: k.Approvals, Live: k.Organism,
 		DB:              evolution.DBCreds{Role: evoRole, Password: evoPass},
 		OnKernelChanged: k.requestRestart,
+		ExtraTools:      func() []*tools.Tool { return []*tools.Tool{k.Egress.RequestTool()} },
+		ExtraContext:    func(context.Context) string { return k.Egress.Describe(k.Secrets.Names()) },
 	}
 	k.Chat = &Chat{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Model: k.Mind, Orch: k.Orch, Repo: k.Repo, Policy: k.Policy,
-		Live: k.Organism, Approvals: k.Approvals}
+		Live: k.Organism, Approvals: k.Approvals, Egress: k.Egress}
 	return k, nil
 }
 
