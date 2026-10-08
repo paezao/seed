@@ -32,6 +32,7 @@ type Owner struct {
 	byID  map[string]*memory.OwnerSession // sha256(cookie secret) → session
 	byAPI map[string]string               // sha256(API token) → session id
 	codes map[string]time.Time            // sha256(one-time code) → expiry
+	ended map[string]chan struct{}        // closed when a session ends
 }
 
 const (
@@ -47,7 +48,7 @@ var ErrBadLoginCode = errors.New("this sign-in link has expired or was already u
 
 // NewOwner loads my owner's signed-in browsers.
 func NewOwner(ctx context.Context, store *memory.Store) (*Owner, error) {
-	o := &Owner{store: store, now: time.Now, byID: map[string]*memory.OwnerSession{}, byAPI: map[string]string{}, codes: map[string]time.Time{}}
+	o := &Owner{store: store, now: time.Now, byID: map[string]*memory.OwnerSession{}, byAPI: map[string]string{}, codes: map[string]time.Time{}, ended: map[string]chan struct{}{}}
 	sessions, err := store.OwnerSessions(ctx)
 	if err != nil {
 		return nil, err
@@ -168,8 +169,7 @@ func (o *Owner) live(ctx context.Context, id string) bool {
 	s, ok := o.byID[id]
 	now := o.now()
 	if ok && now.After(s.ExpiresAt) {
-		delete(o.byID, id)
-		delete(o.byAPI, s.APIHash)
+		o.endLocked(s)
 		ok = false
 	}
 	touch := ok && now.Sub(s.LastSeenAt) > touchEvery
@@ -226,8 +226,7 @@ func (o *Owner) Revoke(ctx context.Context, id string) error {
 		}
 	}
 	if found != nil {
-		delete(o.byID, found.ID)
-		delete(o.byAPI, found.APIHash)
+		o.endLocked(found)
 	}
 	o.mu.Unlock()
 	if found == nil {
@@ -255,4 +254,44 @@ func truncateLabel(ua string) string {
 		}
 	}
 	return label
+}
+
+// endLocked forgets a session and closes its open streams.
+func (o *Owner) endLocked(s *memory.OwnerSession) {
+	delete(o.byID, s.ID)
+	delete(o.byAPI, s.APIHash)
+	if ch, ok := o.ended[s.ID]; ok {
+		close(ch)
+		delete(o.ended, s.ID)
+	}
+}
+
+// Ended returns a channel closed when the session ends (immediately, if it
+// already has).
+func (o *Owner) Ended(id string) <-chan struct{} {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if _, ok := o.byID[id]; !ok {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+	ch, ok := o.ended[id]
+	if !ok {
+		ch = make(chan struct{})
+		o.ended[id] = ch
+	}
+	return ch
+}
+
+// Valid reports whether a session is still live (without renewing it).
+func (o *Owner) Valid(id string) bool {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	s, ok := o.byID[id]
+	if ok && o.now().After(s.ExpiresAt) {
+		o.endLocked(s)
+		return false
+	}
+	return ok
 }

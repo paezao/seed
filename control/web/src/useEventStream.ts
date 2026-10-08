@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { API_BASE, CONTROL_TOKEN, LIVE_EVENT_NAMES, type LiveEvent } from './api';
 
 /**
- * Subscribes to the kernel's SSE stream. The browser's EventSource retries on its
- * own while the connection is merely interrupted; when it gives up (readyState
- * CLOSED, e.g. after a non-200 response) we reconnect ourselves with backoff.
+ * Subscribes to the kernel's SSE stream. It uses fetch() rather than
+ * EventSource so the API token travels in a header, never in a URL (URLs end
+ * up in proxy logs). Reconnects with backoff; a 401 means this browser was
+ * signed out, so the page reloads (and shows the sign-in page).
  *
  * `onOpen` fires on every (re)connect so callers can resync state they may have
  * missed while disconnected.
@@ -19,38 +20,67 @@ export function useEventStream(
   handlers.current = { onEvent, onOpen };
 
   useEffect(() => {
-    let es: EventSource | null = null;
     let timer: number | undefined;
     let backoff = 1000;
     let disposed = false;
+    const abort = new AbortController();
+    const names = new Set<string>(LIVE_EVENT_NAMES);
 
-    const connect = () => {
+    const dispatch = (block: string) => {
+      let name = 'message';
+      const data: string[] = [];
+      for (const line of block.split('\n')) {
+        if (line.startsWith('event:')) name = line.slice(6).trim();
+        else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
+      }
+      if (!names.has(name) || data.length === 0) return;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(data.join('\n'));
+      } catch {
+        return;
+      }
+      handlers.current.onEvent({ type: name, data: parsed } as LiveEvent);
+    };
+
+    const retry = () => {
+      setConnected(false);
       if (disposed) return;
-      es = new EventSource(`${API_BASE}/events?token=${encodeURIComponent(CONTROL_TOKEN)}`);
-      es.onopen = () => {
+      timer = window.setTimeout(connect, backoff);
+      backoff = Math.min(backoff * 2, 15000);
+    };
+
+    const connect = async () => {
+      if (disposed) return;
+      try {
+        const res = await fetch(`${API_BASE}/events`, {
+          headers: { 'X-Seed-Token': CONTROL_TOKEN, Accept: 'text/event-stream' },
+          signal: abort.signal,
+          cache: 'no-store',
+        });
+        if (res.status === 401) {
+          window.location.reload();
+          return;
+        }
+        if (!res.ok || !res.body) return retry();
         backoff = 1000;
         setConnected(true);
         handlers.current.onOpen();
-      };
-      es.onerror = () => {
-        setConnected(false);
-        if (es && es.readyState === EventSource.CLOSED) {
-          es.close();
-          es = null;
-          timer = window.setTimeout(connect, backoff);
-          backoff = Math.min(backoff * 2, 15000);
-        }
-      };
-      for (const name of LIVE_EVENT_NAMES) {
-        es.addEventListener(name, (ev) => {
-          let data: unknown;
-          try {
-            data = JSON.parse((ev as MessageEvent<string>).data);
-          } catch {
-            return;
+        const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+        let buf = '';
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += value.replace(/\r\n?/g, '\n');
+          let i: number;
+          while ((i = buf.indexOf('\n\n')) >= 0) {
+            dispatch(buf.slice(0, i));
+            buf = buf.slice(i + 2);
           }
-          handlers.current.onEvent({ type: name, data } as LiveEvent);
-        });
+        }
+        retry();
+      } catch {
+        if (!disposed) retry();
       }
     };
 
@@ -58,7 +88,7 @@ export function useEventStream(
     return () => {
       disposed = true;
       window.clearTimeout(timer);
-      es?.close();
+      abort.abort();
     };
   }, [reconnectKey]);
 

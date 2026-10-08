@@ -53,6 +53,8 @@ func TestControlUIFallsBackToIndex(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", p, nil)
 		req.AddCookie(&http.Cookie{Name: k.cookieName, Value: secret})
+		req.Header.Set("Sec-Fetch-Dest", "document")
+		req.Header.Set("Sec-Fetch-Mode", "navigate")
 		h.ServeHTTP(rec, req)
 		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<div id=\"root\">") || !strings.Contains(rec.Body.String(), apiToken(secret)) {
 			t.Fatalf("%s: %d", p, rec.Code)
@@ -62,7 +64,10 @@ func TestControlUIFallsBackToIndex(t *testing.T) {
 		}
 	}
 	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/_seed/", nil))
+	req := httptest.NewRequest("GET", "/_seed/", nil)
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized || strings.Contains(rec.Body.String(), "seed-token") {
 		t.Fatal("signed out: the private page, no token")
 	}
@@ -184,7 +189,7 @@ func TestControlToken(t *testing.T) {
 	check("/_seed/api/status", "", 401)
 	check("/_seed/api/status", "wrong", 401)
 	check("/_seed/api/status", "secret", 204)
-	check("/_seed/api/events?token=secret", "", 204)
+	check("/_seed/api/events?token=secret", "", 401) // never in a URL
 	check("/_seed/api/identity/logo", "", 204)
 	check("/api/tasks", "", 204) // organism routes
 }
@@ -208,6 +213,7 @@ func TestControlPageOnlyForNavigations(t *testing.T) {
 	r = httptest.NewRequest("GET", "/_seed/evolutions", nil)
 	r.AddCookie(&http.Cookie{Name: k.cookieName, Value: secret})
 	r.Header.Set("Sec-Fetch-Dest", "document")
+	r.Header.Set("Sec-Fetch-Mode", "navigate")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `name="seed-token" content="`+token+`"`) || rec.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" {

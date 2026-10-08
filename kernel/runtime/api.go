@@ -134,16 +134,13 @@ func organismOrigin(next http.Handler) http.Handler {
 type sessionKey struct{}
 
 // requireToken protects the control-plane API: a call must carry the CLI's
-// token or a signed-in browser's API token (header X-Seed-Token, or ?token=
-// for EventSource). The owner's cookie is deliberately not enough (see
-// Owner). The logo is public.
+// token or a signed-in browser's API token, in the X-Seed-Token header only
+// (never a URL: URLs end up in logs). The owner's cookie is deliberately not
+// enough (see Owner). The logo is public.
 func (k *Kernel) requireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/_seed/api/") && r.URL.Path != "/_seed/api/identity/logo" {
 			tok := r.Header.Get("X-Seed-Token")
-			if tok == "" {
-				tok = r.URL.Query().Get("token")
-			}
 			if subtle.ConstantTimeCompare([]byte(tok), []byte(k.Token)) != 1 {
 				id, ok := "", false
 				if k.Owner != nil {
@@ -244,8 +241,8 @@ func (k *Kernel) controlUI() http.Handler {
 		}
 		// The page carries an API token, so it is only served to real
 		// top-level navigations: never to fetch()/XHR from organism scripts.
-		if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" && dest != "document" {
-			http.Error(w, "the control plane can only be opened as a page", http.StatusForbidden)
+		if !isNavigation(r) {
+			http.Error(w, navigationOnly, http.StatusForbidden)
 			return
 		}
 		token, ok := k.pageToken(r)
@@ -374,6 +371,12 @@ func (k *Kernel) handleEvents(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 		return true
 	}
+	// A browser's stream ends the moment its session does (signed out,
+	// revoked from another browser, or expired).
+	var ended <-chan struct{}
+	if id := currentSession(r); id != "" {
+		ended = k.Owner.Ended(id)
+	}
 	send("status", k.Status(r.Context()))
 	ping := time.NewTicker(15 * time.Second)
 	defer ping.Stop()
@@ -381,7 +384,12 @@ func (k *Kernel) handleEvents(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-ended:
+			return
 		case <-ping.C:
+			if id := currentSession(r); id != "" && !k.Owner.Valid(id) {
+				return
+			}
 			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
 				return
 			}
@@ -729,8 +737,8 @@ func (k *Kernel) setOwnerCookie(w http.ResponseWriter, r *http.Request, secret s
 
 // handleLogin redeems a one-time sign-in link.
 func (k *Kernel) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" && dest != "document" {
-		http.Error(w, "sign-in links can only be opened as a page", http.StatusForbidden)
+	if !isNavigation(r) {
+		http.Error(w, navigationOnly, http.StatusForbidden)
 		return
 	}
 	secret, err := k.Owner.Redeem(r.Context(), r.URL.Query().Get("code"), r.UserAgent())
@@ -805,4 +813,15 @@ h1{font-size:22px;margin:16px 0 6px}p{color:var(--muted);margin:8px 0}.problem{c
 code{background:var(--code);border-radius:6px;padding:2px 7px;font-size:14px;color:var(--fg)}
 </style></head><body><main><img src="/_seed/api/identity/logo" alt=""><h1>`+name+` is private</h1>`+note+`
 <p>Only my owner can come in here.</p><p>To sign in, run <code>seed login</code> in my folder.</p></main></body></html>`)
+}
+
+const navigationOnly = "the control plane can only be opened as a page, in a current browser"
+
+// isNavigation reports whether a request is a top-level page load. Pages
+// that carry an API token are served only to those: organism scripts share
+// the origin, and fetch() would otherwise read the token. A browser that
+// doesn't send Fetch Metadata (Safari before 16.4) can't tell us, so it is
+// refused rather than trusted.
+func isNavigation(r *http.Request) bool {
+	return r.Header.Get("Sec-Fetch-Dest") == "document" && r.Header.Get("Sec-Fetch-Mode") == "navigate"
 }

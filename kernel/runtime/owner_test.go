@@ -42,6 +42,8 @@ func ownerKernel(t *testing.T) (*Kernel, http.Handler) {
 	return k, guardAPI(k.requireToken(mux))
 }
 
+var nav = map[string]string{"Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate"}
+
 func do(h http.Handler, method, target string, hdr map[string]string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, target, nil)
 	for k, v := range hdr {
@@ -55,7 +57,7 @@ func do(h http.Handler, method, target string, hdr map[string]string) *httptest.
 func signIn(t *testing.T, k *Kernel, h http.Handler) (cookie, token string) {
 	t.Helper()
 	code := k.Owner.NewLoginCode()
-	w := do(h, "GET", "/_seed/login?code="+code, map[string]string{"Sec-Fetch-Dest": "document"})
+	w := do(h, "GET", "/_seed/login?code="+code, nav)
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("sign-in: %d %s", w.Code, w.Body)
 	}
@@ -63,7 +65,7 @@ func signIn(t *testing.T, k *Kernel, h http.Handler) (cookie, token string) {
 	if !c.HttpOnly || c.Path != "/_seed" || c.SameSite != http.SameSiteLaxMode {
 		t.Fatalf("cookie must be HttpOnly, scoped to /_seed, SameSite=Lax: %+v", c)
 	}
-	page := do(h, "GET", "/_seed/", map[string]string{"Cookie": c.Name + "=" + c.Value})
+	page := do(h, "GET", "/_seed/", map[string]string{"Cookie": c.Name + "=" + c.Value, "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate"})
 	if !strings.HasPrefix(page.Body.String(), "page:") {
 		t.Fatalf("signed-in browser should get the page: %s", page.Body)
 	}
@@ -72,7 +74,7 @@ func signIn(t *testing.T, k *Kernel, h http.Handler) (cookie, token string) {
 
 func TestOwnerSignIn(t *testing.T) {
 	k, h := ownerKernel(t)
-	if w := do(h, "GET", "/_seed/", nil); w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "seed login") {
+	if w := do(h, "GET", "/_seed/", nav); w.Code != http.StatusUnauthorized || !strings.Contains(w.Body.String(), "seed login") {
 		t.Fatalf("strangers see the private page: %d", w.Code)
 	}
 	code := k.Owner.NewLoginCode()
@@ -113,7 +115,7 @@ func TestOwnerSignIn(t *testing.T) {
 	if w := do(h, "GET", "/_seed/api/whoami", map[string]string{"X-Seed-Token": token}); w.Code != http.StatusUnauthorized {
 		t.Fatal("token must stop working after sign-out")
 	}
-	if w := do(h, "GET", "/_seed/", map[string]string{"Cookie": cookie}); w.Code != http.StatusUnauthorized {
+	if w := do(h, "GET", "/_seed/", map[string]string{"Cookie": cookie, "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate"}); w.Code != http.StatusUnauthorized {
 		t.Fatal("cookie must stop working after sign-out")
 	}
 }
@@ -122,7 +124,7 @@ func TestLoginCodesAreOneTimeAndExpire(t *testing.T) {
 	k, h := ownerKernel(t)
 	code := k.Owner.NewLoginCode()
 	signInWith := func(c string) int {
-		return do(h, "GET", "/_seed/login?code="+c, map[string]string{"Sec-Fetch-Dest": "document"}).Code
+		return do(h, "GET", "/_seed/login?code="+c, nav).Code
 	}
 	if signInWith(code) != http.StatusSeeOther {
 		t.Fatal("first use should sign in")
@@ -168,5 +170,48 @@ func TestPrivatePageEscapesName(t *testing.T) {
 	k.privatePage(w, 401, `<script>x</script>`)
 	if strings.Contains(w.Body.String(), "<script>x") {
 		t.Fatal("problem text must be escaped")
+	}
+}
+
+func TestOldBrowsersDontGetTheToken(t *testing.T) {
+	k, h := ownerKernel(t)
+	code := k.Owner.NewLoginCode()
+	// No Fetch Metadata: could be fetch() from organism code in an old browser.
+	if w := do(h, "GET", "/_seed/login?code="+code, nil); w.Code != http.StatusForbidden {
+		t.Fatal("sign-in without Fetch Metadata must be refused")
+	}
+	secret, _ := k.Owner.Redeem(t.Context(), k.Owner.NewLoginCode(), "")
+	r := httptest.NewRequest("GET", "/_seed/", nil)
+	r.AddCookie(&http.Cookie{Name: k.cookieName, Value: secret})
+	w := httptest.NewRecorder()
+	k.controlUI().ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden || strings.Contains(w.Body.String(), apiToken(secret)) {
+		t.Fatalf("page without Fetch Metadata must not carry the token: %d", w.Code)
+	}
+}
+
+func TestStreamsEndWithTheSession(t *testing.T) {
+	k, h := ownerKernel(t)
+	_, token := signIn(t, k, h)
+	id, ok := k.Owner.SessionForToken(t.Context(), token)
+	if !ok {
+		t.Fatal("signed in")
+	}
+	ended := k.Owner.Ended(id)
+	select {
+	case <-ended:
+		t.Fatal("live session's stream must stay open")
+	default:
+	}
+	if err := k.Owner.Revoke(t.Context(), PublicID(id)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ended:
+	case <-time.After(time.Second):
+		t.Fatal("revoking must end the session's open streams")
+	}
+	if k.Owner.Valid(id) {
+		t.Fatal("revoked session is not valid")
 	}
 }
