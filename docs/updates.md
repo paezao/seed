@@ -50,13 +50,24 @@ before.
 
 ## Publishing a release
 
-1. Once: `seed release keygen --out ~/seed-release.key` prints the public key
-   for `kernel/update/keys.go`; store the private key as the repository secret
-   `SEED_RELEASE_KEY` (and somewhere safe).
-2. Tag with the notes as the message, and push:
-   `git tag -a v2026.10.20 -m "Faster evolutions. …" && git push origin v2026.10.20`.
-3. `.github/workflows/release.yml` builds the template, signs it and publishes
-   the GitHub release that Seeds find at `releases/latest`.
+Once: store the private release key as the repository secret
+`SEED_RELEASE_KEY` (and keep a copy somewhere safe). `seed release keygen --out
+~/seed-release.key` makes one and prints the public key for
+`kernel/update/keys.go`.
+
+Then either:
+
+- **From GitHub:** Actions → **release** → **Run workflow** (on `main`). The
+  version defaults to today's date (`2026.10.20`, then `2026.10.20.2`, …). The
+  notes default to the commit subjects since the last release. Write your own
+  for something friendlier: they are what owners see in the update banner.
+- **From git:** `git tag -a v2026.10.20 -m "What's new…" && git push origin
+  v2026.10.20` (the tag's message is the notes).
+
+The workflow checks the secret first, so nothing is tagged without it. Then it
+checks the code builds, tags (when run from the button), builds the template
+stamped with the version and time, signs it and publishes the GitHub release
+that Seeds find at `releases/latest`.
 
 To rotate the key, ship a release that adds the new public key, then sign
 with the new key from the next release on.

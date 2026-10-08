@@ -1,33 +1,104 @@
-# Publishes a signed kernel release when a version tag is pushed:
-#   git tag -a v2026.10.20 -m "What's new (markdown, shown in Seeds' update banner)"
-#   git push origin v2026.10.20
+# Publishes a signed kernel release. Two ways:
+#   - Actions → release → Run workflow (version and notes optional), or
+#   - push a tag: git tag -a v2026.10.20 -m "notes" && git push origin v2026.10.20
 # Seeds check releases/latest and install only releases signed by a key they
 # carry (kernel/update/keys.go). The private key is the SEED_RELEASE_KEY secret.
 name: release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (empty: today, e.g. 2026.10.20, with .2, .3… if taken)'
+        required: false
+      notes:
+        description: "What's new, shown in Seeds' update banner (empty: the commits since the last release)"
+        required: false
 permissions:
   contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+
+      - name: Version and notes
+        id: meta
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_NOTES: ${{ inputs.notes }}
+          HAS_KEY: ${{ secrets.SEED_RELEASE_KEY != '' }}
+        run: |
+          set -euo pipefail
+          # Before anything is tagged: without the key there can be no release.
+          if [ "$HAS_KEY" != "true" ]; then echo "::error::Add the SEED_RELEASE_KEY secret first (see docs/updates.md)"; exit 1; fi
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+          else
+            if [ "$GITHUB_REF_NAME" != "main" ]; then
+              echo "::error::Release from main (this run is on $GITHUB_REF_NAME)"; exit 1
+            fi
+            version="${INPUT_VERSION#v}"
+            if [ -z "$version" ]; then
+              version="$(date -u +%Y.%m.%d)"
+              n=2; base="$version"
+              while git rev-parse -q --verify "refs/tags/v$version" >/dev/null; do version="$base.$n"; n=$((n+1)); done
+            fi
+            if ! printf '%s' "$version" | grep -Eq '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$'; then
+              echo "::error::Version must look like 2026.10.20 (or 2026.10.20.2)"; exit 1
+            fi
+            if git rev-parse -q --verify "refs/tags/v$version" >/dev/null; then
+              echo "::error::v$version already exists"; exit 1
+            fi
+            if [ -n "$INPUT_NOTES" ]; then
+              printf '%s\n' "$INPUT_NOTES" > notes.md
+            else
+              prev="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+              range="${prev:+$prev..}HEAD"
+              { echo "Changes${prev:+ since $prev}:"; echo; git log --no-merges --pretty='- %s' "$range" | head -50; } > notes.md
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Releasing $version"; cat notes.md
+
+      - name: Check it builds
+        run: go vet ./... && go build ./...
+
+      - name: Tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" -F notes.md
+          git push origin "v$VERSION"
+
       - name: Build the template
-        run: make template VERSION="${GITHUB_REF_NAME#v}"
-      - name: Release notes (the tag's message)
-        run: git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: make template VERSION="$VERSION"
+
       - name: Sign
         env:
           SEED_RELEASE_KEY: ${{ secrets.SEED_RELEASE_KEY }}
+          VERSION: ${{ steps.meta.outputs.version }}
         run: |
           go run ./cmd/seed release sign --template kernel/template/assets/template.tar.gz \
-            --dockerfile Dockerfile --version "${GITHUB_REF_NAME#v}" --notes notes.md --out dist
+            --dockerfile Dockerfile --version "$VERSION" --notes notes.md --out dist
+
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Kernel ${GITHUB_REF_NAME#v}" --notes-file notes.md
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: gh release create "v$VERSION" dist/* --title "Kernel $VERSION" --notes-file notes.md --verify-tag
