@@ -35,7 +35,7 @@ func (c *Chat) opsTools() []*tools.Tool {
 				if err := json.Unmarshal(in, &a); err != nil {
 					return "", err
 				}
-				return tools.QueryTx(ctx, live.DatabaseURL(), a.SQL, 100, true)
+				return tools.QueryTx(ctx, live.ReaderURL(), a.SQL, 100, true)
 			},
 		},
 		{

@@ -85,6 +85,30 @@ func (a Admin) EnsureDatabase(ctx context.Context, name, owner string) error {
 	return nil
 }
 
+// EnsureReader makes role a login role that can read every table in db and
+// change nothing (pg_read_all_data, CONNECT on db only).
+func (a Admin) EnsureReader(ctx context.Context, role, password, db string) error {
+	if err := a.EnsureRole(ctx, role, password); err != nil {
+		return err
+	}
+	c, err := a.conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer c.Close(ctx)
+	r := pgx.Identifier{role}.Sanitize()
+	for _, stmt := range []string{
+		"GRANT pg_read_all_data TO " + r,
+		"GRANT CONNECT ON DATABASE " + pgx.Identifier{db}.Sanitize() + " TO " + r,
+		"ALTER ROLE " + r + " SET default_transaction_read_only = on",
+	} {
+		if _, err := c.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("%s: %w", stmt, err)
+		}
+	}
+	return nil
+}
+
 // DropDatabase drops a database, terminating connections to it.
 func (a Admin) DropDatabase(ctx context.Context, name string) error {
 	c, err := a.conn(ctx)

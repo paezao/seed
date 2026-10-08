@@ -164,7 +164,34 @@ func TestQueryTxReadOnlyRefusesWrites(t *testing.T) {
 	if _, err := QueryTx(ctx, url, "DELETE FROM recipes", 10, true); err == nil || !strings.Contains(err.Error(), "read-only") {
 		t.Fatalf("a read-only query must not be able to write: %v", err)
 	}
+	// Ending the read-only transaction early must not open a way to write.
+	if _, err := QueryTx(ctx, url, "COMMIT; DELETE FROM recipes", 10, true); err == nil {
+		t.Fatal("a read-only query must be a single statement")
+	}
 	if out, _ := QueryTx(ctx, url, "SELECT count(*) FROM recipes", 10, true); !strings.Contains(out, "1") {
 		t.Fatal("data must be untouched")
+	}
+}
+
+type recordingApprover struct{ reqs []permissions.Request }
+
+func (r *recordingApprover) Approve(_ context.Context, req permissions.Request) (bool, error) {
+	r.reqs = append(r.reqs, req)
+	return false, nil
+}
+
+func TestDangerousApprovalsShowEverything(t *testing.T) {
+	appr := &recordingApprover{}
+	r := NewRegistry(permissions.NewPolicy("allow", "allow", "ask", nil), appr)
+	r.Add(&Tool{Name: "change", Schema: Schema(Props{"sql": Str("")}, "sql"), Classify: Fixed(permissions.Dangerous, "change data: fix a typo"),
+		Run: func(context.Context, json.RawMessage) (string, error) { return "ran", nil }})
+	hidden := strings.Repeat("UPDATE t SET x = 1; ", 200) + "DROP TABLE recipes;"
+	run(t, r, "change", map[string]string{"sql": hidden})
+	if len(appr.reqs) != 1 || !strings.Contains(appr.reqs[0].Detail, "DROP TABLE recipes") {
+		t.Fatal("the owner must see the complete request, including its end")
+	}
+	huge := strings.Repeat("x", 20<<10)
+	if o := run(t, r, "change", map[string]string{"sql": huge}); !o.Denied || len(appr.reqs) != 1 {
+		t.Fatal("requests too large to review must be refused without asking")
 	}
 }

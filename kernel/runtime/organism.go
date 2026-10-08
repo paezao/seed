@@ -35,6 +35,8 @@ type Organism struct {
 	Pass   string
 	Repo   *git.Repo
 	Bus    *events.Bus
+	// ReaderRole can only read the live database (used to answer questions).
+	ReaderRole, ReaderPass string
 
 	mu     sync.Mutex
 	sb     sandbox.Sandbox
@@ -52,6 +54,11 @@ func (o *Organism) dbName() string { return o.Cfg.DBName("app") }
 // DatabaseURL is the host-side URL of the live organism database.
 func (o *Organism) DatabaseURL() string {
 	return o.Admin.DatabaseURL(o.dbName(), o.Role, o.Pass, "")
+}
+
+// ReaderURL connects to the live database as the read-only role.
+func (o *Organism) ReaderURL() string {
+	return o.Admin.DatabaseURL(o.dbName(), o.ReaderRole, o.ReaderPass, "")
 }
 
 func (o *Organism) sandboxDBURL() string {

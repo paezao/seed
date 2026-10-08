@@ -130,9 +130,15 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
 
 ## Operating on live data
 
-The chat can read live data (`query_data` runs in a **read-only transaction**, so PostgreSQL itself
-refuses writes; `call_api` with GET). Changing live data (`change_data`, or a non-GET `call_api`) is
-classified dangerous: the owner approves each change, seeing the exact SQL or request, before it runs.
+The chat can read live data with `query_data` or a GET `call_api`. Reads are enforced by the
+database, not by the prompt:
+- they connect as a dedicated **reader role** (`pg_read_all_data`, CONNECT on the live database
+  only), so no SQL whatsoever can write;
+- they also run as a **single statement** in a read-only transaction.
+
+Changing live data (`change_data`, or a non-GET `call_api`) is classified dangerous, so the owner
+approves each change before it runs. Dangerous requests are shown to the owner **in full**, never
+truncated, each field rendered readably. Requests too large to review (over 16 KB) are refused.
 
 ## Known limitations (v0.1)
 

@@ -155,6 +155,19 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	if err := k.Admin.EnsureRole(ctx, evoRole, evoPass); err != nil {
 		return nil, fmt.Errorf("evolution role: %w", err)
 	}
+	// A read-only role for answering questions about live data: it can read
+	// the live database and nothing else, whatever SQL it is given.
+	readRole := cfg.DBName("reader")
+	readPass, err := k.Store.Setting(ctx, "reader_db_password")
+	if err != nil {
+		readPass = infra.RandomSecret(16)
+		if err := k.Store.SetSetting(ctx, "reader_db_password", readPass); err != nil {
+			return nil, err
+		}
+	}
+	if err := k.Admin.EnsureReader(ctx, readRole, readPass, cfg.DBName("app")); err != nil {
+		return nil, fmt.Errorf("reader role: %w", err)
+	}
 
 	// Mind: the model this Seed thinks with, chosen by its owner.
 	k.Mind = models.NewSwitchable()
@@ -165,7 +178,8 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		slog.Warn("I have no brain: start me with `seed run -e OPENROUTER_API_KEY` (or lend me a key in my control plane)")
 	}
 
-	k.Organism = &Organism{Cfg: cfg, Driver: k.Driver, Admin: k.Admin, Role: role, Pass: pass, Repo: k.Repo, Bus: k.Bus}
+	k.Organism = &Organism{Cfg: cfg, Driver: k.Driver, Admin: k.Admin, Role: role, Pass: pass, Repo: k.Repo, Bus: k.Bus,
+		ReaderRole: readRole, ReaderPass: readPass}
 	k.Approvals = &evolution.Approvals{Store: k.Store, Bus: k.Bus}
 	k.Orch = &evolution.Orchestrator{
 		Cfg: cfg, Store: k.Store, Bus: k.Bus, Repo: k.Repo, Model: k.Mind, Driver: k.Driver,

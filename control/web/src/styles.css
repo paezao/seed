@@ -449,9 +449,12 @@ button { font: inherit; color: inherit; }
 .approval-label { font-weight: 600; font-size: 13px; }
 .approval-action { display: block; font-size: 13px; color: var(--fg); overflow-wrap: anywhere; }
 .approval-detail {
-  margin: 8px 0 0; font: 12px/1.5 var(--mono); white-space: pre-wrap; color: var(--fg-2);
-  max-height: 160px; overflow: auto;
+  margin: 4px 0 0; font: 12px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word; color: var(--fg);
+  max-height: 50vh; overflow: auto;
 }
+.approval-fields { margin: 10px 0 0; display: grid; gap: 8px; }
+.approval-fields dt { font: 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.approval-fields dd { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--bg-sub); border: 1px solid var(--border); }
 .approval-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .approval-actions .link-quiet { margin-left: auto; }
 

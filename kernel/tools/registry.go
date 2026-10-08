@@ -84,6 +84,9 @@ func (r *Registry) Specs() []models.ToolSpec {
 	return specs
 }
 
+// maxReviewable bounds a dangerous request an owner is asked to approve.
+const maxReviewable = 16 << 10
+
 // Outcome is the result of executing one call.
 type Outcome struct {
 	Result   models.ToolResult
@@ -118,8 +121,20 @@ func (r *Registry) Execute(ctx context.Context, call models.ToolCall) Outcome {
 		level, action = t.Classify(input)
 	}
 	out.Level, out.Action = level, action
+	// The owner must see exactly what they approve: dangerous requests are
+	// shown in full, and anything too large to review is refused.
+	detail := truncate(string(input), 2000)
+	if level == permissions.Dangerous {
+		if len(input) > maxReviewable {
+			out.Result.IsError = true
+			out.Result.Content = fmt.Sprintf("this request is too large for my owner to review (%d bytes; limit %d): split it into smaller changes", len(input), maxReviewable)
+			out.Denied = true
+			return out
+		}
+		detail = string(input)
+	}
 	err := permissions.Check(ctx, r.Policy, r.Approver, permissions.Request{
-		EvolutionID: r.EvolutionID, Action: action, Level: level, Detail: truncate(string(input), 2000),
+		EvolutionID: r.EvolutionID, Action: action, Level: level, Detail: detail,
 	})
 	if err != nil {
 		out.Denied = errors.Is(err, permissions.ErrDenied)

@@ -32,7 +32,7 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
         <span className="muted small"><Time iso={approval.created_at} /></span>
       </div>
       <code className="approval-action">{approval.action}</code>
-      {approval.detail && <pre className="approval-detail">{approval.detail}</pre>}
+      {approval.detail && <ApprovalDetail detail={approval.detail} />}
       {error && <div className="error-text small">{error}</div>}
       <div className="approval-actions">
         <button className="btn btn-primary" disabled={!!busy} onClick={() => decide(true)}>
@@ -46,5 +46,36 @@ export function ApprovalCard({ approval }: { approval: Approval }) {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * The exact request being approved, shown in full and readably: each field of
+ * the tool input on its own, SQL and bodies as real multi-line text (the
+ * kernel never truncates dangerous requests; neither do we).
+ */
+function ApprovalDetail({ detail }: { detail: string }) {
+  let fields: [string, string][] | null = null;
+  try {
+    const parsed = JSON.parse(detail);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      fields = Object.entries(parsed).map(([k, v]) => {
+        if (typeof v === 'string') {
+          try { return [k, JSON.stringify(JSON.parse(v), null, 2)]; } catch { return [k, v]; }
+        }
+        return [k, JSON.stringify(v, null, 2)];
+      });
+    }
+  } catch { /* not JSON: show as is */ }
+  if (!fields) return <pre className="approval-detail">{detail}</pre>;
+  return (
+    <dl className="approval-fields">
+      {fields.map(([k, v]) => (
+        <div key={k}>
+          <dt>{k}</dt>
+          <dd><pre className="approval-detail">{v}</pre></dd>
+        </div>
+      ))}
+    </dl>
   );
 }

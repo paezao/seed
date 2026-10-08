@@ -291,8 +291,15 @@ func QueryTx(ctx context.Context, url, sql string, maxRows int, readOnly bool) (
 	if _, err := tx.Exec(ctx, "SET LOCAL statement_timeout = '30s'"); err != nil {
 		return "", err
 	}
-	// Simple protocol: allows several statements (e.g. a multi-step change).
-	rows, err := tx.Query(ctx, sql, pgx.QueryExecModeSimpleProtocol)
+	// Writes may be several statements (simple protocol). Reads are exactly
+	// one statement (extended protocol): otherwise "COMMIT; DELETE …" would
+	// end the read-only transaction and write anyway.
+	var rows pgx.Rows
+	if readOnly {
+		rows, err = tx.Query(ctx, sql)
+	} else {
+		rows, err = tx.Query(ctx, sql, pgx.QueryExecModeSimpleProtocol)
+	}
 	if err != nil {
 		return "", err
 	}
