@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"seed/kernel/fsx"
 	"seed/kernel/git"
@@ -25,8 +26,36 @@ import (
 // generation: the Seed's kernel files are replaced with the ones in this
 // binary's template; its organism, knowledge, data and skills are kept.
 
-// VersionPath holds a kernel's version (stamped by `make template`).
-const VersionPath = "kernel/VERSION"
+// VersionPath holds a kernel's version, and ReleasedPath when it was built
+// (both stamped by `make template`; a release's manifest must match them).
+const (
+	VersionPath  = "kernel/VERSION"
+	ReleasedPath = "kernel/RELEASED"
+)
+
+// SeedReleased is when the kernel of the Seed in dir was built (zero if
+// unknown: kernels from before this was stamped).
+func SeedReleased(dir string) time.Time {
+	b, _ := fsx.ReadFile(dir, ReleasedPath)
+	if len(b) > 64 {
+		return time.Time{}
+	}
+	t, _ := time.Parse(time.RFC3339, strings.TrimSpace(string(b)))
+	return t
+}
+
+// Stamp returns the version and build time a template archive carries.
+func Stamp(archive []byte) (string, time.Time, error) {
+	files, err := templateFiles(archive)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(string(files[ReleasedPath].data)))
+	if err != nil {
+		return "", time.Time{}, fmt.Errorf("the template has no build time (%s): %w", ReleasedPath, err)
+	}
+	return strings.TrimSpace(string(files[VersionPath].data)), t, nil
+}
 
 // evolvable directories belong to the Seed and are never replaced.
 var evolvable = []string{"organism/", "knowledge/", "skills/"}

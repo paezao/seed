@@ -35,14 +35,18 @@ func TestKernelUpdates(t *testing.T) {
 		t.Fatal(err)
 	}
 	os.WriteFile(filepath.Join(root, template.VersionPath), []byte("old\n"), 0o644)
+	os.WriteFile(filepath.Join(root, template.ReleasedPath), []byte("2020-01-01T00:00:00Z\n"), 0o644)
 	if _, err := gitCommit(ctx, root, "upgrade: pretend an older kernel\n\nKernel: old"); err != nil {
 		t.Fatal(err)
 	}
 	archive, _ := template.Archive()
 	dockerfile, _ := os.ReadFile(filepath.Join(root, "Dockerfile"))
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	newVersion, _ := template.Version()
-	m := update.Manifest{Version: newVersion, PublishedAt: time.Now().UTC().Truncate(time.Second), Notes: "Faster.",
+	newVersion, released, err := template.Stamp(archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := update.Manifest{Version: newVersion, PublishedAt: released, Notes: "Faster.",
 		Template: update.RuntimeHash(archive), TemplateSize: int64(len(archive)), Runtime: update.RuntimeHash(dockerfile)}
 	manifest, _ := json.Marshal(m)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -112,4 +116,55 @@ func TestKernelUpdates(t *testing.T) {
 
 func gitCommit(ctx context.Context, root, msg string) (string, error) {
 	return git.Open(root).CommitAll(ctx, msg)
+}
+
+func TestOlderSignedReleaseIsNotADowngradePath(t *testing.T) {
+	if !template.Available() {
+		t.Skip("binary built without a template")
+	}
+	ctx := context.Background()
+	store, err := memory.Open(ctx, testutil.Database(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	// A Seed planted from a recent kernel; its database knows nothing about
+	// releases (planted, not updated from the panel).
+	root := filepath.Join(t.TempDir(), "fresh")
+	if err := template.Create(ctx, root, "fresh"); err != nil {
+		t.Fatal(err)
+	}
+	built := template.SeedReleased(root)
+	if built.IsZero() {
+		t.Fatal("a planted kernel carries its build time")
+	}
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	dockerfile, _ := os.ReadFile(filepath.Join(root, "Dockerfile"))
+	old := update.Manifest{Version: "2025.01.01-ancient", PublishedAt: built.Add(-24 * time.Hour), Template: strings64("a"), TemplateSize: 1,
+		Runtime: update.RuntimeHash(dockerfile)}
+	manifest, _ := json.Marshal(old)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/manifest.json":
+			w.Write(manifest)
+		case "/manifest.json.sig":
+			w.Write(update.Sign(manifest, priv))
+		}
+	}))
+	defer srv.Close()
+	u := &KernelUpdates{Root: root, Store: store, Bus: events.NewBus(), Client: &update.Client{Source: srv.URL, Keys: []ed25519.PublicKey{pub}}}
+	if s, err := u.Check(ctx); err != nil || s.Available {
+		t.Fatalf("an older signed release must not be offered: %+v %v", s, err)
+	}
+	if _, err := u.Apply(ctx, false); err == nil {
+		t.Fatal("…nor installed")
+	}
+}
+
+func strings64(c string) string {
+	out := ""
+	for i := 0; i < 64; i++ {
+		out += c
+	}
+	return out
 }

@@ -18,9 +18,13 @@ date, notes, the template's SHA-256, the runtime Dockerfile's SHA-256) and
 
 - the manifest's signature verifies with a key in `kernel/update/keys.go`;
 - the downloaded template matches the manifest's hash;
-- it is newer than the release the Seed has (an older signed release can't be
-  replayed to downgrade it), and isn't a version that already failed to start
-  here;
+- the template carries the manifest's version and date (`kernel/VERSION`,
+  `kernel/RELEASED`, stamped by `make template`);
+- it is newer than the kernel the Seed is running, judged by that kernel's own
+  `kernel/RELEASED` (so it holds however the kernel got there: an update,
+  `seed upgrade`, planting or a rollback). An older signed release can't be
+  replayed to downgrade a Seed. It also must not be a version that already
+  failed to start here;
 - its runtime image is the Seed's current one. Otherwise the banner says to
   restart with `seed upgrade`, or to redeploy the new image.
 

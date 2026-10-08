@@ -6,6 +6,7 @@ WORKDIR /src
 COPY . .
 ARG SEED_VERSION=deploy
 RUN echo "$SEED_VERSION" > kernel/VERSION \
+ && date -u +%Y-%m-%dT%H:%M:%SZ > kernel/RELEASED \
  && mkdir -p kernel/template/assets \
  && tar --exclude=./kernel/template/assets/template.tar.gz -czf /tmp/template.tar.gz . \
  && mv /tmp/template.tar.gz kernel/template/assets/template.tar.gz \

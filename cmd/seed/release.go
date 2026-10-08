@@ -98,7 +98,14 @@ func cmdRelease(args []string) error {
 		if *version == "" {
 			return errors.New("--version is required")
 		}
-		m := update.Manifest{Version: *version, PublishedAt: time.Now().UTC().Truncate(time.Second), Notes: notesText,
+		tv, released, err := template.Stamp(t)
+		if err != nil {
+			return err
+		}
+		if tv != *version {
+			return fmt.Errorf("the template is version %s, not %s (build it with make template VERSION=%s)", tv, *version, *version)
+		}
+		m := update.Manifest{Version: *version, PublishedAt: released.UTC(), Notes: notesText,
 			Template: update.RuntimeHash(t), TemplateSize: int64(len(t)), Runtime: update.RuntimeHash(df)}
 		manifest, err := json.MarshalIndent(m, "", "  ")
 		if err != nil {

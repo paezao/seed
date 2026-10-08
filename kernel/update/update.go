@@ -79,8 +79,10 @@ func Sign(manifest []byte, key ed25519.PrivateKey) []byte {
 	return []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(key, manifest)) + "\n")
 }
 
-// Newer reports whether m should replace a kernel released at installed
-// (zero when unknown, e.g. a development kernel) with version current.
+// Newer reports whether m should replace the running kernel, built at
+// installed (its own stamp, kernel/RELEASED) with version current. Releases
+// must be strictly newer, so an older signed release can't be replayed to
+// downgrade a Seed.
 func Newer(m *Manifest, current string, installed time.Time) bool {
 	return m.Version != current && m.PublishedAt.After(installed)
 }

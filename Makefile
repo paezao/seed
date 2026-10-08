@@ -8,6 +8,7 @@
 
 GO      ?= go
 # Kernel version stamped into the template (what `seed upgrade` installs).
+RELEASED ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 VERSION ?= $(shell date -u +%Y.%m.%d)-$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)$(shell git diff --quiet HEAD 2>/dev/null || echo +)
 BIN     := bin/seed
 UID     := $(shell id -u)
@@ -37,6 +38,7 @@ template:
 	  | grep -zv '^kernel/template/assets/template.tar.gz$$' \
 	  | tar --null -cf - -T - | tar -C .stage -xf -
 	echo "$(VERSION)" > .stage/kernel/VERSION
+	echo "$(RELEASED)" > .stage/kernel/RELEASED
 	tar -C .stage -czf kernel/template/assets/template.tar.gz .
 	rm -rf .stage
 

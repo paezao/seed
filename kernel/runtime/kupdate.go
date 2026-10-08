@@ -61,11 +61,10 @@ type KernelStatus struct {
 }
 
 const (
-	settingInstalledAt = "kernel_release_published_at"
-	settingPending     = "kernel_update_pending"
-	settingFailed      = "kernel_update_failed"
-	checkEvery         = 6 * time.Hour
-	goodAfter          = 30 * time.Second
+	settingPending = "kernel_update_pending"
+	settingFailed  = "kernel_update_failed"
+	checkEvery     = 6 * time.Hour
+	goodAfter      = 30 * time.Second
 )
 
 // Start reports what happened at the last restart, marks this kernel good
@@ -177,10 +176,10 @@ func (u *KernelUpdates) event(ctx context.Context, ok bool, msg, log string) {
 	u.Bus.Publish("kernel", u.Status(ctx))
 }
 
-func (u *KernelUpdates) installedAt(ctx context.Context) time.Time {
-	v, _ := u.Store.Setting(ctx, settingInstalledAt)
-	t, _ := time.Parse(time.RFC3339, v)
-	return t
+// installedAt is when my running kernel was built: its own stamp, wherever
+// it came from (an update, `seed upgrade`, planting, a rollback).
+func (u *KernelUpdates) installedAt(context.Context) time.Time {
+	return template.SeedReleased(u.Root)
 }
 
 func (u *KernelUpdates) needsRuntime(m *update.Manifest) bool {
@@ -258,6 +257,10 @@ func (u *KernelUpdates) Apply(ctx context.Context, force bool) (*template.Upgrad
 	if err != nil {
 		return nil, err
 	}
+	// The template must be the release the manifest describes, stamp and all.
+	if v, at, err := template.Stamp(archive); err != nil || v != m.Version || !at.Equal(m.PublishedAt) {
+		return nil, errors.New("the release's template doesn't carry the version and date its signed manifest says")
+	}
 	res, err := template.Upgrade(ctx, u.Root, force, archive)
 	if err != nil {
 		return nil, err
@@ -265,7 +268,6 @@ func (u *KernelUpdates) Apply(ctx context.Context, force bool) (*template.Upgrad
 	if res.UpToDate {
 		return res, nil
 	}
-	_ = u.Store.SetSetting(ctx, settingInstalledAt, m.PublishedAt.Format(time.RFC3339))
 	_ = u.Store.SetSetting(ctx, settingPending, res.To)
 	_ = u.Store.SetSetting(ctx, settingFailed, "")
 	slog.Info("installed a new kernel; restarting into it", "from", res.From, "to", res.To, "generation", res.Generation)
