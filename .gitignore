@@ -7,3 +7,4 @@ kernel/template/assets/template.tar.gz
 organism/bin/
 organism/web/dist/
 .env
+.stage/

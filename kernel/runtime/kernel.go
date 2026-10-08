@@ -201,11 +201,14 @@ func (k *Kernel) requestRestart() {
 
 var genTrailer = regexp.MustCompile(`^(?:\d+\s*->\s*)?(\d+)$`)
 
-// bootstrapGenerations rebuilds the generation table from git history when
-// memory is empty (a fresh Seed, or a lost database): Git is the source of truth.
+// bootstrapGenerations brings the generation table up to date with git
+// history: Git is the source of truth. It rebuilds the table for a fresh
+// Seed (or a lost database), and records generations committed while I was
+// stopped (e.g. by `seed upgrade`).
 func (k *Kernel) bootstrapGenerations(ctx context.Context) error {
-	if _, err := k.Store.CurrentGeneration(ctx); err == nil {
-		return nil
+	known := 0
+	if g, err := k.Store.CurrentGeneration(ctx); err == nil {
+		known = g.Number
 	}
 	commits, err := k.Repo.Log(ctx, "HEAD", 1000)
 	if err != nil {
@@ -219,7 +222,11 @@ func (k *Kernel) bootstrapGenerations(ctx context.Context) error {
 		if m == nil {
 			continue
 		}
+		found++
 		n, _ := strconv.Atoi(m[1])
+		if n <= known {
+			continue
+		}
 		parent := ""
 		if i+1 < len(commits) {
 			parent = commits[i+1].Hash
@@ -232,9 +239,9 @@ func (k *Kernel) bootstrapGenerations(ctx context.Context) error {
 			ParentCommit: parent, EvolutionID: t["Evolution"]}); err != nil {
 			return err
 		}
-		found++
+		known = n
 	}
-	if found == 0 {
+	if found == 0 && known == 0 {
 		head, _ := k.Repo.Head(ctx)
 		return k.Store.AddGeneration(ctx, &memory.Generation{Number: 1, Title: "Initial seed", Commit: head})
 	}

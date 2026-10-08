@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"errors"
+	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"seed/kernel/config"
 	"seed/kernel/git"
 	"seed/kernel/infra"
+	"seed/kernel/template"
 )
 
 // A Seed runs in one container: its kernel, its private PostgreSQL, its
@@ -86,6 +88,7 @@ func cmdRun(ctx context.Context, args []string) error {
 		return followContainer(ctx, name)
 	}
 	_, _ = engine(ctx, "rm", "-f", name)
+	kernelHint(cfg.Root)
 
 	fmt.Fprintln(os.Stderr, "preparing my body (the first time builds the runtime image; it takes a few minutes)…")
 	image, err := infra.EnsureImage(ctx, runtimeImage, filepath.Join(cfg.Root, "Dockerfile"))
@@ -254,4 +257,51 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// cmdUpgrade replaces a stopped Seed's kernel with this CLI's, as a new generation.
+func cmdUpgrade(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("upgrade", flag.ContinueOnError)
+	dir := fs.String("dir", ".", "Seed directory")
+	force := fs.Bool("force", false, "upgrade even if the Seed changed its own kernel (those changes are replaced)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load(*dir)
+	if err != nil {
+		return err
+	}
+	if state, err := engine(ctx, "inspect", "-f", "{{.State.Running}}", containerName(ctx, cfg)); err == nil && state == "true" {
+		return errors.New("I'm running: stop me first (`seed stop`), then upgrade")
+	}
+	res, err := template.Upgrade(ctx, cfg.Root, *force)
+	if err != nil {
+		return err
+	}
+	if res.UpToDate {
+		fmt.Printf("My kernel is already %s.\n", res.To)
+		return nil
+	}
+	fmt.Printf("Upgraded my kernel %s → %s: generation %d (%s).\n", res.From, res.To, res.Generation, shortHash(res.Commit))
+	fmt.Printf("  %d file(s) changed, %d removed", len(res.Changed), len(res.Removed))
+	if len(res.NewSkills) > 0 {
+		fmt.Printf(", new starter skills: %s", strings.Join(res.NewSkills, ", "))
+	}
+	fmt.Println(".\n  My organism, knowledge, data and skills are unchanged.")
+	fmt.Println("\nStart me again with: seed run -e OPENROUTER_API_KEY")
+	return nil
+}
+
+// kernelHint tells the owner when this CLI carries a newer kernel.
+func kernelHint(root string) {
+	if !template.Available() {
+		return
+	}
+	latest, err := template.Version()
+	if err != nil {
+		return
+	}
+	if mine := template.SeedVersion(root); mine != latest {
+		fmt.Fprintf(os.Stderr, "A newer kernel is available (%s → %s): run `seed upgrade` while I'm stopped.\n", mine, latest)
+	}
 }

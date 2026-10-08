@@ -48,6 +48,7 @@ Usage:
   seed generations         list this Seed's generations
   seed rollback <n>        return to generation n
   seed stop                stop the Seed in the current directory
+  seed upgrade [--force]   give this Seed the kernel of this seed CLI (as a new generation)
 
 Flags for run: -e KEY[=VALUE] (secrets, repeatable), --env-file <file>, --dir <path>,
                --addr <host:port>, --open, --detach, --native
@@ -83,6 +84,8 @@ func main() {
 		err = cmdStop(ctx, args)
 	case "image":
 		err = cmdImage(ctx, args)
+	case "upgrade":
+		err = cmdUpgrade(ctx, args)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:

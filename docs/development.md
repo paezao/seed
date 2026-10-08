@@ -46,6 +46,25 @@ Overrides: `SEED_DATABASE_URL` (an external PostgreSQL instead of the private on
 `seed run --native` runs the kernel directly on your machine instead of in its container (for
 kernel development). It needs bubblewrap and PostgreSQL server binaries installed.
 
+## Upgrading a Seed's kernel
+
+A Seed builds its kernel from its own source, so a newer `seed` CLI does not change existing
+Seeds by itself. `seed run` tells you when your CLI carries a newer kernel. To upgrade:
+
+```bash
+seed stop && seed upgrade && seed run -e OPENROUTER_API_KEY
+```
+
+`seed upgrade` replaces the Seed's kernel files (`kernel/`, `cmd/`, `control/`, `docs/`, root
+files; `seed.yaml` keeps the Seed's name) with the CLI's, removes kernel files the new kernel
+no longer has, and adds new starter skills. It never touches the organism, knowledge, data or
+skills the Seed already has. It commits all of this as a **new generation** (with a `Kernel:`
+trailer), so it shows in the Seed's history and can be rolled back.
+- If the Seed has changed its own kernel (an approved kernel evolution) since its kernel was
+  last set, the upgrade refuses and lists those files; `--force` replaces them.
+- Each kernel's version (date and commit of the Seed repository) is stamped into
+  `kernel/VERSION` by `make template`.
+
 ## Tests
 
 | area | where |

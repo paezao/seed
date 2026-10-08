@@ -50,6 +50,7 @@ CLI:
 | `seed generations` | list generations (works offline from git) |
 | `seed rollback <n>` | return to generation n (recorded as a new generation) |
 | `seed stop` | stop the Seed (its folder keeps everything) |
+| `seed upgrade` | give a stopped Seed the kernel of your `seed` CLI, as a new generation |
 
 ## Documentation
 

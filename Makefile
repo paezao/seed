@@ -7,6 +7,8 @@
 #   make e2e     the canonical Seed -> todo -> priorities run (real model; costs money)
 
 GO      ?= go
+# Kernel version stamped into the template (what `seed upgrade` installs).
+VERSION ?= $(shell date -u +%Y.%m.%d)-$(shell git rev-parse --short HEAD 2>/dev/null || echo dev)$(shell git diff --quiet HEAD 2>/dev/null || echo +)
 BIN     := bin/seed
 UID     := $(shell id -u)
 GID     := $(shell id -g)
@@ -29,10 +31,14 @@ control:
 # Snapshot the pristine Seed (tracked + untracked, non-ignored files) into
 # the binary so `seed new` can plant it.
 template:
+	rm -rf .stage && mkdir .stage
 	git ls-files -co --exclude-standard -z \
 	  | xargs -0 sh -c 'for f; do [ -e "$$f" ] && printf "%s\0" "$$f"; done' sh \
 	  | grep -zv '^kernel/template/assets/template.tar.gz$$' \
-	  | tar --null -czf kernel/template/assets/template.tar.gz -T -
+	  | tar --null -cf - -T - | tar -C .stage -xf -
+	echo "$(VERSION)" > .stage/kernel/VERSION
+	tar -C .stage -czf kernel/template/assets/template.tar.gz .
+	rm -rf .stage
 
 install: build
 	install -m 0755 $(BIN) $(HOME)/.local/bin/seed
