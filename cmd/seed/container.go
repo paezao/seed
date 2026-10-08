@@ -88,6 +88,9 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	_, _ = engine(ctx, "rm", "-f", name)
 	kernelHint(cfg.Root)
+	if hint := keyHint(f.secretNames()); hint != "" {
+		fmt.Fprintln(os.Stderr, hint)
+	}
 
 	fmt.Fprintln(os.Stderr, "preparing my body (the first time builds the runtime image; it takes a few minutes)…")
 	dockerfile, err := fsx.ReadFile(cfg.Root, "Dockerfile") // confined to the Seed's folder

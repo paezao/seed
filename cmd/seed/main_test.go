@@ -81,3 +81,15 @@ func TestPlantRefusesNonEmpty(t *testing.T) {
 		t.Fatal("an existing Seed is left alone")
 	}
 }
+
+func TestKeyHint(t *testing.T) {
+	if h := keyHint([]string{"SEED_TEST_OPENROUTER_API_KEY"}); !strings.Contains(h, "-e OPENROUTER_API_KEY=$SEED_TEST_OPENROUTER_API_KEY") {
+		t.Fatalf("hint: %q", h)
+	}
+	if h := keyHint([]string{"OPENROUTER_API_KEY", "STRIPE_KEY"}); h != "" {
+		t.Fatalf("no hint when the key is passed right: %q", h)
+	}
+	if h := keyHint(nil); !strings.Contains(h, "without a brain") {
+		t.Fatalf("no key at all: %q", h)
+	}
+}

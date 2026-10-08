@@ -760,3 +760,30 @@ func cmdPlant(ctx context.Context, args []string) error {
 	}
 	return os.Remove(stage)
 }
+
+// modelKeys are the names my kernel reads a model key from.
+var modelKeys = []string{"OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY"}
+
+// keyHint warns when no model key is passed under a name I read, but one
+// seems to be passed under another (e.g. -e MY_OPENROUTER_KEY).
+func keyHint(names []string) string {
+	for _, n := range names {
+		for _, k := range modelKeys {
+			if n == k {
+				return ""
+			}
+		}
+	}
+	for _, n := range names {
+		for _, k := range modelKeys {
+			provider := strings.SplitN(k, "_", 2)[0] // OPENROUTER, ANTHROPIC, OPENAI
+			if strings.Contains(n, provider) {
+				return fmt.Sprintf("note: I read my model key from %s, not %s. Pass it as: -e %s=$%s", k, n, k, n)
+			}
+		}
+	}
+	if len(names) == 0 {
+		return "note: no model key passed; I'll start without a brain. Pass one with -e OPENROUTER_API_KEY"
+	}
+	return ""
+}
