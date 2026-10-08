@@ -93,6 +93,10 @@ type Request struct {
 	Action      string
 	Level       Level
 	Detail      string
+	// AskEveryTime: the owner must decide this request itself; an earlier
+	// approval of the same action is never reused (e.g. access the owner may
+	// since have revoked).
+	AskEveryTime bool
 }
 
 // Approver obtains a human decision. Implementations block until decided or
@@ -135,11 +139,11 @@ type Grants struct {
 func NewGrants(inner Approver) *Grants { return &Grants{inner: inner, granted: map[string]bool{}} }
 
 func (g *Grants) Approve(ctx context.Context, req Request) (bool, error) {
-	if g.granted[req.Action] {
+	if g.granted[req.Action] && !req.AskEveryTime {
 		return true, nil
 	}
 	ok, err := g.inner.Approve(ctx, req)
-	if ok && err == nil {
+	if ok && err == nil && !req.AskEveryTime {
 		g.granted[req.Action] = true
 	}
 	return ok, err

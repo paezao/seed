@@ -171,12 +171,19 @@ it; `NODE_USE_ENV_PROXY=1` is set for Node's `fetch`):
 - **Never somewhere private.** The proxy resolves the name itself and refuses it if any address
   is private, loopback, link-local (cloud metadata), CGNAT, documentation or NAT64/6to4. It then
   dials exactly the address it checked, so DNS cannot change the answer in between.
+- **The TLS server name must match.** After the tunnel opens, the proxy reads the TLS ClientHello
+  and refuses the tunnel unless its server name (SNI) is the allowed host, so a tunnel to an
+  allowed host on a shared CDN cannot reach another site there. (Fronting by the HTTP `Host`
+  header inside TLS cannot be seen by the proxy; allow hosts you trust.)
 - **Asking.** Evolutions and the chat ask with `request_outbound_access` (hosts, secret names and
   a reason). That is a dangerous action: the owner sees exactly the request and approves or
-  denies it. The owner can also grant and revoke in Settings, where refused connections are listed.
+  denies it. Exactly that request is granted. An earlier approval is never reused, so access the
+  owner revoked cannot come back without them. Refused hosts are shown (and given to the Seed)
+  only as well-formed names. The owner can also grant and revoke in Settings, where refused connections are listed.
   Revoking a host takes effect for new connections at once.
-- **Secrets.** The organism's environment holds only the secrets the owner granted, and only if they
-  were passed at start. The owner's sign-in credentials (`SEED_*`) and the kernel's own variables
+- **Secrets.** Only the live organism process gets the secrets the owner granted, and only if they
+  were passed at start. Build, install and migration commands never see them: those run outside
+  the private network. Without the bwrap driver (no private network) no secrets are given. The owner's sign-in credentials (`SEED_*`) and the kernel's own variables
   can never be granted. Granting or revoking a secret restarts the organism. Evolution test runs
   never get secrets. A granted secret can be sent anywhere the organism may reach, so grant secrets
   together with the hosts they are meant for.

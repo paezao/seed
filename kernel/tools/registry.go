@@ -29,6 +29,8 @@ type Tool struct {
 	Run      func(ctx context.Context, input json.RawMessage) (string, error)
 	// Terminal tools end the agent loop when they succeed.
 	Terminal bool
+	// AskEveryTime: approvals of this tool are never reused (see permissions.Request).
+	AskEveryTime bool
 }
 
 // Registry holds the tools available to one agent run.
@@ -144,7 +146,7 @@ func (r *Registry) Execute(ctx context.Context, call models.ToolCall) Outcome {
 		detail = string(input)
 	}
 	err = permissions.Check(ctx, r.Policy, r.Approver, permissions.Request{
-		EvolutionID: r.EvolutionID, Action: action, Level: level, Detail: detail,
+		EvolutionID: r.EvolutionID, Action: action, Level: level, Detail: detail, AskEveryTime: t.AskEveryTime,
 	})
 	if err != nil {
 		out.Denied = errors.Is(err, permissions.ErrDenied)

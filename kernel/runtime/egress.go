@@ -1,7 +1,9 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -111,6 +113,7 @@ func (e *Egress) Denials() []Denial {
 
 var (
 	hostPatternRe = regexp.MustCompile(`^(\*\.)?([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$`)
+	labelRe       = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 	secretNameRe  = regexp.MustCompile(`^[A-Z][A-Z0-9_]{1,63}$`)
 	// Names under my own control, never an organism secret.
 	reservedSecrets = map[string]bool{"DATABASE_URL": true, "PORT": true, "PATH": true, "HOME": true,
@@ -195,7 +198,37 @@ func (e *Egress) allowed(host string) bool {
 	return false
 }
 
+// safeHost is how a requested host is shown (to my owner and in my own
+// context): only well-formed names and addresses, never arbitrary text an
+// organism put in a request.
+func safeHost(raw string) string {
+	if len(raw) > 253 {
+		return "(invalid name)"
+	}
+	if ip := net.ParseIP(strings.Trim(raw, "[]")); ip != nil {
+		return ip.String()
+	}
+	if v, err := ValidateHostPattern(raw); err == nil && !strings.HasPrefix(v, "*") {
+		return v
+	}
+	if hostPatternRe.MatchString(strings.ToLower(raw)) || labelRe.MatchString(strings.ToLower(raw)) {
+		return strings.ToLower(raw) // well-formed, e.g. an internal name
+	}
+	return "(invalid name)"
+}
+
 func (e *Egress) deny(w http.ResponseWriter, host, reason string) {
+	if safe := safeHost(host); safe != host {
+		if host != "" {
+			reason = strings.ReplaceAll(reason, host, safe)
+		}
+		host = safe
+	}
+	e.record(host, reason)
+	http.Error(w, "seed: "+reason, http.StatusForbidden)
+}
+
+func (e *Egress) record(host, reason string) {
 	e.mu.Lock()
 	e.denied = append(e.denied, Denial{Host: host, Reason: reason, At: time.Now()})
 	if len(e.denied) > maxDenials {
@@ -203,8 +236,52 @@ func (e *Egress) deny(w http.ResponseWriter, host, reason string) {
 	}
 	e.mu.Unlock()
 	slog.Warn("outbound connection refused", "host", host, "reason", reason)
-	http.Error(w, "seed: "+reason, http.StatusForbidden)
 }
+
+// readClientHello reads the first TLS record (the ClientHello) and returns
+// its server name and the raw bytes to forward.
+func readClientHello(r io.Reader) (string, []byte, error) {
+	hdr := make([]byte, 5)
+	if _, err := io.ReadFull(r, hdr); err != nil {
+		return "", nil, err
+	}
+	if hdr[0] != 0x16 { // handshake
+		return "", nil, errors.New("not TLS")
+	}
+	n := int(hdr[3])<<8 | int(hdr[4])
+	if n == 0 || n > 16384 {
+		return "", nil, errors.New("bad TLS record")
+	}
+	raw := make([]byte, 5+n)
+	copy(raw, hdr)
+	if _, err := io.ReadFull(r, raw[5:]); err != nil {
+		return "", nil, err
+	}
+	var sni string
+	errStop := errors.New("stop")
+	_ = tls.Server(&helloConn{r: bytes.NewReader(raw)}, &tls.Config{
+		GetConfigForClient: func(h *tls.ClientHelloInfo) (*tls.Config, error) {
+			sni = h.ServerName
+			return nil, errStop
+		},
+	}).Handshake()
+	if sni == "" {
+		return "", nil, errors.New("no server name")
+	}
+	return sni, raw, nil
+}
+
+// helloConn feeds recorded bytes to crypto/tls's ClientHello parser.
+type helloConn struct{ r io.Reader }
+
+func (c *helloConn) Read(b []byte) (int, error)       { return c.r.Read(b) }
+func (c *helloConn) Write(b []byte) (int, error)      { return len(b), nil }
+func (c *helloConn) Close() error                     { return nil }
+func (c *helloConn) LocalAddr() net.Addr              { return &net.TCPAddr{} }
+func (c *helloConn) RemoteAddr() net.Addr             { return &net.TCPAddr{} }
+func (c *helloConn) SetDeadline(time.Time) error      { return nil }
+func (c *helloConn) SetReadDeadline(time.Time) error  { return nil }
+func (c *helloConn) SetWriteDeadline(time.Time) error { return nil }
 
 // publicIP reports whether ip is on the public internet.
 func publicIP(ip net.IP) bool {
@@ -303,6 +380,22 @@ func (e *Egress) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close()
 	if _, err := client.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n")); err != nil {
+		return
+	}
+	// The TLS server name must be the host my owner allowed: otherwise a
+	// tunnel to an allowed host on a shared CDN could reach any other site
+	// there (domain fronting by SNI).
+	_ = client.SetReadDeadline(time.Now().Add(10 * time.Second))
+	sni, hello, err := readClientHello(buf)
+	if err != nil || strings.TrimSuffix(strings.ToLower(sni), ".") != host {
+		got := sni
+		if err != nil {
+			got = "no TLS server name"
+		}
+		e.record(host, "TLS server name ("+safeHost(got)+") does not match the allowed host")
+		return
+	}
+	if _, err := upstream.Write(hello); err != nil {
 		return
 	}
 	done := make(chan struct{}, 2)

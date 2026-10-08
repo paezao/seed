@@ -16,7 +16,9 @@ type outboundRequest struct {
 	Reason  string   `json:"reason"`
 }
 
-// parse validates a request and drops what is already granted.
+// parse validates a request. It keeps everything requested, granted or not:
+// the owner approves exactly this list, and exactly this list is granted (no
+// re-check later that could grant what the owner didn't see).
 func (e *Egress) parse(input json.RawMessage) (hosts, secrets []string, reason string, err error) {
 	var req outboundRequest
 	if err := json.Unmarshal(input, &req); err != nil {
@@ -26,23 +28,20 @@ func (e *Egress) parse(input json.RawMessage) (hosts, secrets []string, reason s
 	if reason == "" {
 		return nil, nil, "", fmt.Errorf("say why the organism needs this (reason)")
 	}
+	if len(reason) > 500 {
+		return nil, nil, "", fmt.Errorf("keep the reason under 500 characters")
+	}
 	if len(req.Hosts)+len(req.Secrets) == 0 || len(req.Hosts)+len(req.Secrets) > 10 {
 		return nil, nil, "", fmt.Errorf("ask for 1 to 10 hosts and secrets at a time")
 	}
-	grantedHosts, grantedSecrets := e.Grants()
-	have := map[string]bool{}
-	for _, g := range grantedHosts {
-		have["host:"+g.Value] = true
-	}
-	for _, g := range grantedSecrets {
-		have["secret:"+g.Value] = true
-	}
+	seen := map[string]bool{}
 	for _, h := range req.Hosts {
 		v, err := ValidateHostPattern(h)
 		if err != nil {
 			return nil, nil, "", err
 		}
-		if !have["host:"+v] {
+		if !seen["h"+v] {
+			seen["h"+v] = true
 			hosts = append(hosts, v)
 		}
 	}
@@ -51,7 +50,8 @@ func (e *Egress) parse(input json.RawMessage) (hosts, secrets []string, reason s
 		if err != nil {
 			return nil, nil, "", err
 		}
-		if !have["secret:"+v] {
+		if !seen["s"+v] {
+			seen["s"+v] = true
 			secrets = append(secrets, v)
 		}
 	}
@@ -71,9 +71,12 @@ func (e *Egress) RequestTool() *tools.Tool {
 			"secrets": tools.StrList("secret names (environment variables) the organism needs, e.g. STRIPE_SECRET_KEY"),
 			"reason":  tools.Str("what the organism uses them for, in a sentence my owner will read"),
 		}, "reason"),
+		// Every request is the owner's to decide: an earlier approval (of
+		// access they may have revoked since) is never reused.
+		AskEveryTime: true,
 		Classify: func(input json.RawMessage) (permissions.Level, string) {
 			hosts, secrets, _, err := e.parse(input)
-			if err != nil || len(hosts)+len(secrets) == 0 {
+			if err != nil {
 				return permissions.Safe, "check outbound access" // Run reports the problem; nothing is granted
 			}
 			var parts []string
@@ -89,9 +92,6 @@ func (e *Egress) RequestTool() *tools.Tool {
 			hosts, secrets, reason, err := e.parse(input)
 			if err != nil {
 				return "", err
-			}
-			if len(hosts)+len(secrets) == 0 {
-				return "Already allowed: nothing new to grant.", nil
 			}
 			if err := e.Grant(ctx, hosts, secrets, reason); err != nil {
 				return "", err

@@ -76,3 +76,18 @@ func TestGrantsRemember(t *testing.T) {
 		t.Fatalf("expected 1 call to inner approver, got %d", a.calls)
 	}
 }
+
+func TestAskEveryTimeIsNeverReused(t *testing.T) {
+	inner := &countingApprover{}
+	g := NewGrants(inner)
+	req := Request{Action: "let my live organism reach api.example.com", Level: Dangerous, AskEveryTime: true}
+	g.Approve(context.Background(), req)
+	g.Approve(context.Background(), req)
+	if inner.n != 2 {
+		t.Fatalf("the owner must be asked every time, asked %d", inner.n)
+	}
+}
+
+type countingApprover struct{ n int }
+
+func (c *countingApprover) Approve(context.Context, Request) (bool, error) { c.n++; return true, nil }

@@ -513,7 +513,7 @@ func (a *approvalRecorder) Approve(ctx context.Context, req permissions.Request)
 	if a.grants == nil {
 		a.grants = map[string]bool{}
 	}
-	if a.grants[req.Action] {
+	if a.grants[req.Action] && !req.AskEveryTime {
 		return true, nil
 	}
 	if a.o.Approvals == nil {

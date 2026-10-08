@@ -108,9 +108,11 @@ func (o *Organism) sandbox(ctx context.Context) (sandbox.Sandbox, error) {
 		// The live organism is unreachable from anything else in my body
 		// (in particular from evolution sandboxes running experimental code).
 		PrivateNetwork: o.Cfg.Sandbox.Driver == "bwrap",
-		Env:            o.env(),
-		Egress:         o.egressSocket(),
-		Labels:         map[string]string{"seed.name": o.Cfg.Name, "seed.role": "live"},
+		// Only the database here: Exec commands (builds, installs, migrations)
+		// run outside the private network, so they must never hold secrets.
+		Env:    map[string]string{"DATABASE_URL": o.sandboxDBURL(), "SEED_ENV": "live"},
+		Egress: o.egressSocket(),
+		Labels: map[string]string{"seed.name": o.Cfg.Name, "seed.role": "live"},
 	})
 	if err != nil {
 		return nil, err
@@ -183,7 +185,9 @@ func (o *Organism) restart(ctx context.Context) error {
 		return err
 	}
 	o.setState("starting", "")
-	env := &tools.Env{Sandbox: sb, RunCommand: o.Cfg.Organism.Run, HealthPath: o.Cfg.Organism.Health}
+	// The live process alone gets its way out and its granted secrets: it
+	// runs in the private network, where the proxy is the only exit.
+	env := &tools.Env{Sandbox: sb, RunCommand: o.Cfg.Organism.Run, HealthPath: o.Cfg.Organism.Health, SandboxEnv: o.processEnv()}
 	if _, err := tools.StartApp(ctx, env, 60*time.Second); err != nil {
 		o.setState("failed", err.Error())
 		return err
@@ -313,23 +317,24 @@ func (o *Organism) egressSocket() string {
 	return o.EgressSocket
 }
 
-// env is the live organism's environment: its database, its way out, and
-// the secrets my owner granted it (only those, and only if passed at start).
-func (o *Organism) env() map[string]string {
-	env := map[string]string{"DATABASE_URL": o.sandboxDBURL(), "SEED_ENV": "live"}
-	if o.egressSocket() != "" {
-		proxy := "http://127.0.0.1:" + strconv.Itoa(sandbox.EgressPort)
-		for _, k := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
-			env[k] = proxy
-		}
-		env["NO_PROXY"], env["no_proxy"] = "localhost,127.0.0.1", "localhost,127.0.0.1"
-		env["NODE_USE_ENV_PROXY"] = "1" // Node's fetch ignores HTTPS_PROXY without it
+// processEnv is the live organism process's extra environment: its way out
+// and the secrets my owner granted it (only those, and only if passed at
+// start). Without the bwrap driver there is no private network to keep a
+// secret in, so none are given.
+func (o *Organism) processEnv() map[string]string {
+	env := map[string]string{}
+	if o.egressSocket() == "" {
+		return env
 	}
-	if o.Egress != nil {
-		for _, name := range o.Egress.SecretNames() {
-			if v := o.Secrets.Get(name); v != "" {
-				env[name] = v
-			}
+	proxy := "http://127.0.0.1:" + strconv.Itoa(sandbox.EgressPort)
+	for _, k := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
+		env[k] = proxy
+	}
+	env["NO_PROXY"], env["no_proxy"] = "localhost,127.0.0.1", "localhost,127.0.0.1"
+	env["NODE_USE_ENV_PROXY"] = "1" // Node's fetch ignores HTTPS_PROXY without it
+	for _, name := range o.Egress.SecretNames() {
+		if v := o.Secrets.Get(name); v != "" {
+			env[name] = v
 		}
 	}
 	return env
