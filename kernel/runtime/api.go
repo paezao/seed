@@ -66,6 +66,7 @@ func (k *Kernel) Handler() http.Handler {
 		writeErr(w, http.StatusNotFound, errors.New("no such endpoint"))
 	})
 	mux.HandleFunc("GET /_seed/login", k.handleLogin)
+	mux.HandleFunc("POST /_seed/login", k.handlePasswordLogin)
 	mux.Handle("/_seed/", k.controlUI())
 	mux.HandleFunc("/_seed", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/_seed/", http.StatusFound)
@@ -247,7 +248,7 @@ func (k *Kernel) controlUI() http.Handler {
 		}
 		token, ok := k.pageToken(r)
 		if !ok {
-			k.privatePage(w, http.StatusUnauthorized, "")
+			k.privatePage(w, r, http.StatusUnauthorized, "")
 			return
 		}
 		k.setOwnerCookie(w, r, k.ownerCookie(r)) // keep it as long as the session
@@ -747,7 +748,7 @@ func (k *Kernel) handleLogin(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/_seed/", http.StatusSeeOther)
 			return
 		}
-		k.privatePage(w, http.StatusForbidden, ErrBadLoginCode.Error()+".")
+		k.privatePage(w, r, http.StatusForbidden, ErrBadLoginCode.Error()+".")
 		return
 	}
 	k.setOwnerCookie(w, r, secret)
@@ -790,29 +791,97 @@ func (k *Kernel) handleLogout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
+// handlePasswordLogin signs in with the owner's username and password (a
+// form on the private page).
+func (k *Kernel) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
+	// A form submission from my own sign-in page, as a navigation: not a
+	// script, and not another site.
+	site := r.Header.Get("Sec-Fetch-Site")
+	if !isNavigation(r) || (site != "same-origin" && site != "none") {
+		http.Error(w, navigationOnly, http.StatusForbidden)
+		return
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		if u, err := url.Parse(origin); err != nil || u.Host != r.Host {
+			http.Error(w, "cross-origin sign-in refused", http.StatusForbidden)
+			return
+		}
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	if err := r.ParseForm(); err != nil {
+		k.privatePage(w, r, http.StatusBadRequest, "That sign-in didn't come through. Try again.")
+		return
+	}
+	secret, err := k.Owner.SignIn(r.Context(), r.PostForm.Get("username"), r.PostForm.Get("password"), clientKey(r), r.UserAgent())
+	switch {
+	case errors.Is(err, ErrTooManyTries):
+		k.privatePage(w, r, http.StatusTooManyRequests, "Too many failed sign-ins. Wait a few minutes and try again.")
+		return
+	case err != nil:
+		k.privatePage(w, r, http.StatusUnauthorized, "Wrong username or password.")
+		return
+	}
+	k.setOwnerCookie(w, r, secret)
+	w.Header().Set("cache-control", "no-store")
+	http.Redirect(w, r, "/_seed/", http.StatusSeeOther)
+}
+
+// clientKey identifies who is signing in, for rate limiting. Behind a proxy
+// (a private or loopback peer), the address the proxy appended last to
+// X-Forwarded-For; anything to its left was written by the client.
+func clientKey(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
+		if xff := r.Header.Values("X-Forwarded-For"); len(xff) > 0 {
+			parts := strings.Split(xff[len(xff)-1], ",")
+			if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
+				return last
+			}
+		}
+	}
+	return host
+}
+
 // privatePage is what anyone who isn't my signed-in owner sees.
-func (k *Kernel) privatePage(w http.ResponseWriter, status int, problem string) {
+func (k *Kernel) privatePage(w http.ResponseWriter, r *http.Request, status int, problem string) {
 	name := html.EscapeString(knowledge.Name(k.Cfg.Root))
 	note := ""
 	if problem != "" {
-		note = `<p class="problem">` + html.EscapeString(problem) + `</p>`
+		note = `<p class="problem" role="alert">` + html.EscapeString(problem) + `</p>`
+	}
+	body := `<p>Only my owner can come in here.</p><p>To sign in, run <code>seed login</code> in my folder.</p>`
+	if on, _ := k.Owner.PasswordEnabled(); on {
+		body = `<form method="post" action="/_seed/login">
+<label>Username<input name="username" autocomplete="username" required autofocus></label>
+<label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+<button type="submit">Sign in</button></form>
+<p class="small">Or run <code>seed login</code> in my folder.</p>`
 	}
 	w.Header().Set("content-type", "text/html; charset=utf-8")
 	w.Header().Set("cache-control", "no-store")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+	w.Header().Set("X-Frame-Options", "DENY")
 	w.WriteHeader(status)
 	_, _ = io.WriteString(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>`+name+`</title><link rel="icon" href="/_seed/api/identity/logo"><style>
-:root{--bg:#f6f4ee;--fg:#1d2420;--muted:#5d675f;--card:#fffdf8;--line:#e2ddd0;--code:#efeadf;--warn:#9a4a1c}
-@media (prefers-color-scheme:dark){:root{--bg:#121512;--fg:#e8ece6;--muted:#9aa49a;--card:#1a1e1a;--line:#2b312b;--code:#232823;--warn:#e9a072}}
+:root{--bg:#f6f4ee;--fg:#1d2420;--muted:#5d675f;--card:#fffdf8;--line:#e2ddd0;--code:#efeadf;--warn:#9a4a1c;--accent:#2f6b45;--on-accent:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#121512;--fg:#e8ece6;--muted:#9aa49a;--card:#1a1e1a;--line:#2b312b;--code:#232823;--warn:#e9a072;--accent:#7cc495;--on-accent:#0d140f}}
 *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
-main{max-width:420px;width:100%;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:32px 28px;text-align:center}
+main{max-width:400px;width:100%;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:32px 28px;text-align:center}
 img{width:64px;height:64px;border-radius:16px;animation:breathe 4s ease-in-out infinite}
 @keyframes breathe{50%{transform:scale(1.06)}}@media (prefers-reduced-motion:reduce){img{animation:none}}
-h1{font-size:22px;margin:16px 0 6px}p{color:var(--muted);margin:8px 0}.problem{color:var(--warn)}
-code{background:var(--code);border-radius:6px;padding:2px 7px;font-size:14px;color:var(--fg)}
-</style></head><body><main><img src="/_seed/api/identity/logo" alt=""><h1>`+name+` is private</h1>`+note+`
-<p>Only my owner can come in here.</p><p>To sign in, run <code>seed login</code> in my folder.</p></main></body></html>`)
+h1{font-size:22px;margin:16px 0 6px}p{color:var(--muted);margin:8px 0}.problem{color:var(--warn)}.small{font-size:13px;margin-top:16px}
+code{background:var(--code);border-radius:6px;padding:2px 7px;font-size:13px;color:var(--fg)}
+form{display:grid;gap:12px;margin-top:20px;text-align:left}label{display:grid;gap:4px;font-size:14px;font-weight:500}
+input{font:inherit;padding:9px 11px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--fg)}
+input:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button{font:inherit;font-weight:600;padding:10px;border:0;border-radius:10px;background:var(--accent);color:var(--on-accent);cursor:pointer;margin-top:4px}
+</style></head><body><main><img src="/_seed/api/identity/logo" alt=""><h1>`+name+` is private</h1>`+note+body+`</main></body></html>`)
 }
 
 const navigationOnly = "the control plane can only be opened as a page, in a current browser"

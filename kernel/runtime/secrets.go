@@ -23,7 +23,8 @@ const SecretsEnv = "SEED_SECRETS"
 
 // knownSecrets are always treated as secrets when present, so a platform can
 // set them without SEED_SECRETS.
-var knownSecrets = []string{"OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN"}
+var knownSecrets = []string{"OPENROUTER_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN",
+	"SEED_OWNER_USER", "SEED_OWNER_PASSWORD"}
 
 // LoadSecrets takes the owner's secrets out of the process environment.
 func LoadSecrets() *Secrets {

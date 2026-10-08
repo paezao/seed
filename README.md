@@ -53,6 +53,14 @@ CLI:
 | `seed stop` | stop the Seed (its folder keeps everything) |
 | `seed upgrade` | give a stopped Seed the kernel of your `seed` CLI, as a new generation |
 
+Signing in: locally, `seed new` and `seed run --open` sign your browser in for you, and
+`seed login` makes a new one-time link. To sign in with a username and password (for example
+when the Seed is hosted), pass them at start like any secret:
+
+```bash
+seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # at least 12 characters
+```
+
 ## Documentation
 
 - [Philosophy](docs/philosophy.md): why Seed exists

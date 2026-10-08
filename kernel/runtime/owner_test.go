@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,7 @@ func ownerKernel(t *testing.T) (*Kernel, http.Handler) {
 	k := &Kernel{Cfg: &config.Config{Root: t.TempDir()}, Store: store, Owner: owner, Token: "cli-token", cookieName: "seed_owner_test"}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /_seed/login", k.handleLogin)
+	mux.HandleFunc("POST /_seed/login", k.handlePasswordLogin)
 	mux.HandleFunc("POST /_seed/api/login-links", k.handleLoginLink)
 	mux.HandleFunc("POST /_seed/api/owner/logout", k.handleLogout)
 	mux.HandleFunc("GET /_seed/api/owner/sessions", k.handleOwnerSessions)
@@ -37,7 +39,7 @@ func ownerKernel(t *testing.T) (*Kernel, http.Handler) {
 			w.Write([]byte("page:" + tok))
 			return
 		}
-		k.privatePage(w, http.StatusUnauthorized, "")
+		k.privatePage(w, r, http.StatusUnauthorized, "")
 	})
 	return k, guardAPI(k.requireToken(mux))
 }
@@ -167,7 +169,7 @@ func TestSessionExpiresAndRevokes(t *testing.T) {
 func TestPrivatePageEscapesName(t *testing.T) {
 	k, _ := ownerKernel(t)
 	w := httptest.NewRecorder()
-	k.privatePage(w, 401, `<script>x</script>`)
+	k.privatePage(w, httptest.NewRequest("GET", "/_seed/", nil), 401, `<script>x</script>`)
 	if strings.Contains(w.Body.String(), "<script>x") {
 		t.Fatal("problem text must be escaped")
 	}
@@ -214,4 +216,96 @@ func TestStreamsEndWithTheSession(t *testing.T) {
 	if k.Owner.Valid(id) {
 		t.Fatal("revoked session is not valid")
 	}
+}
+
+func postLogin(h http.Handler, user, pass string, hdr map[string]string) *httptest.ResponseRecorder {
+	form := url.Values{"username": {user}, "password": {pass}}
+	req := httptest.NewRequest("POST", "/_seed/login", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Sec-Fetch-Dest", "document")
+	req.Header.Set("Sec-Fetch-Mode", "navigate")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	for k, v := range hdr {
+		req.Header.Set(k, v)
+	}
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+	return w
+}
+
+func TestPasswordSignIn(t *testing.T) {
+	k, h := ownerKernel(t)
+	if w := postLogin(h, "owner", "whatever-long-pass", nil); w.Code == http.StatusSeeOther {
+		t.Fatal("password sign-in must be off unless a password was passed")
+	}
+	if err := k.Owner.SetPassword("", "short"); err == nil {
+		t.Fatal("short passwords must be refused")
+	}
+	if on, _ := k.Owner.PasswordEnabled(); on {
+		t.Fatal("a refused password leaves sign-in off")
+	}
+	if err := k.Owner.SetPassword("", "correct horse battery"); err != nil {
+		t.Fatal(err)
+	}
+	if w := do(h, "GET", "/_seed/", nav); !strings.Contains(w.Body.String(), `type="password"`) {
+		t.Fatal("the private page should offer the sign-in form")
+	}
+	if w := postLogin(h, "owner", "wrong password!!", nil); w.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong password: %d", w.Code)
+	}
+	if w := postLogin(h, "admin", "correct horse battery", nil); w.Code != http.StatusUnauthorized {
+		t.Fatal("wrong username must fail")
+	}
+	if w := postLogin(h, "owner", "correct horse battery", map[string]string{"Sec-Fetch-Site": "cross-site"}); w.Code != http.StatusForbidden {
+		t.Fatal("another site must not be able to sign me in")
+	}
+	if w := postLogin(h, "owner", "correct horse battery", map[string]string{"Origin": "https://evil.example"}); w.Code != http.StatusForbidden {
+		t.Fatal("cross-origin sign-in must be refused")
+	}
+	if w := postLogin(h, "owner", "correct horse battery", map[string]string{"Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors"}); w.Code != http.StatusForbidden {
+		t.Fatal("fetch() (organism scripts) must not sign in")
+	}
+	w := postLogin(h, "owner", "correct horse battery", map[string]string{"X-Forwarded-Proto": "https"})
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("right password: %d %s", w.Code, w.Body)
+	}
+	if c := w.Result().Cookies()[0]; !c.Secure || !c.HttpOnly {
+		t.Fatal("behind HTTPS the cookie must be Secure")
+	}
+}
+
+func TestPasswordSignInIsRateLimited(t *testing.T) {
+	k, h := ownerKernel(t)
+	if err := k.Owner.SetPassword("me", "correct horse battery"); err != nil {
+		t.Fatal(err)
+	}
+	// Behind a proxy (httptest's peer is 192.0.2.1; use a private peer).
+	from := func(client, spoof string) map[string]string {
+		xff := client
+		if spoof != "" {
+			xff = spoof + ", " + client // the client can only add to the left
+		}
+		return map[string]string{"X-Forwarded-For": xff}
+	}
+	h = withPeer(h, "10.0.0.2:5000")
+	for i := 0; i < maxClientFails; i++ {
+		postLogin(h, "me", "guess", from("203.0.113.9", "1.2.3."+string(rune('0'+i))))
+	}
+	if w := postLogin(h, "me", "correct horse battery", from("203.0.113.9", "9.9.9.9")); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("a limited client is refused even with the right password (no oracle), and spoofing X-Forwarded-For doesn't help: %d", w.Code)
+	}
+	if w := postLogin(h, "me", "correct horse battery", from("198.51.100.7", "")); w.Code != http.StatusSeeOther {
+		t.Fatalf("other clients can still sign in: %d", w.Code)
+	}
+	k.Owner.now = func() time.Time { return time.Now().Add(failureWindow + time.Minute) }
+	if w := postLogin(h, "me", "correct horse battery", from("203.0.113.9", "")); w.Code != http.StatusSeeOther {
+		t.Fatal("the limit lifts after the window")
+	}
+}
+
+func withPeer(h http.Handler, addr string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.RemoteAddr = addr
+		h.ServeHTTP(w, r)
+	})
 }

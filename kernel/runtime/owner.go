@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"sync"
@@ -33,6 +34,14 @@ type Owner struct {
 	byAPI map[string]string               // sha256(API token) → session id
 	codes map[string]time.Time            // sha256(one-time code) → expiry
 	ended map[string]chan struct{}        // closed when a session ends
+
+	// Password sign-in (SEED_OWNER_USER / SEED_OWNER_PASSWORD, passed at
+	// start like any secret). Only keyed hashes are kept.
+	credKey      []byte
+	userMAC      []byte
+	passMAC      []byte
+	passwordNote string                 // why password sign-in is off, if it was asked for
+	failures     map[string][]time.Time // client → recent failed attempts
 }
 
 const (
@@ -48,7 +57,7 @@ var ErrBadLoginCode = errors.New("this sign-in link has expired or was already u
 
 // NewOwner loads my owner's signed-in browsers.
 func NewOwner(ctx context.Context, store *memory.Store) (*Owner, error) {
-	o := &Owner{store: store, now: time.Now, byID: map[string]*memory.OwnerSession{}, byAPI: map[string]string{}, codes: map[string]time.Time{}, ended: map[string]chan struct{}{}}
+	o := &Owner{store: store, now: time.Now, byID: map[string]*memory.OwnerSession{}, byAPI: map[string]string{}, codes: map[string]time.Time{}, ended: map[string]chan struct{}{}, failures: map[string][]time.Time{}}
 	sessions, err := store.OwnerSessions(ctx)
 	if err != nil {
 		return nil, err
@@ -114,6 +123,10 @@ func (o *Owner) Redeem(ctx context.Context, code, label string) (string, error) 
 	if code == "" || !ok || o.now().After(exp) {
 		return "", ErrBadLoginCode
 	}
+	return o.newSession(ctx, label)
+}
+
+func (o *Owner) newSession(ctx context.Context, label string) (string, error) {
 	secret := randomHex(32)
 	now := o.now()
 	s := &memory.OwnerSession{ID: hash(secret), APIHash: hash(apiToken(secret)), Label: truncateLabel(label),
@@ -294,4 +307,94 @@ func (o *Owner) Valid(id string) bool {
 		return false
 	}
 	return ok
+}
+
+// ---- password sign-in
+
+const (
+	MinPasswordLen   = 12
+	DefaultOwnerUser = "owner"
+	failureWindow    = 15 * time.Minute
+	maxClientFails   = 5   // per client, per window
+	maxGlobalFails   = 100 // everyone together, per window (clients can lie about who they are)
+	globalFailureKey = "*"
+)
+
+var (
+	ErrBadPassword  = errors.New("wrong username or password")
+	ErrTooManyTries = errors.New("too many failed sign-ins; wait a few minutes and try again")
+)
+
+// SetPassword turns on password sign-in. An empty password leaves it off.
+func (o *Owner) SetPassword(user, password string) error {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.userMAC, o.passMAC, o.passwordNote = nil, nil, ""
+	if password == "" {
+		return nil
+	}
+	if len([]rune(password)) < MinPasswordLen {
+		o.passwordNote = fmt.Sprintf("SEED_OWNER_PASSWORD must be at least %d characters", MinPasswordLen)
+		return errors.New(o.passwordNote)
+	}
+	if user == "" {
+		user = DefaultOwnerUser
+	}
+	o.credKey = []byte(randomHex(32))
+	o.userMAC, o.passMAC = o.mac("user", user), o.mac("pass", password)
+	return nil
+}
+
+func (o *Owner) mac(kind, v string) []byte {
+	m := hmac.New(sha256.New, o.credKey)
+	m.Write([]byte(kind + "\x00" + v))
+	return m.Sum(nil)
+}
+
+// PasswordEnabled reports whether password sign-in is on, and if it was
+// asked for but is off, why.
+func (o *Owner) PasswordEnabled() (bool, string) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.passMAC != nil, o.passwordNote
+}
+
+// SignIn checks a username and password and starts a session. client
+// identifies the caller for rate limiting.
+func (o *Owner) SignIn(ctx context.Context, user, password, client, label string) (string, error) {
+	o.mu.Lock()
+	if o.passMAC == nil {
+		o.mu.Unlock()
+		return "", errors.New("password sign-in is off")
+	}
+	now := o.now()
+	for key, ts := range o.failures {
+		kept := ts[:0]
+		for _, t := range ts {
+			if now.Sub(t) < failureWindow {
+				kept = append(kept, t)
+			}
+		}
+		if len(kept) == 0 {
+			delete(o.failures, key)
+		} else {
+			o.failures[key] = kept
+		}
+	}
+	// While limited, nothing is checked: no answer to learn from.
+	if len(o.failures[client]) >= maxClientFails || len(o.failures[globalFailureKey]) >= maxGlobalFails {
+		o.mu.Unlock()
+		return "", ErrTooManyTries
+	}
+	userOK := hmac.Equal(o.mac("user", user), o.userMAC)
+	passOK := hmac.Equal(o.mac("pass", password), o.passMAC)
+	if !userOK || !passOK {
+		o.failures[client] = append(o.failures[client], now)
+		o.failures[globalFailureKey] = append(o.failures[globalFailureKey], now)
+		o.mu.Unlock()
+		return "", ErrBadPassword
+	}
+	delete(o.failures, client)
+	o.mu.Unlock()
+	return o.newSession(ctx, label)
 }

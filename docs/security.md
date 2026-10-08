@@ -90,7 +90,10 @@ the kernel restarts into its own new source.
   `CONNECT` is revoked from `PUBLIC` on every database.
 - **No credentials are stored.** The owner passes secrets (model API key, tokens) at every start
   (`seed run -e KEY`, `--env-file`), or the platform sets them when deployed. The kernel keeps them
-  in memory and removes them from its environment at boot. They never reach a repository, the
+  in memory and removes them from its environment at boot, so nothing it starts inherits them.
+  (A process's *initial* environment stays readable in `/proc` to whoever controls the container,
+  i.e. the owner or platform; sandboxes have their own PID namespace and `/proc` and cannot see
+  it.) They never reach a repository, the
   Seed's folder or database, logs, model prompts or sandboxes, and the API never returns them. A
   key lent in the control plane lasts for the session only. Provider endpoints are fixed, so a
   caller cannot redirect a key to another host.
@@ -108,8 +111,14 @@ the kernel restarts into its own new source.
 The control plane shares an origin with the organism (`/_seed` and `/`). The organism's
 JavaScript is code the Seed wrote, so the kernel does not trust it:
 
-- **Owner sign-in.** The control plane is only for its owner. A browser signs in with a one-time
-  link (`seed login`, or opened by `seed run`; one use, 15 minutes). The kernel then sets an
+- **Owner sign-in.** The control plane is only for its owner. A browser signs in with a username
+  and password, or with a one-time link (`seed login`, or opened by `seed run`; one use,
+  15 minutes). The password is a secret passed at start (`SEED_OWNER_PASSWORD`, at least 12
+  characters; `SEED_OWNER_USER` defaults to `owner`). Without it, only links work. The kernel
+  keeps a keyed hash of them in memory and compares in constant time. Failed attempts are
+  limited: 5 per client and 100 overall per 15 minutes. While a client is limited nothing is
+  checked, not even a correct password. Behind a proxy, the client is the address the proxy
+  appended last to `X-Forwarded-For`. The form only accepts same-origin navigations. The kernel then sets an
   HttpOnly, `SameSite=Lax` cookie scoped to `/_seed`, valid for 30 days and renewed with use.
   Anyone without it gets a "this Seed is private" page. Sessions are stored as hashes in kernel
   memory, so they survive restarts. They can be signed out from Settings.
@@ -123,8 +132,10 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   name. Every local Seed's kernel still receives the others' cookies on requests to `/_seed`.
   Kernels are code the owner approved, but it is one more reason a Seed's kernel changes need
   approval.
-- **Only for navigations.** The page carrying the token, and sign-in links, are served only for top-level navigations
-  (`Sec-Fetch-Dest: document`), never to `fetch`/XHR. It cannot be framed
+- **Only for navigations.** The page carrying the token, sign-in links and the sign-in form are
+  served only for top-level navigations (`Sec-Fetch-Dest: document`, `Sec-Fetch-Mode: navigate`),
+  never to `fetch`/XHR. Browsers that send no Fetch Metadata (Safari before 16.4) are refused.
+  The API token travels only in a header, never in a URL. It cannot be framed
   (`frame-ancestors 'none'`), so the Approve button cannot be clickjacked.
 - **Opener isolation.** The control plane sends `Cross-Origin-Opener-Policy: same-origin`, and the
   proxy forces `unsafe-none` on organism pages. An organism page that opens `/_seed` in a popup

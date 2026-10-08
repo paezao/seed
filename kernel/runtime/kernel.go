@@ -135,6 +135,9 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	if k.Owner, err = NewOwner(ctx, k.Store); err != nil {
 		return nil, fmt.Errorf("owner sessions: %w", err)
 	}
+	if err := k.Owner.SetPassword(k.Secrets.Get("SEED_OWNER_USER"), k.Secrets.Get("SEED_OWNER_PASSWORD")); err != nil {
+		slog.Warn("password sign-in is off: " + err.Error())
+	}
 	instance, err := k.Store.Setting(ctx, "instance_id")
 	if err != nil {
 		instance = randomHex(4)
