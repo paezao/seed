@@ -15,7 +15,9 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -97,8 +99,13 @@ func (s *Server) initdb(ctx context.Context) error {
 		return err
 	}
 	pwfile.Close()
+	nss, err := s.identityEnv()
+	if err != nil {
+		return err
+	}
 	cmd := exec.CommandContext(ctx, "initdb", "-D", s.DataDir, "-U", s.User, "-A", "scram-sha-256",
 		"--pwfile="+pwfile.Name(), "-E", "UTF8", "--no-locale", "--no-instructions")
+	cmd.Env = append(os.Environ(), nss...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(s.DataDir)
 		return fmt.Errorf("initdb: %w: %s", err, out)
@@ -116,6 +123,12 @@ func (s *Server) start(ctx context.Context) error {
 		"-c", "max_connections=100", "-c", "shared_buffers=64MB")
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = procAttr(StopWithParent)
+	nss, err := s.identityEnv()
+	if err != nil {
+		logf.Close()
+		return err
+	}
+	cmd.Env = append(os.Environ(), nss...)
 	if err := cmd.Start(); err != nil {
 		logf.Close()
 		return err
@@ -167,4 +180,44 @@ func tail(s string, n int) string {
 		return s[len(s)-n:]
 	}
 	return s
+}
+
+// identityEnv lets PostgreSQL run as a user ID with no /etc/passwd entry.
+// initdb and postgres look up the user they run as, and a Seed's container
+// runs as its owner's ID (any number on Linux), on a read-only root. When the
+// ID is unknown, PostgreSQL gets an identity from nss_wrapper and a passwd
+// file in my own state instead.
+func (s *Server) identityEnv() ([]string, error) {
+	uid, gid := os.Getuid(), os.Getgid()
+	if _, err := user.LookupId(strconv.Itoa(uid)); err == nil {
+		return nil, nil
+	}
+	lib := ""
+	for _, pattern := range []string{"/usr/lib/*/libnss_wrapper.so", "/usr/lib/libnss_wrapper.so", "/usr/lib64/libnss_wrapper.so"} {
+		if m, _ := filepath.Glob(pattern); len(m) > 0 {
+			lib = m[0]
+			break
+		}
+	}
+	if lib == "" {
+		return nil, fmt.Errorf("user ID %d has no name here and nss_wrapper isn't installed (rebuild the runtime image)", uid)
+	}
+	dir := filepath.Join(filepath.Dir(s.DataDir), "identity")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	passwd, _ := os.ReadFile("/etc/passwd")
+	passwd = append(passwd, []byte(fmt.Sprintf("seed:x:%d:%d:Seed:/tmp/home:/bin/sh\n", uid, gid))...)
+	group, _ := os.ReadFile("/etc/group")
+	if _, err := user.LookupGroupId(strconv.Itoa(gid)); err != nil {
+		group = append(group, []byte(fmt.Sprintf("seed:x:%d:\n", gid))...)
+	}
+	pw, gr := filepath.Join(dir, "passwd"), filepath.Join(dir, "group")
+	if err := os.WriteFile(pw, passwd, 0o600); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(gr, group, 0o600); err != nil {
+		return nil, err
+	}
+	return []string{"LD_PRELOAD=" + lib, "NSS_WRAPPER_PASSWD=" + pw, "NSS_WRAPPER_GROUP=" + gr}, nil
 }

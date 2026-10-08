@@ -25,7 +25,7 @@ FROM node:24-trixie-slim
 COPY --from=go /usr/local/go /usr/local/go
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      postgresql-17 bubblewrap socat git make ca-certificates curl jq tini procps \
+      postgresql-17 bubblewrap socat git make ca-certificates curl jq tini procps libnss-wrapper \
  && rm -rf /var/lib/apt/lists/*
 ENV PATH=/usr/lib/postgresql/17/bin:/usr/local/go/bin:$PATH \
     GOTOOLCHAIN=local \
