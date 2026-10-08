@@ -12,6 +12,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"seed/kernel/fsx"
 )
 
 type Config struct {
@@ -123,7 +125,9 @@ func Load(root string) (*Config, error) {
 		return nil, err
 	}
 	c := Defaults()
-	data, err := os.ReadFile(filepath.Join(abs, "seed.yaml"))
+	// Confined to the folder: a symlinked seed.yaml cannot make the host CLI
+	// read files outside the Seed.
+	data, err := fsx.ReadFile(abs, "seed.yaml")
 	if err != nil {
 		return nil, fmt.Errorf("read seed.yaml: %w (is this a Seed directory?)", err)
 	}

@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"seed/kernel/fsx"
 	"seed/kernel/git"
 	"seed/kernel/knowledge"
 )
@@ -36,7 +37,11 @@ var managedDirs = []string{"kernel/", "cmd/", "control/", "docs/", "e2e/"}
 
 // Version returns the kernel version this binary's template carries.
 func Version() (string, error) {
-	files, err := templateFiles()
+	data, err := Archive()
+	if err != nil {
+		return "", err
+	}
+	files, err := templateFiles(data)
 	if err != nil {
 		return "", err
 	}
@@ -46,7 +51,10 @@ func Version() (string, error) {
 // SeedVersion returns the kernel version of the Seed in dir ("unknown" for
 // Seeds planted before kernels were versioned).
 func SeedVersion(dir string) string {
-	b, err := os.ReadFile(filepath.Join(dir, VersionPath))
+	b, err := fsx.ReadFile(dir, VersionPath) // never follows a symlink out of the Seed
+	if len(b) > 64 {
+		b = b[:64]
+	}
 	if err != nil || strings.TrimSpace(string(b)) == "" {
 		return "unknown"
 	}
@@ -58,11 +66,29 @@ type tfile struct {
 	mode os.FileMode
 }
 
-func templateFiles() (map[string]tfile, error) {
+// Archive returns this binary's template (a .tar.gz of a pristine Seed).
+func Archive() ([]byte, error) {
 	data, err := assets.ReadFile(archive)
 	if err != nil {
 		return nil, errors.New("this seed binary was built without a template (build it with `make build`)")
 	}
+	return data, nil
+}
+
+// File returns one file of a template archive.
+func File(archive []byte, name string) ([]byte, error) {
+	files, err := templateFiles(archive)
+	if err != nil {
+		return nil, err
+	}
+	f, ok := files[name]
+	if !ok {
+		return nil, fmt.Errorf("%s not in template", name)
+	}
+	return f.data, nil
+}
+
+func templateFiles(data []byte) (map[string]tfile, error) {
 	gz, err := gzip.NewReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
@@ -126,10 +152,15 @@ func (e *ErrKernelModified) Error() string {
 
 var genRe = regexp.MustCompile(`^(?:\d+\s*->\s*)?(\d+)$`)
 
-// Upgrade replaces the kernel of the (stopped) Seed in dir with this
-// binary's and commits it as a new generation.
-func Upgrade(ctx context.Context, dir string, force bool) (*UpgradeResult, error) {
-	files, err := templateFiles()
+// Upgrade replaces the kernel of the (stopped) Seed in dir with the one in
+// archive (a template .tar.gz) and commits it as a new generation.
+//
+// It runs git in the Seed's folder and writes into it, so the `seed` CLI
+// runs it inside a throwaway Seed container (never on the host): the
+// folder's own git config and symlinks can then only affect the container.
+// Writes never follow symlinks either way.
+func Upgrade(ctx context.Context, dir string, force bool, archive []byte) (*UpgradeResult, error) {
+	files, err := templateFiles(archive)
 	if err != nil {
 		return nil, err
 	}
@@ -189,15 +220,11 @@ func Upgrade(ctx context.Context, dir string, force bool) (*UpgradeResult, error
 		if isEvolvable(name) || name == "seed.yaml" {
 			continue
 		}
-		p := filepath.Join(dir, filepath.FromSlash(name))
-		if old, err := os.ReadFile(p); err == nil && bytes.Equal(old, f.data) {
+		if old, err := fsx.ReadFileNoFollow(dir, name); err == nil && bytes.Equal(old, f.data) {
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(p, f.data, f.mode); err != nil {
-			return nil, err
+		if err := fsx.WriteFileNoFollow(dir, name, f.data, f.mode); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		res.Changed = append(res.Changed, name)
 	}
@@ -217,21 +244,21 @@ func Upgrade(ctx context.Context, dir string, force bool) (*UpgradeResult, error
 			}
 		}
 		if _, ok := files[name]; managed && !ok {
-			if err := os.Remove(filepath.Join(dir, filepath.FromSlash(name))); err == nil {
+			if err := fsx.RemoveAllNoFollow(dir, name); err == nil {
 				res.Removed = append(res.Removed, name)
 			}
 		}
 	}
 	// seed.yaml: the new kernel's configuration, keeping my name.
 	if f, ok := files["seed.yaml"]; ok {
-		cfg, _ := os.ReadFile(filepath.Join(dir, "seed.yaml"))
+		cfg, _ := fsx.ReadFileNoFollow(dir, "seed.yaml")
 		name := "seed"
 		if m := regexp.MustCompile(`(?m)^name:\s*(\S+)`).FindSubmatch(cfg); m != nil {
 			name = string(m[1])
 		}
 		updated := regexp.MustCompile(`(?m)^name:.*$`).ReplaceAll(f.data, []byte("name: "+name))
 		if !bytes.Equal(cfg, updated) {
-			if err := os.WriteFile(filepath.Join(dir, "seed.yaml"), updated, 0o644); err != nil {
+			if err := fsx.WriteFileNoFollow(dir, "seed.yaml", updated, 0o644); err != nil {
 				return nil, err
 			}
 			res.Changed = append(res.Changed, "seed.yaml")
@@ -247,15 +274,12 @@ func Upgrade(ctx context.Context, dir string, force bool) (*UpgradeResult, error
 		if len(parts) < 3 {
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(dir, "skills", parts[1])); err == nil && !contains(res.NewSkills, parts[1]) {
+		// Lstat: a symlink where a skill would go counts as "present" and is left alone.
+		if _, err := os.Lstat(filepath.Join(dir, "skills", parts[1])); err == nil && !contains(res.NewSkills, parts[1]) {
 			continue
 		}
-		p := filepath.Join(dir, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(p, f.data, f.mode); err != nil {
-			return nil, err
+		if err := fsx.WriteFileNoFollow(dir, name, f.data, f.mode); err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		if !contains(res.NewSkills, parts[1]) {
 			res.NewSkills = append(res.NewSkills, parts[1])
@@ -272,6 +296,10 @@ func Upgrade(ctx context.Context, dir string, force bool) (*UpgradeResult, error
 		msg = strings.Replace(msg, "\n\nGeneration:", fmt.Sprintf("\nNew starter skills: %s.\n\nGeneration:", strings.Join(res.NewSkills, ", ")), 1)
 	}
 	commit, err := repo.CommitAll(ctx, msg)
+	if errors.Is(err, git.ErrNothingToCommit) {
+		res.UpToDate = true // forced, but the kernel was already identical
+		return res, nil
+	}
 	if err != nil {
 		return nil, err
 	}

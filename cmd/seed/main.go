@@ -33,7 +33,6 @@ import (
 	"time"
 
 	"seed/kernel/config"
-	"seed/kernel/git"
 	"seed/kernel/runtime"
 	"seed/kernel/template"
 )
@@ -331,8 +330,7 @@ func runNative(ctx context.Context, f runFlags) error {
 		}
 		if f.open {
 			go openWhenUp(ctx, func() string {
-				b, _ := os.ReadFile(runtime.AddrPath(f.dir))
-				return strings.TrimSpace(string(b))
+				return readSeedFile(f.dir, ".seed/addr")
 			})
 			f.open = false // only the first start, not kernel restarts
 		}
@@ -385,19 +383,24 @@ func baseURL() (string, *config.Config, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	addr := cfg.Server.Addr
-	if b, err := os.ReadFile(hostAddrPath(cfg.Root)); err == nil {
-		addr = strings.TrimSpace(string(b))
-	} else if b, err := os.ReadFile(runtime.AddrPath(cfg.Root)); err == nil {
-		addr = strings.TrimSpace(string(b))
+	// In a container: the published address, if my container is running.
+	// Natively (--native): the address the kernel wrote. Never guess a port
+	// (another program may be listening on it).
+	if state, err := engine(context.Background(), "inspect", "-f", "{{.State.Running}}", containerName(context.Background(), cfg)); err == nil && state == "true" {
+		if a := readSeedFile(cfg.Root, ".seed/host-addr"); a != "" {
+			return "http://" + a + "/_seed/api", cfg, nil
+		}
 	}
-	return "http://" + addr + "/_seed/api", cfg, nil
+	if a := readSeedFile(cfg.Root, ".seed/addr"); a != "" && !strings.HasPrefix(a, "0.0.0.0") && !strings.HasPrefix(a, "[::]") {
+		return "http://" + a + "/_seed/api", cfg, nil
+	}
+	return "", cfg, errors.New("I'm not running: start me with `seed run -e OPENROUTER_API_KEY`")
 }
 
 // controlToken is the running kernel's API token (written to .seed/).
 func controlToken() string {
-	b, _ := os.ReadFile(runtime.ControlTokenPath("."))
-	return strings.TrimSpace(string(b))
+	root, _ := filepath.Abs(".")
+	return readSeedFile(root, ".seed/control-token")
 }
 
 func getJSON(ctx context.Context, url string, v any) error {
@@ -560,7 +563,7 @@ func follow(ctx context.Context, base, id string) error {
 }
 
 func cmdGenerations(ctx context.Context, args []string) error {
-	base, cfg, err := baseURL()
+	base, _, err := baseURL()
 	if err != nil {
 		return err
 	}
@@ -573,17 +576,7 @@ func cmdGenerations(ctx context.Context, args []string) error {
 		CreatedAt   time.Time `json:"created_at"`
 	}
 	if err := getJSON(ctx, base+"/generations", &gens); err != nil {
-		// Not running: Git is the source of truth.
-		commits, gerr := git.Open(cfg.Root).Log(ctx, "HEAD", 200)
-		if gerr != nil {
-			return err
-		}
-		for _, c := range commits {
-			if g := git.Trailers(c.Body)["Generation"]; g != "" {
-				fmt.Printf("%-12s %s  %s\n", "gen "+g, shortHash(c.Hash), c.Subject)
-			}
-		}
-		return nil
+		return fmt.Errorf("start me to list my generations: %w", err)
 	}
 	for _, g := range gens {
 		mark := " "

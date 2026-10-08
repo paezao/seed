@@ -49,7 +49,7 @@ func plant(t *testing.T) (string, *git.Repo) {
 func TestUpgradeReplacesKernelKeepsTheSeed(t *testing.T) {
 	ctx := context.Background()
 	dir, repo := plant(t)
-	res, err := Upgrade(ctx, dir, false)
+	res, err := Upgrade(ctx, dir, false, archiveOrSkip(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestUpgradeReplacesKernelKeepsTheSeed(t *testing.T) {
 		t.Fatalf("tree should be clean after upgrade: %s", st)
 	}
 	// Already up to date.
-	if res, err := Upgrade(ctx, dir, false); err != nil || !res.UpToDate {
+	if res, err := Upgrade(ctx, dir, false, archiveOrSkip(t)); err != nil || !res.UpToDate {
 		t.Fatalf("second upgrade should be a no-op: %+v %v", res, err)
 	}
 }
@@ -93,12 +93,12 @@ func TestUpgradeRefusesToDiscardKernelChanges(t *testing.T) {
 	if _, err := repo.CommitAll(ctx, "evolve(kernel): improve my agent\n\nEvolution: evo_y\nGeneration: 2 -> 3"); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Upgrade(ctx, dir, false)
+	_, err := Upgrade(ctx, dir, false, archiveOrSkip(t))
 	var km *ErrKernelModified
 	if !errors.As(err, &km) || !strings.Contains(strings.Join(km.Files, ","), "kernel/agent/mine.go") {
 		t.Fatalf("expected ErrKernelModified naming the change, got %v", err)
 	}
-	if res, err := Upgrade(ctx, dir, true); err != nil || res.Generation != 4 {
+	if res, err := Upgrade(ctx, dir, true, archiveOrSkip(t)); err != nil || res.Generation != 4 {
 		t.Fatalf("--force should upgrade: %+v %v", res, err)
 	}
 }
@@ -106,7 +106,36 @@ func TestUpgradeRefusesToDiscardKernelChanges(t *testing.T) {
 func TestUpgradeNeedsCleanTree(t *testing.T) {
 	dir, _ := plant(t)
 	os.WriteFile(filepath.Join(dir, "organism", "wip.go"), []byte("x"), 0o644)
-	if _, err := Upgrade(context.Background(), dir, false); err == nil {
+	if _, err := Upgrade(context.Background(), dir, false, archiveOrSkip(t)); err == nil {
 		t.Fatal("uncommitted changes must block the upgrade")
+	}
+}
+
+func archiveOrSkip(t *testing.T) []byte {
+	data, err := Archive()
+	if err != nil {
+		t.Skip(err)
+	}
+	return data
+}
+
+func TestUpgradeNeverWritesThroughSymlinks(t *testing.T) {
+	dir, repo := plant(t)
+	outside := t.TempDir()
+	// A sandbox could plant this in skills/ (an evolvable directory).
+	if err := os.RemoveAll(filepath.Join(dir, "skills", "control-plane-screens")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dir, "skills", "control-plane-screens")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CommitAll(context.Background(), "evolve(skills): reorganize\n\nGeneration: 2 -> 3"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Upgrade(context.Background(), dir, false, archiveOrSkip(t)); err != nil {
+		t.Fatal(err)
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("upgrade wrote outside the Seed through a symlink: %v", entries)
 	}
 }

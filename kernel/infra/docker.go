@@ -30,6 +30,11 @@ func EnsureImage(ctx context.Context, base, dockerfile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	return EnsureImageFrom(ctx, base, content)
+}
+
+// EnsureImageFrom is EnsureImage for a Dockerfile's content.
+func EnsureImageFrom(ctx context.Context, base string, content []byte) (string, error) {
 	sum := sha256.Sum256(content)
 	ref := base + ":" + hex.EncodeToString(sum[:])[:12]
 	if _, err := Docker(ctx, "image", "inspect", ref); err == nil {

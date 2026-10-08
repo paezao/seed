@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -15,7 +17,7 @@ import (
 	"strings"
 
 	"seed/kernel/config"
-	"seed/kernel/git"
+	"seed/kernel/fsx"
 	"seed/kernel/infra"
 	"seed/kernel/template"
 )
@@ -35,18 +37,12 @@ func containerEngine() string {
 	return "docker"
 }
 
-func hostAddrPath(root string) string { return filepath.Join(root, ".seed", "host-addr") }
-
-// containerName is unique per Seed (its name plus the hash of its first commit).
-func containerName(ctx context.Context, cfg *config.Config) string {
-	inst := ""
-	if out, err := git.Open(cfg.Root).Run(ctx, "rev-list", "--max-parents=0", "HEAD"); err == nil {
-		lines := strings.Split(strings.TrimSpace(out), "\n")
-		if l := lines[len(lines)-1]; len(l) >= 8 {
-			inst = "-" + l[:8]
-		}
-	}
-	return "seed-" + cfg.Name + inst
+// containerName is unique per Seed folder. It is derived from the folder's
+// path, not from git: the CLI never runs git in an existing Seed's folder on
+// the host (its .git/config is under the Seed's control).
+func containerName(_ context.Context, cfg *config.Config) string {
+	sum := sha256.Sum256([]byte(cfg.Root))
+	return "seed-" + cfg.Name + "-" + hex.EncodeToString(sum[:4])
 }
 
 func engine(ctx context.Context, args ...string) (string, error) {
@@ -77,7 +73,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	name := containerName(ctx, cfg)
 
 	if state, err := engine(ctx, "inspect", "-f", "{{.State.Running}}", name); err == nil && state == "true" {
-		addr := readTrim(hostAddrPath(cfg.Root))
+		addr := readSeedFile(cfg.Root, ".seed/host-addr")
 		fmt.Fprintf(os.Stderr, "I'm already running at http://%s/_seed/\n", localhost(addr))
 		if f.open {
 			openWhenUp(ctx, func() string { return addr })
@@ -91,7 +87,11 @@ func cmdRun(ctx context.Context, args []string) error {
 	kernelHint(cfg.Root)
 
 	fmt.Fprintln(os.Stderr, "preparing my body (the first time builds the runtime image; it takes a few minutes)…")
-	image, err := infra.EnsureImage(ctx, runtimeImage, filepath.Join(cfg.Root, "Dockerfile"))
+	dockerfile, err := fsx.ReadFile(cfg.Root, "Dockerfile") // confined to the Seed's folder
+	if err != nil {
+		return err
+	}
+	image, err := infra.EnsureImageFrom(ctx, runtimeImage, dockerfile)
 	if err != nil {
 		return err
 	}
@@ -99,38 +99,23 @@ func cmdRun(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Join(cfg.Root, ".seed"), 0o755); err != nil {
-		return err
-	}
 	seccompPath, err := writeSeccomp()
 	if err != nil {
 		return err
 	}
 	run := []string{"run", "-d", "--rm", "--name", name,
+		"--label", "seed.kind=body",
 		"--label", "seed.root=" + cfg.Root,
 		"-p", "127.0.0.1:" + strconv.Itoa(hostPort) + ":8080",
 		"-v", cfg.Root + ":/seed",
 		// The owner's secrets: names on the command line, values through the
 		// engine's environment (kept out of `ps`); the kernel keeps them in memory.
 		"-e", "SEED_SECRETS=" + strings.Join(f.secretNames(), ","),
-		// Hardened, unprivileged container: no capabilities, no new
-		// privileges, a read-only root filesystem, resource limits, and
-		// Docker's default seccomp profile extended only with the namespace
-		// and mount calls nested bubblewrap sandboxes need (cmd/seed/seccomp.json).
-		// AppArmor's docker-default profile and /proc masking also forbid
-		// those, so they are relaxed.
-		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-		"--security-opt", "seccomp=" + seccompPath,
-		"--security-opt", "apparmor=unconfined", "--security-opt", "systempaths=unconfined",
-		"--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=2g",
-		"--pids-limit", envOr("SEED_PIDS_LIMIT", "4096"),
-		"--memory", envOr("SEED_MEMORY", "8g"),
-		"--cpus", envOr("SEED_CPUS", strconv.Itoa(max(1, goruntime.NumCPU()/2))),
+		// Hardened, unprivileged container (see hardening()).
 	}
-	if goruntime.GOOS == "linux" {
-		// Files the Seed writes stay owned by you.
-		run = append(run, "--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()))
-	}
+	run = append(run, hardening(seccompPath)...)
+	run = append(run, "--cpus", envOr("SEED_CPUS", strconv.Itoa(max(1, goruntime.NumCPU()/2))))
+	run = append(run, userArgs()...)
 	for _, n := range f.secretNames() {
 		run = append(run, "-e", n)
 	}
@@ -141,7 +126,8 @@ func cmdRun(ctx context.Context, args []string) error {
 		return fmt.Errorf("%s run: %w: %s", containerEngine(), err, strings.TrimSpace(string(out)))
 	}
 	addr := "127.0.0.1:" + strconv.Itoa(hostPort)
-	if err := os.WriteFile(hostAddrPath(cfg.Root), []byte(addr), 0o644); err != nil {
+	// The Seed's folder is under the Seed's control: never follow a symlink in it.
+	if err := fsx.WriteFileNoFollow(cfg.Root, ".seed/host-addr", []byte(addr), 0o644); err != nil {
 		return err
 	}
 	if f.open {
@@ -214,8 +200,12 @@ func localhost(addr string) string {
 	return addr
 }
 
-func readTrim(p string) string {
-	b, _ := os.ReadFile(p)
+// readSeedFile reads a file in a Seed's folder without following symlinks out of it.
+func readSeedFile(root, rel string) string {
+	b, _ := fsx.ReadFile(root, rel)
+	if len(b) > 4096 {
+		b = b[:4096]
+	}
 	return strings.TrimSpace(string(b))
 }
 
@@ -259,13 +249,21 @@ func envOr(k, def string) string {
 	return def
 }
 
-// cmdUpgrade replaces a stopped Seed's kernel with this CLI's, as a new generation.
+// cmdUpgrade replaces a stopped Seed's kernel with this CLI's, as a new
+// generation. The work (git in the Seed's folder, writes into it) happens in
+// a throwaway hardened Seed container, never on the host: the folder's git
+// config and symlinks are under the Seed's control.
 func cmdUpgrade(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("upgrade", flag.ContinueOnError)
 	dir := fs.String("dir", ".", "Seed directory")
 	force := fs.Bool("force", false, "upgrade even if the Seed changed its own kernel (those changes are replaced)")
+	inside := fs.Bool("inside", false, "internal: perform the upgrade (inside the container)")
+	tmpl := fs.String("template", "", "internal: template archive to upgrade to")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *inside {
+		return upgradeInside(ctx, *dir, *tmpl, *force)
 	}
 	cfg, err := config.Load(*dir)
 	if err != nil {
@@ -274,7 +272,60 @@ func cmdUpgrade(ctx context.Context, args []string) error {
 	if state, err := engine(ctx, "inspect", "-f", "{{.State.Running}}", containerName(ctx, cfg)); err == nil && state == "true" {
 		return errors.New("I'm running: stop me first (`seed stop`), then upgrade")
 	}
-	res, err := template.Upgrade(ctx, cfg.Root, *force)
+	archive, err := template.Archive()
+	if err != nil {
+		return err
+	}
+	stage, err := os.MkdirTemp("", "seed-upgrade-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+	if err := os.WriteFile(filepath.Join(stage, "template.tar.gz"), archive, 0o644); err != nil {
+		return err
+	}
+	df, err := template.File(archive, "Dockerfile")
+	if err != nil {
+		return err
+	}
+	image, err := infra.EnsureImageFrom(ctx, runtimeImage, df)
+	if err != nil {
+		return err
+	}
+	seccompPath, err := writeSeccomp()
+	if err != nil {
+		return err
+	}
+	// Build the new kernel's own tool from the template inside the container
+	// (works whatever the host OS) and let it upgrade /seed.
+	script := `set -e; mkdir -p /tmp/k /tmp/home; tar -xzf /upgrade/template.tar.gz -C /tmp/k; cd /tmp/k
+export GOCACHE=/tmp/gocache GOMODCACHE=/tmp/gomod GOWORK=off GOFLAGS="-mod=readonly -buildvcs=false -modcacherw"
+echo "building the new kernel's upgrade tool…"
+go build -o /tmp/seed-new ./cmd/seed
+exec /tmp/seed-new upgrade --inside --template /upgrade/template.tar.gz --dir /seed "$@"`
+	run := []string{"run", "--rm", "-v", cfg.Root + ":/seed", "-v", stage + ":/upgrade:ro",
+		"--memory", envOr("SEED_MEMORY", "8g"), "--entrypoint", "/bin/sh"}
+	run = append(run, hardening(seccompPath)...)
+	run = append(run, userArgs()...)
+	run = append(run, image, "-c", script, "upgrade")
+	if *force {
+		run = append(run, "--force")
+	}
+	cmd := exec.CommandContext(ctx, containerEngine(), run...)
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("upgrade failed: %w", err)
+	}
+	return nil
+}
+
+// upgradeInside runs in the throwaway container.
+func upgradeInside(ctx context.Context, dir, tmpl string, force bool) error {
+	archive, err := os.ReadFile(tmpl)
+	if err != nil {
+		return err
+	}
+	res, err := template.Upgrade(ctx, dir, force, archive)
 	if err != nil {
 		return err
 	}
@@ -289,6 +340,28 @@ func cmdUpgrade(ctx context.Context, args []string) error {
 	}
 	fmt.Println(".\n  My organism, knowledge, data and skills are unchanged.")
 	fmt.Println("\nStart me again with: seed run -e OPENROUTER_API_KEY")
+	return nil
+}
+
+// hardening is the container security posture shared by a Seed's body and
+// its upgrade container: no capabilities, no new privileges, read-only root,
+// tailored seccomp (Docker default + the calls nested bubblewrap needs).
+func hardening(seccompPath string) []string {
+	return []string{
+		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+		"--security-opt", "seccomp=" + seccompPath,
+		"--security-opt", "apparmor=unconfined", "--security-opt", "systempaths=unconfined",
+		"--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=2g",
+		"--pids-limit", envOr("SEED_PIDS_LIMIT", "4096"),
+		"--memory", envOr("SEED_MEMORY", "8g"),
+	}
+}
+
+// userArgs runs containers as you on Linux (files stay yours).
+func userArgs() []string {
+	if goruntime.GOOS == "linux" {
+		return []string{"--user", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid())}
+	}
 	return nil
 }
 
