@@ -40,6 +40,11 @@ template:
 	tar -C .stage -czf kernel/template/assets/template.tar.gz .
 	rm -rf .stage
 
+# The deploy image: the runtime Dockerfile plus planting (see deploy/).
+deploy-dockerfile:
+	{ echo "# GENERATED from Dockerfile and deploy/*.Dockerfile by \`make deploy-dockerfile\`: do not edit."; \
+	  sed '/^FROM golang:.* AS go$$/r deploy/plant.Dockerfile' Dockerfile; cat deploy/tail.Dockerfile; } > Dockerfile.deploy
+
 install: build
 	install -m 0755 $(BIN) $(HOME)/.local/bin/seed
 

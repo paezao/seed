@@ -1,0 +1,12 @@
+# Build context for Dockerfile.deploy: the repository as a Seed's template
+# (mirrors .gitignore; the runtime Dockerfile is built without a context).
+.git
+.seed
+.stage
+bin
+node_modules
+**/node_modules
+organism/bin
+organism/web/dist
+.env
+kernel/template/assets/template.tar.gz

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -41,5 +43,41 @@ func TestLoopbackAddrOnly(t *testing.T) {
 		if _, ok := loopbackAddr(in); ok != want {
 			t.Errorf("loopbackAddr(%q) = %v, want %v", in, ok, want)
 		}
+	}
+}
+
+func TestDeployDockerfileIsGenerated(t *testing.T) {
+	read := func(p string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", p))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	base, plant, tail, got := read("Dockerfile"), read("deploy/plant.Dockerfile"), read("deploy/tail.Dockerfile"), read("Dockerfile.deploy")
+	var want strings.Builder
+	want.WriteString("# GENERATED from Dockerfile and deploy/*.Dockerfile by `make deploy-dockerfile`: do not edit.\n")
+	for _, line := range strings.SplitAfter(base, "\n") {
+		want.WriteString(line)
+		if regexp.MustCompile(`^FROM golang:.* AS go\n$`).MatchString(line) {
+			want.WriteString(plant)
+		}
+	}
+	want.WriteString(tail)
+	if got != want.String() {
+		t.Fatal("Dockerfile.deploy is out of date: run `make deploy-dockerfile`")
+	}
+}
+
+func TestPlantRefusesNonEmpty(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "important.txt"), []byte("x"), 0o644)
+	if err := cmdPlant(context.Background(), []string{"--into", dir}); err == nil {
+		t.Fatal("must not plant over someone else's files")
+	}
+	seed := t.TempDir()
+	os.WriteFile(filepath.Join(seed, "seed.yaml"), []byte("name: x\n"), 0o644)
+	if err := cmdPlant(context.Background(), []string{"--into", seed}); err != nil {
+		t.Fatal("an existing Seed is left alone")
 	}
 }

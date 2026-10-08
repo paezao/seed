@@ -11,8 +11,8 @@ model:
 
 database:
   # Empty: my own private PostgreSQL, inside my folder (.seed/postgres), reached
-  # only through a Unix socket. Set a URL (or SEED_DATABASE_URL) to use an
-  # external server instead.
+  # only through a Unix socket. In my container, DATABASE_URL (as platforms set
+  # it) selects an external server instead; natively, set the URL here.
   url: ""
 
 sandbox:

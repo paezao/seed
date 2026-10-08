@@ -76,6 +76,11 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc(api+"/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, errors.New("no such endpoint"))
 	})
+	// For platforms' health checks: I am up (says nothing else).
+	mux.HandleFunc("GET /_seed/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("content-type", "text/plain")
+		_, _ = io.WriteString(w, "ok\n")
+	})
 	mux.HandleFunc("GET /_seed/login", k.handleLogin)
 	mux.HandleFunc("POST /_seed/login", k.handlePasswordLogin)
 	mux.Handle("/_seed/", k.controlUI())
@@ -180,7 +185,9 @@ func currentSession(r *http.Request) string {
 // and become "same-origin" with the Seed.
 func guardHost(extra []string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !hostAllowed(r.Host, extra) {
+		// Health probes address me by IP (Kubernetes); /_seed/healthz says
+		// only "ok", so it is answered for any Host.
+		if !hostAllowed(r.Host, extra) && !(r.Method == http.MethodGet && r.URL.Path == "/_seed/healthz") {
 			http.Error(w, "unknown host", http.StatusMisdirectedRequest)
 			return
 		}

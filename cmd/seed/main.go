@@ -47,6 +47,7 @@ Usage:
   seed generations         list this Seed's generations
   seed rollback <n>        return to generation n
   seed login [--print]     sign a browser in to this Seed's control plane
+  seed plant --into DIR    plant a new Seed into an empty DIR (deploy images do this on first boot)
   seed stop                stop the Seed in the current directory
   seed upgrade [--force]   give this Seed the kernel of this seed CLI (as a new generation)
 
@@ -84,6 +85,8 @@ func main() {
 		err = cmdStop(ctx, args)
 	case "image":
 		err = cmdImage(ctx, args)
+	case "plant":
+		err = cmdPlant(ctx, args)
 	case "login":
 		err = cmdLogin(ctx, args)
 	case "upgrade":
@@ -712,4 +715,44 @@ func nativeAddr(root string) (string, bool) {
 		return "", false
 	}
 	return loopbackAddr(strings.TrimSpace(string(b)))
+}
+
+// cmdPlant plants a new Seed into dir if it holds none (a deploy image runs
+// it on first boot, against an empty volume that may hold lost+found).
+func cmdPlant(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("plant", flag.ContinueOnError)
+	into := fs.String("into", "/seed", "directory to plant into")
+	name := fs.String("name", "seed", "the new Seed's name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(filepath.Join(*into, "seed.yaml")); err == nil {
+		return nil // already a Seed
+	}
+	entries, err := os.ReadDir(*into)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.Name() != "lost+found" {
+			return fmt.Errorf("%s is not empty and holds no Seed (found %s): refusing to plant over it", *into, e.Name())
+		}
+	}
+	// Plant beside, on the same volume, then move into place.
+	stage := filepath.Join(*into, ".planting")
+	_ = os.RemoveAll(stage)
+	fmt.Fprintf(os.Stderr, "planting a new Seed named %s…\n", *name)
+	if err := template.Create(ctx, stage, *name); err != nil {
+		return err
+	}
+	planted, err := os.ReadDir(stage)
+	if err != nil {
+		return err
+	}
+	for _, e := range planted {
+		if err := os.Rename(filepath.Join(stage, e.Name()), filepath.Join(*into, e.Name())); err != nil {
+			return err
+		}
+	}
+	return os.Remove(stage)
 }

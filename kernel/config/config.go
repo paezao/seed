@@ -140,8 +140,19 @@ func Load(root string) (*Config, error) {
 }
 
 func (c *Config) applyEnv() {
-	if v := os.Getenv("SEED_DATABASE_URL"); v != "" {
+	// An external PostgreSQL, as platforms provide it (Shpyrd, Heroku, …).
+	// Only in my container: natively, a developer's shell often has an
+	// unrelated DATABASE_URL (set database.url in seed.yaml instead). The
+	// kernel then removes it from its environment like any secret.
+	if v := os.Getenv("DATABASE_URL"); v != "" && os.Getenv("SEED_IN_CONTAINER") == "1" {
 		c.Database.URL = v
+	}
+	if v := os.Getenv("SEED_ALLOWED_HOSTS"); v != "" {
+		for _, h := range strings.Split(v, ",") {
+			if h = strings.TrimSpace(h); h != "" {
+				c.Server.AllowedHosts = append(c.Server.AllowedHosts, h)
+			}
+		}
 	}
 	if v := os.Getenv("SEED_ADDR"); v != "" {
 		c.Server.Addr = v

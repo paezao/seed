@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -113,15 +114,34 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	if err := k.Admin.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("postgres at %s: %w", redact(cfg.Database.URL), err)
 	}
+	var dbSocketDir string
+	if k.PG != nil {
+		dbSocketDir = k.PG.SocketDir
+	} else {
+		// An external server (DATABASE_URL): check I can manage it, and give
+		// my sandboxes a socket to it (the live organism has no network).
+		if err := k.Admin.CheckPrivileges(ctx); err != nil {
+			return nil, err
+		}
+		if cfg.Sandbox.Driver == "bwrap" {
+			dir, err := os.MkdirTemp("", "seed-db-") // my /tmp: sandboxes get their own
+			if err != nil {
+				return nil, err
+			}
+			bridge, err := pg.StartBridge(dir, cfg.Database.URL)
+			if err != nil {
+				return nil, fmt.Errorf("database bridge: %w", err)
+			}
+			dbSocketDir = bridge.SocketDir
+		}
+		slog.Info("using an external PostgreSQL", "server", redact(cfg.Database.URL))
+	}
 	switch cfg.Sandbox.Driver {
 	case "bwrap":
 		if !sandbox.BwrapAvailable() {
 			return nil, errors.New("bubblewrap is not available; run me in my container (`seed run`), or set sandbox.driver: local (no isolation)")
 		}
-		d := &sandbox.BwrapDriver{CacheDir: filepath.Join(stateDir, "cache"), Hide: []string{cfg.Root}}
-		if k.PG != nil {
-			d.SocketDir = k.PG.SocketDir
-		}
+		d := &sandbox.BwrapDriver{CacheDir: filepath.Join(stateDir, "cache"), Hide: []string{cfg.Root}, SocketDir: dbSocketDir}
 		k.Driver = d
 	default:
 		slog.Warn("sandbox.driver is local: generated code runs WITHOUT isolation")
@@ -382,12 +402,19 @@ func (k *Kernel) Serve(ctx context.Context) error {
 }
 
 func redact(u string) string {
-	if i := strings.Index(u, "@"); i >= 0 {
-		if j := strings.Index(u, "://"); j >= 0 && j < i {
-			return u[:j+3] + "***" + u[i:]
-		}
+	p, err := url.Parse(u)
+	if err != nil || p.Scheme == "" {
+		return "(database URL)"
 	}
-	return u
+	if p.User != nil {
+		p.User = url.User(p.User.Username())
+	}
+	q := p.Query()
+	if q.Has("password") {
+		q.Set("password", "***")
+		p.RawQuery = q.Encode()
+	}
+	return p.String()
 }
 
 // ControlTokenPath is where the CLI finds the running kernel's token. .seed/

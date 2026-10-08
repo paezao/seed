@@ -33,7 +33,7 @@ var evolvable = []string{"organism/", "knowledge/", "skills/"}
 
 // managedDirs are kernel directories: files there that the new kernel no
 // longer has are removed.
-var managedDirs = []string{"kernel/", "cmd/", "control/", "docs/", "e2e/"}
+var managedDirs = []string{"kernel/", "cmd/", "control/", "docs/", "e2e/", "deploy/"}
 
 // Version returns the kernel version this binary's template carries.
 func Version() (string, error) {

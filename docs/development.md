@@ -40,7 +40,8 @@ choice is not a secret and is kept in the Seed's memory. Without a key, the cont
 explains how to start with one and can borrow a key **for the current session only**.
 v0.1 offers OpenRouter (one key, any tool-capable model).
 
-Overrides: `SEED_DATABASE_URL` (an external PostgreSQL instead of the private one),
+Overrides: `DATABASE_URL` (an external PostgreSQL instead of the private one, in the
+container; see [hosting](hosting.md)), `SEED_ALLOWED_HOSTS`, `SEED_TRUSTED_PROXIES`,
 `SEED_SANDBOX_DRIVER`, `SEED_CONTAINER_ENGINE=podman`.
 
 `seed run --native` runs the kernel directly on your machine instead of in its container (for

@@ -48,9 +48,58 @@ func (a Admin) EnsureRole(ctx context.Context, role, password string) error {
 		verb = "ALTER"
 	}
 	// Passwords cannot be bound as parameters in DDL; quote as a literal.
-	_, err = c.Exec(ctx, fmt.Sprintf(`%s ROLE %s LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %s`,
-		verb, pgx.Identifier{role}.Sanitize(), quoteLiteral(password)))
-	return err
+	if _, err = c.Exec(ctx, fmt.Sprintf(`%s ROLE %s LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD %s`,
+		verb, pgx.Identifier{role}.Sanitize(), quoteLiteral(password))); err != nil {
+		return err
+	}
+	// A managed server's admin is not a superuser: it must be a member of
+	// the roles it manages to create their databases and grant on their
+	// tables (PostgreSQL 16+ gives it ADMIN OPTION on roles it created).
+	var super bool
+	if err := c.QueryRow(ctx, `SELECT rolsuper FROM pg_roles WHERE rolname = current_user`).Scan(&super); err != nil {
+		return err
+	}
+	if !super {
+		var member bool
+		if err := c.QueryRow(ctx, `SELECT pg_has_role(current_user, $1, 'USAGE')`, role).Scan(&member); err != nil {
+			return err
+		}
+		if !member {
+			if _, err := c.Exec(ctx, "GRANT "+pgx.Identifier{role}.Sanitize()+" TO CURRENT_USER"); err != nil {
+				return fmt.Errorf("making the admin role a member of %s: %w", role, err)
+			}
+		}
+	}
+	return nil
+}
+
+// CheckPrivileges verifies the admin connection can do what a Seed needs:
+// create databases (one per evolution) and roles (least privilege for the
+// organism, evolutions and read-only queries).
+func (a Admin) CheckPrivileges(ctx context.Context) error {
+	c, err := a.conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer c.Close(ctx)
+	var user string
+	var super, createDB, createRole bool
+	if err := c.QueryRow(ctx, `SELECT current_user, rolsuper, rolcreatedb, rolcreaterole FROM pg_roles WHERE rolname = current_user`).
+		Scan(&user, &super, &createDB, &createRole); err != nil {
+		return err
+	}
+	if super || (createDB && createRole) {
+		return nil
+	}
+	var missing []string
+	if !createDB {
+		missing = append(missing, "CREATEDB")
+	}
+	if !createRole {
+		missing = append(missing, "CREATEROLE")
+	}
+	return fmt.Errorf("the database role %q needs %s: I create a database per evolution and separate roles so my app can't read my memory "+
+		"(as a superuser: ALTER ROLE %s %s)", user, strings.Join(missing, " and "), pgx.Identifier{user}.Sanitize(), strings.Join(missing, " "))
 }
 
 // EnsureDatabase creates a database owned by owner (if non-empty) and, unless
@@ -97,8 +146,20 @@ func (a Admin) EnsureReader(ctx context.Context, role, password, db, owner strin
 	if err != nil {
 		return err
 	}
+	// Earlier versions granted pg_read_all_data; take it back if so (only
+	// then: revoking needs rights a managed server's admin may not have).
+	var broad bool
+	if err := c.QueryRow(ctx, `SELECT pg_has_role($1, 'pg_read_all_data', 'MEMBER')`, role).Scan(&broad); err != nil {
+		c.Close(ctx)
+		return err
+	}
+	if broad {
+		if _, err := c.Exec(ctx, "REVOKE pg_read_all_data FROM "+r); err != nil {
+			c.Close(ctx)
+			return err
+		}
+	}
 	for _, stmt := range []string{
-		"REVOKE pg_read_all_data FROM " + r, // granted by earlier versions
 		"GRANT CONNECT ON DATABASE " + pgx.Identifier{db}.Sanitize() + " TO " + r,
 		"ALTER ROLE " + r + " SET default_transaction_read_only = on",
 	} {
@@ -166,8 +227,14 @@ func (a Admin) DatabaseURL(db, user, password, host string) string {
 	}
 	switch {
 	case strings.HasPrefix(host, "/"):
+		// A Unix socket: TLS settings (and certificate paths, which are
+		// mine, not the sandbox's) don't apply.
 		q := u.Query()
+		for _, k := range []string{"sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword", "port"} {
+			q.Del(k)
+		}
 		q.Set("host", host)
+		q.Set("sslmode", "disable")
 		u.Host, u.RawQuery = "", q.Encode()
 	case host != "":
 		u.Host = host
