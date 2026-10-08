@@ -116,9 +116,17 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   15 minutes). The password is a secret passed at start (`SEED_OWNER_PASSWORD`, at least 12
   characters; `SEED_OWNER_USER` defaults to `owner`). Without it, only links work. The kernel
   keeps a keyed hash of them in memory and compares in constant time. Failed attempts are
-  limited: 5 per client and 100 overall per 15 minutes. While a client is limited nothing is
-  checked, not even a correct password. Behind a proxy, the client is the address the proxy
-  appended last to `X-Forwarded-For`. The form only accepts same-origin navigations. The kernel then sets an
+  limited: 5 per client and 1000 overall per 15 minutes. While a client is limited nothing is
+  checked, not even a correct password. While the overall limit holds, signed-in browsers and
+  `seed login` links still work. A client is its IP address (IPv6: its /48).
+  `X-Forwarded-For` is ignored unless `SEED_TRUSTED_PROXIES` says how many proxies are in front
+  (1 behind a platform's ingress); otherwise clients could forge it. The form only accepts
+  same-origin navigations, and the sign-in page has opener isolation, so an organism page cannot
+  open it and read what is typed.
+- **Known limit: saved passwords.** Password managers fill saved passwords by origin, and the
+  organism shares the control plane's origin, so an organism page could get the saved Seed
+  password filled into a form of its own (Firefox fills on page load). Don't let the browser save
+  it until the control plane has its own hostname (planned for hosted Seeds). The kernel then sets an
   HttpOnly, `SameSite=Lax` cookie scoped to `/_seed`, valid for 30 days and renewed with use.
   Anyone without it gets a "this Seed is private" page. Sessions are stored as hashes in kernel
   memory, so they survive restarts. They can be signed out from Settings.

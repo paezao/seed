@@ -315,9 +315,13 @@ const (
 	MinPasswordLen   = 12
 	DefaultOwnerUser = "owner"
 	failureWindow    = 15 * time.Minute
-	maxClientFails   = 5   // per client, per window
-	maxGlobalFails   = 100 // everyone together, per window (clients can lie about who they are)
-	globalFailureKey = "*"
+	maxClientFails   = 5 // per client, per window
+	// Everyone together, per window: a ceiling on distributed guessing. Tripping
+	// it takes many networks (IPv6 counts per /48), and while it holds, signed-in
+	// browsers and `seed login` links still work.
+	maxGlobalFails    = 1000
+	maxTrackedClients = 10000 // bounds memory under address rotation
+	globalFailureKey  = "*"
 )
 
 var (
@@ -389,6 +393,9 @@ func (o *Owner) SignIn(ctx context.Context, user, password, client, label string
 	userOK := hmac.Equal(o.mac("user", user), o.userMAC)
 	passOK := hmac.Equal(o.mac("pass", password), o.passMAC)
 	if !userOK || !passOK {
+		if _, known := o.failures[client]; !known && len(o.failures) >= maxTrackedClients {
+			client = "overflow" // too many distinct clients: they share one budget
+		}
 		o.failures[client] = append(o.failures[client], now)
 		o.failures[globalFailureKey] = append(o.failures[globalFailureKey], now)
 		o.mu.Unlock()

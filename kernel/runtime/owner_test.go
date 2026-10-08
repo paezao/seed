@@ -287,6 +287,7 @@ func TestPasswordSignInIsRateLimited(t *testing.T) {
 		}
 		return map[string]string{"X-Forwarded-For": xff}
 	}
+	k.trustedProxies = 1 // one ingress in front, which appends the client
 	h = withPeer(h, "10.0.0.2:5000")
 	for i := 0; i < maxClientFails; i++ {
 		postLogin(h, "me", "guess", from("203.0.113.9", "1.2.3."+string(rune('0'+i))))
@@ -308,4 +309,44 @@ func withPeer(h http.Handler, addr string) http.Handler {
 		r.RemoteAddr = addr
 		h.ServeHTTP(w, r)
 	})
+}
+
+func TestForwardedForIsIgnoredUnlessProxiesAreTrusted(t *testing.T) {
+	k, h := ownerKernel(t)
+	if err := k.Owner.SetPassword("me", "correct horse battery"); err != nil {
+		t.Fatal(err)
+	}
+	// No proxy configured: the peer (Docker's private gateway, say) is the
+	// client, whatever X-Forwarded-For claims.
+	h = withPeer(h, "172.17.0.1:40000")
+	for i := 0; i < maxClientFails; i++ {
+		postLogin(h, "me", "guess", map[string]string{"X-Forwarded-For": "203.0.113." + string(rune('1'+i))})
+	}
+	if w := postLogin(h, "me", "guess", map[string]string{"X-Forwarded-For": "198.51.100.200"}); w.Code != http.StatusTooManyRequests {
+		t.Fatalf("rotating a forged X-Forwarded-For must not escape the limit: %d", w.Code)
+	}
+}
+
+func TestIPv6ClientsAreGroupedBy48(t *testing.T) {
+	if ipGroup("2001:db8:1:2::1") != ipGroup("2001:db8:1:ffff::abcd") {
+		t.Fatal("addresses in one /48 are one client")
+	}
+	if ipGroup("2001:db8:1::1") == ipGroup("2001:db8:2::1") {
+		t.Fatal("different /48s are different clients")
+	}
+	if ipGroup("203.0.113.9") != "203.0.113.9" || ipGroup("::ffff:203.0.113.9") != "203.0.113.9" {
+		t.Fatal("IPv4 (and IPv4-mapped) addresses are themselves")
+	}
+}
+
+func TestSignInPageIsolatedFromOrganismWindows(t *testing.T) {
+	k, _ := ownerKernel(t)
+	if err := k.Owner.SetPassword("", "correct horse battery"); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	k.privatePage(w, httptest.NewRequest("GET", "/_seed/", nil), 401, "")
+	if w.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" || w.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatal("an organism page must not be able to hold a handle on (or frame) the sign-in page")
+	}
 }

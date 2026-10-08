@@ -812,7 +812,7 @@ func (k *Kernel) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 		k.privatePage(w, r, http.StatusBadRequest, "That sign-in didn't come through. Try again.")
 		return
 	}
-	secret, err := k.Owner.SignIn(r.Context(), r.PostForm.Get("username"), r.PostForm.Get("password"), clientKey(r), r.UserAgent())
+	secret, err := k.Owner.SignIn(r.Context(), r.PostForm.Get("username"), r.PostForm.Get("password"), k.clientKey(r), r.UserAgent())
 	switch {
 	case errors.Is(err, ErrTooManyTries):
 		k.privatePage(w, r, http.StatusTooManyRequests, "Too many failed sign-ins. Wait a few minutes and try again.")
@@ -826,24 +826,41 @@ func (k *Kernel) handlePasswordLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/_seed/", http.StatusSeeOther)
 }
 
-// clientKey identifies who is signing in, for rate limiting. Behind a proxy
-// (a private or loopback peer), the address the proxy appended last to
-// X-Forwarded-For; anything to its left was written by the client.
-func clientKey(r *http.Request) string {
+// clientKey identifies who is signing in, for rate limiting. Proxy headers
+// are trusted only when the owner says how many proxies are in front
+// (SEED_TRUSTED_PROXIES, e.g. 1 for a platform's ingress): otherwise any
+// client could write X-Forwarded-For itself and never be limited. IPv6
+// addresses are grouped by /48, since anyone holding one has plenty.
+func (k *Kernel) clientKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
 	}
-	ip := net.ParseIP(host)
-	if ip != nil && (ip.IsPrivate() || ip.IsLoopback()) {
-		if xff := r.Header.Values("X-Forwarded-For"); len(xff) > 0 {
-			parts := strings.Split(xff[len(xff)-1], ",")
-			if last := strings.TrimSpace(parts[len(parts)-1]); net.ParseIP(last) != nil {
-				return last
+	if n := k.trustedProxies; n > 0 {
+		var hops []string
+		for _, v := range r.Header.Values("X-Forwarded-For") {
+			for _, p := range strings.Split(v, ",") {
+				hops = append(hops, strings.TrimSpace(p))
 			}
 		}
+		// The last n entries were appended by my proxies; the one before
+		// the first of them is the client as my outermost proxy saw it.
+		if len(hops) >= n {
+			host = hops[len(hops)-n]
+		}
 	}
-	return host
+	return ipGroup(host)
+}
+
+func ipGroup(s string) string {
+	ip := net.ParseIP(strings.Trim(s, "[]"))
+	if ip == nil {
+		return "invalid"
+	}
+	if v4 := ip.To4(); v4 != nil {
+		return v4.String()
+	}
+	return ip.Mask(net.CIDRMask(48, 128)).String() + "/48"
 }
 
 // privatePage is what anyone who isn't my signed-in owner sees.
@@ -866,6 +883,11 @@ func (k *Kernel) privatePage(w http.ResponseWriter, r *http.Request, status int,
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
+	// My organism shares this origin: without this, an organism page could
+	// window.open() the sign-in page, keep a handle and read the password as
+	// it is typed. The proxy forces organism pages to a different opener
+	// policy, so this severs the handle.
+	w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 	w.WriteHeader(status)
 	_, _ = io.WriteString(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>`+name+`</title><link rel="icon" href="/_seed/api/identity/logo"><style>

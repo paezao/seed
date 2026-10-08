@@ -68,6 +68,9 @@ type Kernel struct {
 	// cookieName is unique per Seed: browsers share cookies across ports, so
 	// Seeds on the same machine must not overwrite each other's sessions.
 	cookieName string
+	// trustedProxies is how many proxies in front of me append to
+	// X-Forwarded-For (SEED_TRUSTED_PROXIES; 0 = trust none).
+	trustedProxies int
 }
 
 // Boot assembles a kernel for the Seed at root.
@@ -146,6 +149,13 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		}
 	}
 	k.cookieName = "seed_owner_" + instance
+	if v := os.Getenv("SEED_TRUSTED_PROXIES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 && n <= 5 {
+			k.trustedProxies = n
+		} else {
+			slog.Warn("SEED_TRUSTED_PROXIES must be a number of proxies (0-5); trusting none")
+		}
+	}
 
 	// The organism's own database identity (least privilege: it cannot see kernel memory).
 	role := cfg.DBName("organism")
