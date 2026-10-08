@@ -10,3 +10,10 @@ organism/bin
 organism/web/dist
 .env
 kernel/template/assets/template.tar.gz
+# The project's own files: not part of a Seed.
+.github
+install.sh
+CONTRIBUTING.md
+CODE_OF_CONDUCT.md
+SECURITY.md
+TRADEMARKS.md

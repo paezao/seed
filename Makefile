@@ -30,12 +30,14 @@ control:
 	cd control/web && npm ci --no-audit --no-fund && npm run build
 
 # Snapshot the pristine Seed (tracked + untracked, non-ignored files) into
-# the binary so `seed new` can plant it.
+# the binary so `seed new` can plant it. The project's own files (CI, the
+# installer, contributing and policy docs) aren't part of a Seed.
 template:
 	rm -rf .stage && mkdir .stage
 	git ls-files -co --exclude-standard -z \
 	  | xargs -0 sh -c 'for f; do [ -e "$$f" ] && printf "%s\0" "$$f"; done' sh \
 	  | grep -zv '^kernel/template/assets/template.tar.gz$$' \
+	  | grep -zvE '^(\.github/|install\.sh$$|CONTRIBUTING\.md$$|CODE_OF_CONDUCT\.md$$|SECURITY\.md$$|TRADEMARKS\.md$$)' \
 	  | tar --null -cf - -T - | tar -C .stage -xf -
 	echo "$(VERSION)" > .stage/kernel/VERSION
 	echo "$(RELEASED)" > .stage/kernel/RELEASED

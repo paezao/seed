@@ -1,4 +1,5 @@
-# Publishes a signed kernel release. Two ways:
+# Publishes a release: a signed kernel (for Seeds' updates) and the seed CLI
+# for Linux and macOS (for install.sh). Two ways:
 #   - Actions → release → Run workflow (version and notes optional), or
 #   - push a tag: git tag -a v2026.10.20 -m "notes" && git push origin v2026.10.20
 # Seeds check releases/latest and install only releases signed by a key they
@@ -96,6 +97,17 @@ jobs:
         run: |
           go run ./cmd/seed release sign --template kernel/template/assets/template.tar.gz \
             --dockerfile Dockerfile --version "$VERSION" --notes notes.md --out dist
+
+      - name: Build the CLI (with this release's template inside)
+        run: |
+          set -euo pipefail
+          for t in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
+            os="${t%/*}"; arch="${t#*/}"; d="$(mktemp -d)"
+            GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$d/seed" ./cmd/seed
+            cp LICENSE "$d/"
+            tar -C "$d" -czf "dist/seed_${os}_${arch}.tar.gz" seed LICENSE
+          done
+          (cd dist && sha256sum seed_*.tar.gz > checksums.txt)
 
       - name: Publish
         env:

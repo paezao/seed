@@ -1,0 +1,35 @@
+name: Bug report
+description: Something in Seed doesn't work as it should.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      placeholder: |
+        1. seed new …
+        2. asked it to …
+        3. …
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: From the control plane (Logs page) or `docker logs`. Remove keys and personal data.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Kernel version
+      description: Settings → Kernel, or `cat kernel/VERSION` in the Seed's folder.
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: macOS 15, Docker Desktop 4.x · or · Linux, Podman 5

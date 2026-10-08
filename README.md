@@ -2,6 +2,10 @@
 
 > **A Seed is a minimal, self-modifying software system containing an agent and runtime capable of growing itself into an application through conversation.**
 
+**Status: early and experimental.** Seed runs code that a language model writes. It does so in
+sandboxes, behind an owner sign-in, with every change tested and reversible (see
+[security](docs/security.md)), but treat it as the young project it is.
+
 You plant a Seed, and it starts as almost nothing: a kernel (agent, tools, sandbox, memory), a control plane, and an empty body. You tell it what to become. It plans the change, rewrites its own code in an isolated workspace, builds, tests, runs and checks the result, records what it learned, commits, and *becomes* that new version: a new **generation**. The builder never leaves. The todo app you end up with still contains the Seed, and the Seed still knows how it got there.
 
 ```
@@ -17,12 +21,20 @@ If port 8080 is taken, it uses the next free one. Then:
 
 Say *"Become a todo application. I need to create, complete and delete tasks."* A few minutes later `/` is a working todo app with its own name and logo. Then say *"Tasks should have priorities: low, medium and high. Let me filter by priority."* and it changes again.
 
-## Requirements
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/paezao/seed/main/install.sh | sh
+```
+
+That puts the `seed` CLI in `~/.local/bin` (Linux and macOS; on Windows, run it inside WSL2).
+You also need:
 
 - Docker (Docker Desktop on macOS and Windows), or Podman with `SEED_CONTAINER_ENGINE=podman`
-- Go 1.27+ and Node.js 22+ only to build the `seed` CLI from source
 - An [OpenRouter](https://openrouter.ai/keys) API key (one key, any model). You pass it when you
   start a Seed: `seed new tasks -e OPENROUTER_API_KEY`. Seeds never store credentials.
+
+To build from source instead you need Go (see `go.mod`) and Node 24: `make build && make install`.
 
 **A Seed is one folder.** It runs in one container, its body: its kernel, its own private
 PostgreSQL (data in `.seed/postgres` inside the folder), the Go and Node toolchains it builds
@@ -33,11 +45,27 @@ the folder, and `seed run` brings it back to life. The same image is what you de
 ## Getting started
 
 ```bash
-make build                 # control plane + template + bin/seed
-make install               # copies bin/seed to ~/.local/bin
 seed new myapp -e OPENROUTER_API_KEY      # create, start, open the browser
 cd myapp && seed run -e OPENROUTER_API_KEY --open   # later: start it again
 ```
+
+## What a Seed can do
+
+- **Grow by conversation.** Every change is planned, built in an isolated workspace, tested,
+  checked against the running app and committed as a new **generation**. You can roll back
+  to any of them. It asks before guessing, and it breaks big goals into stages.
+- **Answer about itself and its data.** Its chat can query the app's data (read-only) and call
+  its API. Changing data waits for your approval.
+- **Do things on a schedule.** [Routines](docs/routines.md) are tasks it runs on its own and
+  reports on, and jobs its app runs on a schedule.
+- **Reach the outside world, when you allow it.** Its app has no network except HTTPS to hosts
+  you approve, with the secrets you grant ([outbound access](docs/security.md#outbound-access)).
+- **Stay yours.** Owner sign-in, a control plane only you can open, and a little seed on the
+  app's pages that takes you back to it.
+- **Update itself.** New kernels arrive as signed releases you install from its control
+  plane, and it rolls back on its own if one fails to start ([updates](docs/updates.md)).
+- **Move out.** The same image runs anywhere Docker does, with a volume and optionally an
+  external PostgreSQL ([hosting](docs/hosting.md)).
 
 CLI:
 
@@ -47,7 +75,7 @@ CLI:
 | `seed run [--open] [--detach]` | start the Seed in its container (it builds its own kernel from its own source) |
 | `seed status` | what the Seed is right now |
 | `seed evolve "<intent>"` | evolve from the terminal and follow progress |
-| `seed generations` | list generations (works offline from git) |
+| `seed generations` | list generations |
 | `seed rollback <n>` | return to generation n (recorded as a new generation) |
 | `seed login` | sign a browser in to the control plane (`--print` for the link instead) |
 | `seed stop` | stop the Seed (its folder keeps everything) |
@@ -74,3 +102,19 @@ seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # 
 - [Security](docs/security.md): sandboxing, permissions, the kernel boundary
 - [Development](docs/development.md): running, testing, contributing
 - [Control plane API](docs/api.md)
+
+## Your app is yours
+
+What your Seed grows (its app in `organism/`, its `knowledge/` and `skills/`) belongs to you:
+use it, sell it, license it however you like. The starter app it grows from is MIT
+([organism/LICENSE](organism/LICENSE)).
+
+## License
+
+Seed itself (the kernel, CLI and control plane) is licensed under the
+[Mozilla Public License 2.0](LICENSE). You can use it, change it, and host what you build with
+it, commercially too. If you distribute a modified Seed, its changed files stay available under
+the MPL. Running your own Seed, even with a kernel it changed itself, asks nothing of you. The
+name and logo: see [TRADEMARKS.md](TRADEMARKS.md).
+
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [Code of conduct](CODE_OF_CONDUCT.md)

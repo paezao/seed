@@ -1,0 +1,49 @@
+# Checks every push to main and every pull request: the control plane builds
+# and matches what's committed, everything lints, and all Go tests pass inside
+# the runtime image (bubblewrap sandboxes, PostgreSQL), as `make test` does
+# locally. The end-to-end test needs a paid model key and isn't run here.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: control/web/package-lock.json
+
+      # Ubuntu 24.04 restricts unprivileged user namespaces via AppArmor;
+      # sandboxes (bubblewrap) need them, as on any host that runs Seeds.
+      - name: Allow user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+
+      - name: Build (control plane, template, CLI)
+        run: make build
+
+      - name: The committed control plane is up to date
+        run: |
+          if ! git diff --quiet -- control/web/dist; then
+            git status --short -- control/web/dist
+            echo "::error::control/web/dist is out of date: run make build and commit it"; exit 1
+          fi
+
+      - name: Lint
+        run: make lint
+
+      - name: Test (in the runtime image)
+        run: make test
