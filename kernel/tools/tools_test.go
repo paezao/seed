@@ -10,6 +10,7 @@ import (
 
 	"seed/kernel/models"
 	"seed/kernel/permissions"
+	"seed/kernel/testutil"
 )
 
 func ws(t *testing.T) *Workspace {
@@ -147,5 +148,23 @@ func TestInRootSymlinkCannotBypassKernelBoundary(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(w.Root, "kernel", "agent.go")); err != nil {
 		t.Fatal("deleting a link must not delete its target")
+	}
+}
+
+func TestQueryTxReadOnlyRefusesWrites(t *testing.T) {
+	url := testutil.Database(t)
+	ctx := context.Background()
+	if _, err := QueryTx(ctx, url, "CREATE TABLE recipes (id int, title text); INSERT INTO recipes VALUES (1, 'Soup')", 10, false); err != nil {
+		t.Fatal(err)
+	}
+	out, err := QueryTx(ctx, url, "SELECT count(*) FROM recipes", 10, true)
+	if err != nil || !strings.Contains(out, "1") {
+		t.Fatalf("read: %q %v", out, err)
+	}
+	if _, err := QueryTx(ctx, url, "DELETE FROM recipes", 10, true); err == nil || !strings.Contains(err.Error(), "read-only") {
+		t.Fatalf("a read-only query must not be able to write: %v", err)
+	}
+	if out, _ := QueryTx(ctx, url, "SELECT count(*) FROM recipes", 10, true); !strings.Contains(out, "1") {
+		t.Fatal("data must be untouched")
 	}
 }

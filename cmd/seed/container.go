@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"net"
@@ -98,6 +99,10 @@ func cmdRun(ctx context.Context, args []string) error {
 	if err := os.MkdirAll(filepath.Join(cfg.Root, ".seed"), 0o755); err != nil {
 		return err
 	}
+	seccompPath, err := writeSeccomp()
+	if err != nil {
+		return err
+	}
 	run := []string{"run", "-d", "--rm", "--name", name,
 		"--label", "seed.root=" + cfg.Root,
 		"-p", "127.0.0.1:" + strconv.Itoa(hostPort) + ":8080",
@@ -105,12 +110,19 @@ func cmdRun(ctx context.Context, args []string) error {
 		// The owner's secrets: names on the command line, values through the
 		// engine's environment (kept out of `ps`); the kernel keeps them in memory.
 		"-e", "SEED_SECRETS=" + strings.Join(f.secretNames(), ","),
-		// Hardened, unprivileged container. Nested bubblewrap sandboxes need
-		// user namespaces and a fresh /proc, which Docker's default seccomp,
-		// AppArmor and /proc masking forbid; no capabilities are granted.
+		// Hardened, unprivileged container: no capabilities, no new
+		// privileges, a read-only root filesystem, resource limits, and
+		// Docker's default seccomp profile extended only with the namespace
+		// and mount calls nested bubblewrap sandboxes need (cmd/seed/seccomp.json).
+		// AppArmor's docker-default profile and /proc masking also forbid
+		// those, so they are relaxed.
 		"--cap-drop", "ALL", "--security-opt", "no-new-privileges",
-		"--security-opt", "seccomp=unconfined", "--security-opt", "apparmor=unconfined",
-		"--security-opt", "systempaths=unconfined",
+		"--security-opt", "seccomp=" + seccompPath,
+		"--security-opt", "apparmor=unconfined", "--security-opt", "systempaths=unconfined",
+		"--read-only", "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=2g",
+		"--pids-limit", envOr("SEED_PIDS_LIMIT", "4096"),
+		"--memory", envOr("SEED_MEMORY", "8g"),
+		"--cpus", envOr("SEED_CPUS", strconv.Itoa(max(1, goruntime.NumCPU()/2))),
 	}
 	if goruntime.GOOS == "linux" {
 		// Files the Seed writes stay owned by you.
@@ -217,4 +229,29 @@ func cmdImage(ctx context.Context, args []string) error {
 	}
 	fmt.Println(image)
 	return nil
+}
+
+//go:embed seccomp.json
+var seccompProfile []byte
+
+// writeSeccomp stores the embedded seccomp profile where the engine can read
+// it (derived from moby/profiles' default.json, Apache-2.0).
+func writeSeccomp() (string, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		dir = os.TempDir()
+	}
+	dir = filepath.Join(dir, "seed")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	p := filepath.Join(dir, "seccomp.json")
+	return p, os.WriteFile(p, seccompProfile, 0o644)
+}
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
 }

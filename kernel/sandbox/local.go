@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,8 +61,23 @@ type localSandbox struct {
 	procs    map[string]*exec.Cmd
 	closed   bool
 	// command builds the process for a shell command line; the local driver
-	// runs it directly, other drivers wrap it (e.g. in bubblewrap).
+	// runs it directly, other drivers wrap it (e.g. in bubblewrap). start, if
+	// set, builds long-lived processes (Start).
 	command func(line string, extra map[string]string) *exec.Cmd
+	start   func(line string, extra map[string]string) *exec.Cmd
+	// bridge is the Unix socket reaching a PrivateNetwork process.
+	bridge string
+}
+
+func (s *localSandbox) Transport() http.RoundTripper {
+	if s.bridge == "" {
+		return &http.Transport{DisableKeepAlives: true}
+	}
+	sock := s.bridge
+	return &http.Transport{DisableKeepAlives: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, "unix", sock)
+	}}
 }
 
 func (s *localSandbox) cmd(line string, extra map[string]string) *exec.Cmd {
@@ -136,6 +152,9 @@ func (s *localSandbox) Start(ctx context.Context, name, command string, env map[
 		return err
 	}
 	cmd := s.cmd(command, env)
+	if s.start != nil {
+		cmd = s.start(command, env)
+	}
 	cmd.Stdout, cmd.Stderr = logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
@@ -194,6 +213,9 @@ func (s *localSandbox) Logs(_ context.Context, name string, tail int) string {
 }
 
 func (s *localSandbox) URL(context.Context) (string, error) {
+	if s.bridge != "" {
+		return "http://organism", nil
+	}
 	if s.hostPort == 0 {
 		return "", errors.New("sandbox publishes no port")
 	}

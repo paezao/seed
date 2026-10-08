@@ -50,14 +50,29 @@ func (d *BwrapDriver) Create(ctx context.Context, spec Spec) (Sandbox, error) {
 		}
 	}
 	s.command = func(line string, extra map[string]string) *exec.Cmd {
-		return exec.Command("bwrap", d.args(spec, s.env, extra, line)...)
+		return exec.Command("bwrap", d.args(spec, s.env, extra, line, "")...)
+	}
+	if spec.PrivateNetwork {
+		// The kernel's end of the bridge lives in its own /tmp, which no
+		// sandbox can see (each gets a private /tmp).
+		dir, err := os.MkdirTemp("", "seed-bridge-")
+		if err != nil {
+			return nil, err
+		}
+		s.bridge = filepath.Join(dir, "http.sock")
+		s.start = func(line string, extra map[string]string) *exec.Cmd {
+			// Inside the private namespace, socat bridges the socket to the
+			// process's port; it goes away with the process.
+			wrapped := `rm -f /run/organism/http.sock; socat UNIX-LISTEN:/run/organism/http.sock,fork,mode=600 TCP:127.0.0.1:$PORT & bridge=$!; trap 'kill $bridge 2>/dev/null' EXIT; ` + line
+			return exec.Command("bwrap", d.args(spec, s.env, extra, wrapped, dir)...)
+		}
 	}
 	return s, nil
 }
 
 // args builds the bubblewrap command line. Order matters: later mounts are
 // placed on top of earlier ones.
-func (d *BwrapDriver) args(spec Spec, base, extra map[string]string, line string) []string {
+func (d *BwrapDriver) args(spec Spec, base, extra map[string]string, line, bridgeDir string) []string {
 	a := []string{
 		"--die-with-parent", "--new-session",
 		"--unshare-pid", "--unshare-ipc", "--unshare-uts", "--unshare-cgroup-try",
@@ -70,7 +85,7 @@ func (d *BwrapDriver) args(spec Spec, base, extra map[string]string, line string
 		"--tmpfs", "/tmp", "--dir", "/tmp/home",
 		"--tmpfs", "/run",
 	)
-	if d.NoNetwork {
+	if d.NoNetwork || bridgeDir != "" {
 		a = append(a, "--unshare-net")
 	}
 	for _, h := range d.Hide {
@@ -92,6 +107,9 @@ func (d *BwrapDriver) args(spec Spec, base, extra map[string]string, line string
 	}
 	if d.SocketDir != "" {
 		a = append(a, "--ro-bind", d.SocketDir, SandboxSocketDir)
+	}
+	if bridgeDir != "" {
+		a = append(a, "--bind", bridgeDir, "/run/organism")
 	}
 
 	env := map[string]string{

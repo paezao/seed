@@ -173,7 +173,8 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		DB:              evolution.DBCreds{Role: evoRole, Password: evoPass},
 		OnKernelChanged: k.requestRestart,
 	}
-	k.Chat = &Chat{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Model: k.Mind, Orch: k.Orch, Repo: k.Repo, Policy: k.Policy}
+	k.Chat = &Chat{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Model: k.Mind, Orch: k.Orch, Repo: k.Repo, Policy: k.Policy,
+		Live: k.Organism, Approvals: k.Approvals}
 	return k, nil
 }
 

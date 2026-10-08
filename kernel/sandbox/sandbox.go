@@ -9,6 +9,7 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -30,6 +31,12 @@ type Spec struct {
 	Port int
 	// Labels are attached to the sandbox for bookkeeping/cleanup.
 	Labels map[string]string
+	// PrivateNetwork runs long-lived processes (Start) in their own network
+	// namespace: nothing else can reach them over TCP, and the kernel talks to
+	// them through a Unix socket (Transport). Used for the live organism, so
+	// experimental code can never call it. Exec commands keep network access
+	// (builds install dependencies).
+	PrivateNetwork bool
 }
 
 type ExecResult struct {
@@ -53,8 +60,11 @@ type Sandbox interface {
 	Running(ctx context.Context, name string) bool
 	// Logs returns the last lines of a background process's output.
 	Logs(ctx context.Context, name string, tail int) string
-	// URL is the host-reachable base URL for Spec.Port.
+	// URL is the base URL for Spec.Port, used with Transport.
 	URL(ctx context.Context) (string, error)
+	// Transport reaches the sandbox's processes (a Unix socket bridge for
+	// PrivateNetwork sandboxes).
+	Transport() http.RoundTripper
 	// Alive reports whether the sandbox itself still exists.
 	Alive(ctx context.Context) bool
 	// Close destroys the sandbox.

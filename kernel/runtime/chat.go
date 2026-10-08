@@ -30,6 +30,10 @@ type Chat struct {
 	Orch   *evolution.Orchestrator
 	Repo   *git.Repo
 	Policy *permissions.Policy
+	// Live is my running organism and its data (for operating myself).
+	Live *Organism
+	// Approvals asks my owner before I change live data.
+	Approvals permissions.Approver
 
 	mu sync.Mutex
 }
@@ -74,9 +78,10 @@ func (c *Chat) respond(ctx context.Context) {
 		return
 	}
 	var started string
-	reg := tools.NewRegistry(c.Policy, nil)
+	reg := tools.NewRegistry(c.Policy, c.Approvals)
 	ws := &tools.Workspace{Root: c.Root, Policy: c.Policy}
 	reg.Add(tools.ReadOnlyFileTools(ws)...).Add(tools.SkillTools(skills.Library{Root: c.Root})...).Add(tools.GitTools(c.Repo, "HEAD")[2])
+	reg.Add(c.opsTools()...)
 	reg.Add(&tools.Tool{
 		Name:        "start_evolution",
 		Description: "Start evolving myself according to the owner's intent. The intent must be self-contained: include every relevant detail from the conversation.",

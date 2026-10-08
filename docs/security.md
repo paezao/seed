@@ -5,8 +5,9 @@ design assumes autonomy will grow, so trust boundaries are structural rather tha
 
 ## Sandboxing
 
-A Seed runs in **one container**, an unprivileged container with all capabilities dropped and
-`no-new-privileges`, running as your user. Inside it, every command an evolution runs, and the
+A Seed runs in **one container**, an unprivileged container running as your user with all
+capabilities dropped, `no-new-privileges`, a **read-only root filesystem**, and memory, CPU and
+process limits (`SEED_MEMORY`, `SEED_CPUS`, `SEED_PIDS_LIMIT`). Inside it, every command an evolution runs, and the
 live organism, is isolated again with **bubblewrap** (`kernel/sandbox/bwrap.go`). Each sandbox
 gets:
 
@@ -18,14 +19,24 @@ gets:
   access to kernel memory;
 - timeouts enforced by killing the whole process group.
 
-Nested bubblewrap needs user namespaces and a fresh `/proc`. Docker's default seccomp, AppArmor
-and `/proc` masking forbid these, so the container runs with those three relaxed
-(`seccomp=unconfined`, `apparmor=unconfined`, `systempaths=unconfined`) but with **no**
-capabilities and no privileged mode. A tailored seccomp profile (Docker's default plus
-user-namespace creation) is a planned refinement.
+Nested bubblewrap needs to create namespaces and mount filesystems. Docker's default seccomp
+profile allows those calls only with `CAP_SYS_ADMIN`, which a Seed never gets. A Seed therefore
+uses a **tailored seccomp profile** (`cmd/seed/seccomp.json`): Docker's default profile with only
+`clone`, `unshare`, `setns`, `mount`, `umount2` and `pivot_root` allowed unconditionally. AppArmor's
+`docker-default` profile and `/proc` masking also forbid these, so those two are relaxed. There is
+still no privileged mode and no capability.
 
-Sandboxes share the container's network so they can install dependencies. The kernel API they could
-reach requires the control token, which they cannot read.
+**Network.**
+- Evolution sandboxes share the container's network so they can install dependencies.
+- The **live organism runs in its own network namespace**. Nothing in the container can reach
+  it over TCP; the kernel talks to it through a Unix socket bridge. Experimental code can never
+  call the live app.
+- The kernel **refuses connections that originate inside its own container**. Sandboxes cannot use
+  it, or its proxy to the live app, as a way out; the owner arrives through the published port.
+
+**Build caches.** The kernel is built with its own Go caches (`.seed/kernel-cache`), which no
+sandbox can see. Sandboxes have a separate writable cache (`.seed/cache`), so sandboxed code
+cannot poison the next kernel build.
 
 The runtime image is built from `Dockerfile` **without a build context**, so it cannot copy
 repository files or secrets.
@@ -117,7 +128,16 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   refused (`server.allowed_hosts` adds more), which defeats DNS rebinding. State-changing calls must
   be JSON and must come from the same origin.
 
+## Operating on live data
+
+The chat can read live data (`query_data` runs in a **read-only transaction**, so PostgreSQL itself
+refuses writes; `call_api` with GET). Changing live data (`change_data`, or a non-GET `call_api`) is
+classified dangerous: the owner approves each change, seeing the exact SQL or request, before it runs.
+
 ## Known limitations (v0.1)
+
+- The live organism has no outbound network access (it runs in a private network namespace).
+  An egress proxy with an allowlist is the planned way to give apps controlled outbound access.
 
 - **Same origin.** The mitigations above are layered, but a separate origin for the control plane
   (for example `seed.localhost:8080`) would be stronger still. It is a candidate for v0.2.

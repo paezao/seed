@@ -213,7 +213,8 @@ func HTTP(ctx context.Context, sb sandbox.Sandbox, method, path, body string, he
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}
-	client := &http.Client{Timeout: 20 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Timeout: 20 * time.Second, Transport: sb.Transport(),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
 		return 0, "", "", err
@@ -267,16 +268,34 @@ func DBTools(env *Env) []*Tool {
 
 // Query runs SQL and renders rows as a table.
 func Query(ctx context.Context, url, sql string, maxRows int) (string, error) {
+	return QueryTx(ctx, url, sql, maxRows, false)
+}
+
+// QueryTx runs SQL in one transaction (READ ONLY when readOnly: PostgreSQL
+// itself refuses any write), with a statement timeout, and renders the rows.
+func QueryTx(ctx context.Context, url, sql string, maxRows int, readOnly bool) (string, error) {
 	conn, err := pgx.Connect(ctx, url)
 	if err != nil {
 		return "", err
 	}
 	defer conn.Close(ctx)
-	rows, err := conn.Query(ctx, sql)
+	mode := pgx.ReadWrite
+	if readOnly {
+		mode = pgx.ReadOnly
+	}
+	tx, err := conn.BeginTx(ctx, pgx.TxOptions{AccessMode: mode})
 	if err != nil {
 		return "", err
 	}
-	defer rows.Close()
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, "SET LOCAL statement_timeout = '30s'"); err != nil {
+		return "", err
+	}
+	// Simple protocol: allows several statements (e.g. a multi-step change).
+	rows, err := tx.Query(ctx, sql, pgx.QueryExecModeSimpleProtocol)
+	if err != nil {
+		return "", err
+	}
 	var cols []string
 	for _, f := range rows.FieldDescriptions() {
 		cols = append(cols, f.Name)
@@ -293,6 +312,7 @@ func Query(ctx context.Context, url, sql string, maxRows int) (string, error) {
 		}
 		vals, err := rows.Values()
 		if err != nil {
+			rows.Close()
 			return "", err
 		}
 		parts := make([]string, len(vals))
@@ -301,10 +321,14 @@ func Query(ctx context.Context, url, sql string, maxRows int) (string, error) {
 		}
 		sb.WriteString(strings.Join(parts, " | ") + "\n")
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return "", err
 	}
 	tag := rows.CommandTag()
+	if err := tx.Commit(ctx); err != nil {
+		return "", err
+	}
 	if n > maxRows {
 		fmt.Fprintf(&sb, "… %d rows total (showing %d)\n", n, maxRows)
 	}

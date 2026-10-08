@@ -92,8 +92,11 @@ func (o *Organism) sandbox(ctx context.Context) (sandbox.Sandbox, error) {
 		Name: o.Cfg.ContainerName("live"), Root: o.Cfg.Root,
 		// The live organism may write only its own directory (build outputs).
 		Writable: []string{"organism"}, Hidden: []string{".seed"}, Port: o.Cfg.Organism.Port,
-		Env:    map[string]string{"DATABASE_URL": o.sandboxDBURL(), "SEED_ENV": "live"},
-		Labels: map[string]string{"seed.name": o.Cfg.Name, "seed.role": "live"},
+		// The live organism is unreachable from anything else in my body
+		// (in particular from evolution sandboxes running experimental code).
+		PrivateNetwork: o.Cfg.Sandbox.Driver == "bwrap",
+		Env:            map[string]string{"DATABASE_URL": o.sandboxDBURL(), "SEED_ENV": "live"},
+		Labels:         map[string]string{"seed.name": o.Cfg.Name, "seed.role": "live"},
 	})
 	if err != nil {
 		return nil, err
@@ -222,6 +225,7 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		u, _ := url.Parse(target)
 		proxy = httputil.NewSingleHostReverseProxy(u)
+		proxy.Transport = sb.Transport()
 		proxy.ModifyResponse = func(resp *http.Response) error {
 			// Keep organism pages out of the control plane's browsing context
 			// group (see controlUI) whatever the organism asks for.

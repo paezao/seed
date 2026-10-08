@@ -80,6 +80,10 @@ layout, refreshing the list on every new generation. The `control-plane-screens`
 procedure. Asking *"I want somewhere here to see task stats"* produces a screen there, versioned and
 rolled back like any other part of the organism.
 
+**Operating, not just building.** The chat answers questions about the Seed's own data. It queries
+its live database read-only, or calls its own API. It changes data only with the owner's approval
+for each change. Evolutions are for changing *what the Seed is*. Data questions are answered directly.
+
 **Identity.** Once the Seed takes a name, it *is* that name everywhere: the control plane, its
 voice in chat and in its prompts (`agent.PromptFor`), the author of its git commits, `seed status`,
 logs, and the fallback page. "Seed" remains only the name of the technology and of the `seed` CLI.

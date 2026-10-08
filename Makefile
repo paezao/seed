@@ -11,7 +11,7 @@ BIN     := bin/seed
 UID     := $(shell id -u)
 GID     := $(shell id -g)
 # Same hardened settings as a running Seed (see cmd/seed/container.go).
-SECURITY := --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=unconfined \
+SECURITY := --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=cmd/seed/seccomp.json \
             --security-opt apparmor=unconfined --security-opt systempaths=unconfined
 
 .PHONY: up build control template install test lint e2e clean

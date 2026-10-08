@@ -132,3 +132,50 @@ func TestBwrapSandbox(t *testing.T) {
 		t.Fatalf("sandbox leaked host state: %q", res.Output)
 	}
 }
+
+func TestBwrapPrivateNetwork(t *testing.T) {
+	if !BwrapAvailable() {
+		t.Skip("bubblewrap not available")
+	}
+	if _, err := exec.LookPath("socat"); err != nil {
+		t.Skip("socat not available (run in the runtime image)")
+	}
+	ctx := context.Background()
+	d := &BwrapDriver{CacheDir: t.TempDir()}
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, "organism"), 0o755)
+	live, err := d.Create(ctx, Spec{Name: "live", Root: root, Writable: []string{"organism"}, Port: 8080, PrivateNetwork: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer live.Close(ctx)
+	if err := live.Start(ctx, "app", `node -e "require('http').createServer((q,r)=>r.end('live')).listen(process.env.PORT)"`, nil); err != nil {
+		t.Fatal(err)
+	}
+	url, _ := live.URL(ctx)
+	client := &http.Client{Transport: live.Transport(), Timeout: 2 * time.Second}
+	var body string
+	for i := 0; i < 50 && body == ""; i++ {
+		if resp, err := client.Get(url + "/"); err == nil {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			body = string(b)
+		} else {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+	if body != "live" {
+		t.Fatalf("live process not reachable through its bridge (logs: %s)", live.Logs(ctx, "app", 20))
+	}
+	// Another sandbox (an evolution) cannot reach it over TCP, even on the port it listens on.
+	other, err := d.Create(ctx, Spec{Name: "evo", Root: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close(ctx)
+	port := live.(*localSandbox).env["PORT"]
+	res, _ := other.Exec(ctx, "curl -s -m 2 http://127.0.0.1:"+port+"/ || echo unreachable", 10*time.Second, nil)
+	if strings.Contains(res.Output, "live") || !strings.Contains(res.Output, "unreachable") {
+		t.Fatalf("the live process must be unreachable from other sandboxes: %q", res.Output)
+	}
+}

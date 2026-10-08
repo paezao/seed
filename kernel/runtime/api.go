@@ -65,7 +65,43 @@ func (k *Kernel) Handler() http.Handler {
 		http.Redirect(w, r, "/_seed/", http.StatusFound)
 	})
 	mux.Handle("/", k.Organism)
-	return guardHost(k.Cfg.Server.AllowedHosts, organismOrigin(guardAPI(k.requireToken(mux))))
+	h := guardHost(k.Cfg.Server.AllowedHosts, organismOrigin(guardAPI(k.requireToken(mux))))
+	if os.Getenv("SEED_IN_CONTAINER") == "1" && os.Getenv("SEED_ALLOW_LOCAL_CLIENTS") != "1" {
+		h = rejectInternal(h)
+	}
+	return h
+}
+
+// rejectInternal refuses connections that originate inside my own body.
+// Sandboxes share my container's network (they install dependencies), so
+// without this, experimental code could use me (and my proxy to the live
+// organism) as a way around its sandbox. My owner reaches me through the
+// container engine's published port, i.e. from outside.
+func rejectInternal(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil || isOwnAddress(net.ParseIP(host)) {
+			http.Error(w, "not from inside my body", http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isOwnAddress(ip net.IP) bool {
+	if ip == nil || ip.IsLoopback() || ip.IsUnspecified() {
+		return true
+	}
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return true
+	}
+	for _, a := range addrs {
+		if n, ok := a.(*net.IPNet); ok && n.IP.Equal(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 // OrganismFrameHost is the separate origin admin screens are framed from.

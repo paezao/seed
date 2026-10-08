@@ -300,3 +300,17 @@ func TestNextRoadmapStage(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestRejectInternal(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) })
+	h := rejectInternal(ok)
+	for addr, want := range map[string]int{"127.0.0.1:5555": 403, "[::1]:5555": 403, "203.0.113.9:5555": 204} {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.RemoteAddr = addr
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != want {
+			t.Errorf("%s: %d, want %d", addr, rec.Code, want)
+		}
+	}
+}

@@ -11,7 +11,7 @@ FROM node:24-trixie-slim
 COPY --from=go /usr/local/go /usr/local/go
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      postgresql-17 bubblewrap git make ca-certificates curl jq tini procps \
+      postgresql-17 bubblewrap socat git make ca-certificates curl jq tini procps \
  && rm -rf /var/lib/apt/lists/*
 ENV PATH=/usr/lib/postgresql/17/bin:/usr/local/go/bin:$PATH \
     GOTOOLCHAIN=local \
@@ -24,8 +24,9 @@ ENV PATH=/usr/lib/postgresql/17/bin:/usr/local/go/bin:$PATH \
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -u' \
-  'mkdir -p /tmp/home /seed/.seed/bin /seed/.seed/cache' \
-  'export GOCACHE=/seed/.seed/cache/go-build GOMODCACHE=/seed/.seed/cache/go-mod' \
+  'mkdir -p /tmp/home /seed/.seed/bin /seed/.seed/kernel-cache' \
+  '# The kernel'"'"'s build cache is never visible to sandboxes (their cache is .seed/cache).' \
+  'export GOCACHE=/seed/.seed/kernel-cache/go-build GOMODCACHE=/seed/.seed/kernel-cache/go-mod' \
   'cd /seed' \
   'child=""' \
   'trap '"'"'[ -n "$child" ] && kill -TERM "$child" 2>/dev/null; wait "$child"; exit 0'"'"' TERM INT' \
