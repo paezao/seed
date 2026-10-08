@@ -256,7 +256,10 @@ func (a Admin) DatabaseURL(db, user, password, host string) string {
 }
 
 // safeParams may be copied from the admin URL into another role's URL.
-var safeParams = map[string]bool{"sslmode": true, "connect_timeout": true, "application_name": true, "target_session_attrs": true}
+// (host, port and hostaddr say where the server is, e.g. a Unix socket
+// directory; none of them says who connects.)
+var safeParams = map[string]bool{"host": true, "port": true, "hostaddr": true,
+	"sslmode": true, "connect_timeout": true, "application_name": true, "target_session_attrs": true}
 
 func quoteLiteral(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "''") + "'"

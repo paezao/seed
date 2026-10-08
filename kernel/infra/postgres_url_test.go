@@ -25,6 +25,11 @@ func TestRoleURLsCarryNoAdminCredentials(t *testing.T) {
 			t.Fatalf("socket URLs are plain: %s", got)
 		}
 	}
+	// The server's location survives (my private PostgreSQL is a socket named in the query).
+	local := Admin{URL: "postgres://postgres@/postgres?host=/seed/.seed/run&sslmode=disable"}
+	if got := local.DatabaseURL("app", "organism", "pw", ""); !strings.Contains(got, "host=%2Fseed%2F.seed%2Frun") {
+		t.Fatalf("the socket location must be kept: %s", got)
+	}
 	// The kernel's own URLs (no user) keep everything.
 	if got := a.DatabaseURL("seed", "", "", ""); !strings.Contains(got, "adminpw") {
 		t.Fatalf("my own URL keeps my credentials: %s", got)
