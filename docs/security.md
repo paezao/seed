@@ -159,6 +159,14 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   refused (`server.allowed_hosts` adds more), which defeats DNS rebinding. State-changing calls must
   be JSON and must come from the same origin.
 
+- **The owner's badge.** On organism pages loaded as top-level navigations, the kernel adds one
+  script (`/_seed/badge.js`). The script asks `/_seed/badge` whether this browser is the
+  owner's: the session cookie is sent, and the answer is only yes (200) or no (204), never a
+  token. It then shows a small floating link back to `/_seed/` in a closed shadow root. The
+  organism's own scripts can ask the same question and learn only whether the owner is looking.
+  Pages are rewritten only when uncompressed and under 8 MB. Admin screens (the
+  `organism.localhost` origin) and API responses are never touched.
+
 ## Outbound access
 
 The live organism runs in its own network namespace with no network. Its only way out is the

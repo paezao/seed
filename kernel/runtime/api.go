@@ -85,6 +85,8 @@ func (k *Kernel) Handler() http.Handler {
 		w.Header().Set("content-type", "text/plain")
 		_, _ = io.WriteString(w, "ok\n")
 	})
+	mux.HandleFunc("GET /_seed/badge", k.handleBadge)
+	mux.HandleFunc("GET /_seed/badge.js", k.handleBadgeScript)
 	mux.HandleFunc("GET /_seed/login", k.handleLogin)
 	mux.HandleFunc("POST /_seed/login", k.handlePasswordLogin)
 	mux.Handle("/_seed/", k.controlUI())

@@ -235,6 +235,10 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "service workers are not allowed (they would control /_seed)", http.StatusForbidden)
 		return
 	}
+	// Pages I add the owner's badge to come back uncompressed (see badge.go).
+	if wantsBadge(r) {
+		r.Header.Del("Accept-Encoding")
+	}
 	// Only my scheduler sends X-Seed-Job (see CallJob), never a visitor.
 	r.Header.Del("X-Seed-Job")
 	r.Header.Del("X-Seed-Routine")
@@ -261,7 +265,7 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			resp.Header.Set("Cross-Origin-Opener-Policy", "unsafe-none")
 			resp.Header.Del("Service-Worker-Allowed")
 			restrictFraming(resp.Header, resp.Request.Host)
-			return nil
+			return injectBadge(resp)
 		}
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 			o.unavailable(w, "unreachable", err.Error())
