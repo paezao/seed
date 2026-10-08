@@ -1235,3 +1235,14 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 .evo-card .evo-title, .evo-card .evo-intent {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden;
 }
+
+/* header pill: done / failed, then fade away */
+.active-evo { transition: opacity 0.5s ease, transform 0.5s ease, border-color 0.3s ease; }
+.active-evo.is-done { border-color: color-mix(in srgb, var(--ok, #22c55e) 50%, transparent); }
+.active-evo.is-failed { border-color: color-mix(in srgb, var(--bad) 50%, transparent); }
+.active-evo-mark { font-weight: 700; width: 14px; text-align: center; animation: pop 0.35s cubic-bezier(0.2, 0.8, 0.3, 1.4); }
+.active-evo.is-done .active-evo-mark { color: var(--ok, #22c55e); }
+.active-evo.is-failed .active-evo-mark { color: var(--bad); }
+.active-evo.is-leaving { opacity: 0; transform: translateY(-4px); }
+@keyframes pop { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .active-evo, .active-evo-mark { transition: none; animation: none; } }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import Welcome from './pages/Welcome';
-import { api, shortCommit } from './api';
+import { api, shortCommit, type Evolution } from './api';
 import { Logo } from './components/Logo';
 import { SeedMark } from './components/SeedMark';
 import { useApplyIdentity } from './identity';
@@ -137,12 +137,7 @@ export default function Layout() {
                 <OrganismBadge state={status.organism.state} />
               </span>
             )}
-            {active && (
-              <Link to={`/evolutions/${active.id}`} className="active-evo">
-                <span className="spinner" /> <span className="truncate">{active.title || active.intent}</span>
-                <span className="muted mono">{active.status}</span>
-              </Link>
-            )}
+            <ActiveEvolutionPill evolution={active ?? null} />
           </div>
           <div className="topbar-right">
             {status?.purpose && <span className="purpose truncate" title={status.purpose}>{status.purpose}</span>}
@@ -170,5 +165,39 @@ export default function Layout() {
         </main>
       </div>
     </div>
+  );
+}
+
+/**
+ * The evolution in progress, in the header. A spinner while it works; when it
+ * ends, a check (or cross), then it fades away.
+ */
+function ActiveEvolutionPill({ evolution }: { evolution: Evolution | null }) {
+  const { evolutions } = useLive();
+  const [shown, setShown] = useState<Evolution | null>(evolution);
+  const [leaving, setLeaving] = useState(false);
+  // Follow the live copy (it may finish before status stops reporting it).
+  const live = shown ? (evolutions[shown.id] ?? shown) : null;
+  const done = live ? ['complete', 'failed', 'cancelled', 'rolled_back'].includes(live.status) : false;
+
+  useEffect(() => {
+    if (evolution) { setShown(evolution); setLeaving(false); }
+  }, [evolution?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!done) return;
+    const fade = window.setTimeout(() => setLeaving(true), 4000);
+    const hide = window.setTimeout(() => { setShown(null); setLeaving(false); }, 4600);
+    return () => { window.clearTimeout(fade); window.clearTimeout(hide); };
+  }, [done, live?.id]);
+
+  if (!live) return null;
+  const ok = live.status === 'complete';
+  return (
+    <Link to={`/evolutions/${live.id}`} className={`active-evo${done ? (ok ? ' is-done' : ' is-failed') : ''}${leaving ? ' is-leaving' : ''}`}>
+      {done ? <span className="active-evo-mark" aria-hidden>{ok ? '✓' : '✗'}</span> : <span className="spinner" />}
+      <span className="truncate">{live.title || live.intent}</span>
+      <span className="muted mono">{ok && live.new_generation != null ? `generation ${live.new_generation}` : live.status.replace('_', ' ')}</span>
+    </Link>
   );
 }

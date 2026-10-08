@@ -165,8 +165,8 @@ func (o *Orchestrator) Active(ctx context.Context) *memory.Evolution {
 		return nil
 	}
 	e, err := o.Store.Evolution(ctx, id)
-	if err != nil {
-		return nil
+	if err != nil || e.Status.Terminal() {
+		return nil // finished: no longer active, even if the worker hasn't moved on yet
 	}
 	return e
 }
@@ -253,6 +253,7 @@ func (o *Orchestrator) process(parent context.Context, e *memory.Evolution) {
 		delete(o.cancels, e.ID)
 		o.running = ""
 		o.mu.Unlock()
+		o.Bus.Publish("organism", nil) // re-broadcast status: nothing is evolving now
 	}()
 
 	var err error
