@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api, errorMessage, type ModelConfig, type ProviderInfo } from '../api';
 import { ModelForm } from '../components/ModelForm';
 import { CopyCommand, keyEnvOf, keySourceText, restartCommand } from '../components/Brain';
-import { Badge, ErrorNote, Loading, PageHeader, useLoad } from '../components/ui';
+import { Badge, ErrorNote, Loading, PageHeader, relTime, useLoad } from '../components/ui';
 import { useLive } from '../live';
 
 function Value({ v }: { v: unknown }) {
@@ -153,12 +153,99 @@ function MindPanel() {
   );
 }
 
+function SignInLink() {
+  const [link, setLink] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const make = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const { path } = await api.loginLink();
+      setLink(window.location.origin + path);
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (link) {
+    return (
+      <div className="signin-link">
+        <p className="small muted">Open this in the other browser. It works once, for 15 minutes; anyone who has it can sign in, so don't share it.</p>
+        <CopyCommand command={link} label="Sign-in link" />
+      </div>
+    );
+  }
+  return (
+    <>
+      <button className="btn btn-sm" onClick={make} disabled={busy}>{busy ? 'Making a link…' : 'Sign in another browser'}</button>
+      {err && <span className="error-text small"> {err}</span>}
+    </>
+  );
+}
+
+function OwnerPanel() {
+  const load = useLoad(() => api.ownerSessions(), []);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const signOut = async (s: { id: string; current: boolean }) => {
+    setBusy(s.id);
+    setErr(null);
+    try {
+      if (s.current) {
+        await api.logout();
+        window.location.assign(window.location.origin + '/_seed/');
+        return;
+      }
+      await api.revokeSession(s.id);
+      load.reload();
+    } catch (e) {
+      setErr(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section className="panel" aria-labelledby="owner-h">
+      <h2 id="owner-h">Signed-in browsers</h2>
+      <p className="small muted">
+        Only you can come in here. A browser signs in with a one-time link: run <code>seed login</code> in my folder, or make one below.
+      </p>
+      {load.error && !load.data && <ErrorNote error={load.error} onRetry={load.reload} />}
+      {!load.data && load.loading && <Loading />}
+      {load.data && (
+        <ul className="provider-list">
+          {load.data.map((s) => (
+            <li key={s.id} className="provider-row">
+              <span className="provider-row-name">{s.label || 'a browser'}</span>
+              {s.current && <Badge tone="info">this browser</Badge>}
+              <span className="muted small">signed in {relTime(s.created_at)} · last here {relTime(s.last_seen_at)}</span>
+              <span className="spacer" />
+              <button className="btn btn-sm btn-danger-ghost" onClick={() => signOut(s)} disabled={busy !== null}
+                aria-label={s.current ? 'Sign out of this browser' : `Sign out ${s.label}`}>
+                {busy === s.id ? 'Signing out…' : 'Sign out'}
+              </button>
+            </li>
+          ))}
+          {load.data.length === 0 && <li className="provider-row muted small">You're using me through the CLI or a dev server.</li>}
+        </ul>
+      )}
+      {err && <p className="error-text small">{err}</p>}
+      <div className="owner-actions"><SignInLink /></div>
+    </section>
+  );
+}
+
 export default function Settings() {
   const load = useLoad(() => api.settings(), []);
   return (
     <div className="page">
       <PageHeader title="Settings" />
       <MindPanel />
+      <OwnerPanel />
       <section className="panel" aria-labelledby="config-h">
         <h2 id="config-h">Configuration <span className="muted small" style={{ fontWeight: 400 }}>Read-only. Lives in <code>seed.yaml</code>; secrets are redacted.</span></h2>
         {load.error && <ErrorNote error={load.error} onRetry={load.reload} />}

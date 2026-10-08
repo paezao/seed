@@ -79,7 +79,7 @@ func cmdRun(ctx context.Context, args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "I'm already running at http://%s/_seed/\n", localhost(addr))
 		if f.open {
-			openWhenUp(ctx, func() string { return addr })
+			openWhenUp(ctx, cfg.Root, func() string { return addr })
 		}
 		if f.detach {
 			return nil
@@ -130,7 +130,7 @@ func cmdRun(ctx context.Context, args []string) error {
 	}
 	addr := "127.0.0.1:" + strconv.Itoa(hostPort)
 	if f.open {
-		go openWhenUp(ctx, func() string { return addr })
+		go openWhenUp(ctx, cfg.Root, func() string { return addr })
 	}
 	if f.detach {
 		fmt.Fprintf(os.Stderr, "started %s; talk to me at http://%s/_seed/ (stop with `seed stop`)\n", name, localhost(addr))

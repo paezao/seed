@@ -46,6 +46,7 @@ Usage:
   seed evolve "<intent>"   ask this Seed to evolve and follow its progress
   seed generations         list this Seed's generations
   seed rollback <n>        return to generation n
+  seed login [--print]     sign a browser in to this Seed's control plane
   seed stop                stop the Seed in the current directory
   seed upgrade [--force]   give this Seed the kernel of this seed CLI (as a new generation)
 
@@ -83,6 +84,8 @@ func main() {
 		err = cmdStop(ctx, args)
 	case "image":
 		err = cmdImage(ctx, args)
+	case "login":
+		err = cmdLogin(ctx, args)
 	case "upgrade":
 		err = cmdUpgrade(ctx, args)
 	case "help", "-h", "--help":
@@ -169,8 +172,9 @@ Run:
 	return cmdRun(ctx, runArgs)
 }
 
-// openWhenUp waits for the kernel to listen, then opens the control plane.
-func openWhenUp(ctx context.Context, addrOf func() string) {
+// openWhenUp waits for the kernel to listen, then signs my owner's browser
+// in with a one-time link.
+func openWhenUp(ctx context.Context, root string, addrOf func() string) {
 	for i := 0; i < 1200; i++ {
 		select {
 		case <-ctx.Done():
@@ -181,23 +185,86 @@ func openWhenUp(ctx context.Context, addrOf func() string) {
 		if addr == "" {
 			continue
 		}
-		_, port, _ := net.SplitHostPort(addr)
-		url := "http://localhost:" + port + "/_seed/"
-		resp, err := http.Get("http://" + addr + "/_seed/api/identity/logo")
+		// Retries until the kernel has written this start's token.
+		link, err := loginLink(ctx, addr, root)
 		if err != nil {
 			continue
 		}
-		resp.Body.Close()
-		fmt.Fprintf(os.Stderr, "\n  Talk to me at %s\n\n", url)
-		opener := "xdg-open"
-		if goruntime.GOOS == "darwin" {
-			opener = "open"
-		}
-		if err := exec.Command(opener, url).Start(); err != nil {
-			fmt.Fprintf(os.Stderr, "  (couldn't open a browser: %v)\n", err)
-		}
+		_, port, _ := net.SplitHostPort(addr)
+		fmt.Fprintf(os.Stderr, "\n  Talk to me at http://localhost:%s/_seed/ (signing your browser in)\n\n", port)
+		openBrowser(link)
 		return
 	}
+}
+
+// loginLink asks the running kernel for a one-time sign-in link.
+func loginLink(ctx context.Context, addr, root string) (string, error) {
+	req, _ := http.NewRequestWithContext(ctx, "POST", "http://"+addr+"/_seed/api/login-links", strings.NewReader("{}"))
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("X-Seed-Token", readSeedFile(root, ".seed/control-token"))
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	var out struct{ Path string }
+	if err := decodeResp(resp, &out); err != nil {
+		return "", err
+	}
+	// Only ever open a sign-in link on this Seed (the response is handed to
+	// the system's URL opener).
+	if !regexp.MustCompile(`^/_seed/login\?code=[0-9a-f]{32}$`).MatchString(out.Path) {
+		return "", errors.New("unexpected sign-in link")
+	}
+	_, port, _ := net.SplitHostPort(addr)
+	return "http://localhost:" + port + out.Path, nil
+}
+
+func openBrowser(link string) {
+	opener := "xdg-open"
+	switch goruntime.GOOS {
+	case "darwin":
+		opener = "open"
+	case "windows":
+		opener = "rundll32"
+	}
+	args := []string{link}
+	if goruntime.GOOS == "windows" {
+		args = []string{"url.dll,FileProtocolHandler", link}
+	}
+	if err := exec.Command(opener, args...).Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "  Couldn't open a browser (%v). Open this sign-in link (one use, 15 minutes):\n  %s\n", err, link)
+	}
+}
+
+// cmdLogin signs a browser in to the running Seed.
+func cmdLogin(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("login", flag.ContinueOnError)
+	dir := fs.String("dir", ".", "Seed directory")
+	print := fs.Bool("print", false, "print the link instead of opening a browser")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load(*dir)
+	if err != nil {
+		return err
+	}
+	addr, err := runningAddr(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	link, err := loginLink(ctx, addr, cfg.Root)
+	if err != nil {
+		return err
+	}
+	if *print {
+		fmt.Println(link)
+		fmt.Fprintln(os.Stderr, "One use, valid for 15 minutes.")
+		return nil
+	}
+	fmt.Fprintln(os.Stderr, "Signing your browser in…")
+	openBrowser(link)
+	return nil
 }
 
 type runFlags struct {
@@ -331,7 +398,7 @@ func runNative(ctx context.Context, f runFlags) error {
 			return err
 		}
 		if f.open {
-			go openWhenUp(ctx, func() string {
+			go openWhenUp(ctx, f.dir, func() string {
 				a, _ := nativeAddr(f.dir)
 				return a
 			})
@@ -386,17 +453,25 @@ func baseURL() (string, *config.Config, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	// In a container: the published address, if my container is running.
-	// Natively (--native): the address the kernel wrote. Never guess a port
-	// (another program may be listening on it).
-	// Never trust an address from the Seed's folder (the Seed controls it).
-	if a, err := publishedAddr(context.Background(), containerName(context.Background(), cfg)); err == nil {
-		return "http://" + a + "/_seed/api", cfg, nil
+	addr, err := runningAddr(context.Background(), cfg)
+	if err != nil {
+		return "", cfg, err
 	}
-	if a, ok := nativeAddr(cfg.Root); ok { // --native
-		return "http://" + a + "/_seed/api", cfg, nil
+	return "http://" + addr + "/_seed/api", cfg, nil
+}
+
+// runningAddr is where the running Seed listens. In a container: the port
+// the engine published. Natively (--native): the address the kernel wrote to
+// my cache. Never an address from the Seed's folder (the Seed controls it),
+// and never a guessed port (another program may be listening on it).
+func runningAddr(ctx context.Context, cfg *config.Config) (string, error) {
+	if a, err := publishedAddr(ctx, containerName(ctx, cfg)); err == nil {
+		return a, nil
 	}
-	return "", cfg, errors.New("I'm not running: start me with `seed run -e OPENROUTER_API_KEY`")
+	if a, ok := nativeAddr(cfg.Root); ok {
+		return a, nil
+	}
+	return "", errors.New("I'm not running: start me with `seed run -e OPENROUTER_API_KEY`")
 }
 
 // controlToken is the running kernel's API token (written to .seed/).

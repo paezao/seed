@@ -3,6 +3,11 @@
 The kernel serves the control plane at `/_seed` and its JSON API at `/_seed/api`.
 Everything outside `/_seed` is reverse-proxied to the running organism.
 
+Every endpoint except the logo needs `X-Seed-Token` (or `?token=` for the event stream): the
+API token embedded in the control-plane page of a signed-in browser, or the CLI's token from
+`.seed/control-token`. Sign-in itself happens at `GET /_seed/login?code=` (a one-time link; it
+sets the session cookie and redirects to `/_seed/`).
+
 All responses are JSON. Errors are `{"error": "message"}` with a non-2xx status.
 Timestamps are RFC 3339 strings.
 
@@ -162,6 +167,10 @@ type Skill = { name: string; description: string; path: string; files: string[];
 | GET | `/logs?source=organism\|kernel&tail=500` | | `{lines: string[]}` |
 | GET | `/settings` | | redacted configuration object |
 | GET | `/extensions` | | `{id, title, path}[]` — control-plane pages contributed by the organism |
+| POST | `/login-links` | | `{path, expires_at}`: a one-time sign-in link (one use, 15 minutes) |
+| GET | `/owner/sessions` | | `{id, label, created_at, last_seen_at, current}[]`: signed-in browsers |
+| POST | `/owner/sessions/:id/revoke` | | `{ok}`: signs that browser out |
+| POST | `/owner/logout` | | `{ok}`: signs out the calling browser and clears its cookie |
 
 ## Live events
 

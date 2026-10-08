@@ -498,3 +498,52 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	_, err := s.Pool.Exec(ctx, `INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value`, key, value)
 	return err
 }
+
+// ---- owner sessions
+
+// OwnerSession is a browser my owner signed in with (hashes only).
+type OwnerSession struct {
+	ID         string    `json:"-"`
+	APIHash    string    `json:"-"`
+	Label      string    `json:"label"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+}
+
+func (s *Store) CreateOwnerSession(ctx context.Context, o *OwnerSession) error {
+	_, err := s.Pool.Exec(ctx, `INSERT INTO owner_sessions (id, api_hash, label, created_at, last_seen_at, expires_at) VALUES ($1,$2,$3,$4,$5,$6)`,
+		o.ID, o.APIHash, o.Label, o.CreatedAt, o.LastSeenAt, o.ExpiresAt)
+	return err
+}
+
+// OwnerSessions returns the sessions that have not expired, newest first.
+func (s *Store) OwnerSessions(ctx context.Context) ([]*OwnerSession, error) {
+	if _, err := s.Pool.Exec(ctx, `DELETE FROM owner_sessions WHERE expires_at < now()`); err != nil {
+		return nil, err
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT id, api_hash, label, created_at, last_seen_at, expires_at FROM owner_sessions ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*OwnerSession
+	for rows.Next() {
+		o := &OwnerSession{}
+		if err := rows.Scan(&o.ID, &o.APIHash, &o.Label, &o.CreatedAt, &o.LastSeenAt, &o.ExpiresAt); err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) TouchOwnerSession(ctx context.Context, id string, seen, expires time.Time) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE owner_sessions SET last_seen_at=$2, expires_at=$3 WHERE id=$1`, id, seen, expires)
+	return err
+}
+
+func (s *Store) DeleteOwnerSession(ctx context.Context, id string) error {
+	_, err := s.Pool.Exec(ctx, `DELETE FROM owner_sessions WHERE id=$1`, id)
+	return err
+}

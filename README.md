@@ -9,7 +9,7 @@ $ export OPENROUTER_API_KEY=sk-or-…      # or keep it in your shell profile
 $ seed new tasks -e OPENROUTER_API_KEY
 ```
 
-That plants the Seed in `./tasks`, starts it, and opens its control plane in your browser.
+That plants the Seed in `./tasks`, starts it, and opens its control plane in your browser, signed in. Only you can use it: anyone else gets a private page.
 If port 8080 is taken, it uses the next free one. Then:
 
 > I don't have a purpose yet.
@@ -49,6 +49,7 @@ CLI:
 | `seed evolve "<intent>"` | evolve from the terminal and follow progress |
 | `seed generations` | list generations (works offline from git) |
 | `seed rollback <n>` | return to generation n (recorded as a new generation) |
+| `seed login` | sign a browser in to the control plane (`--print` for the link instead) |
 | `seed stop` | stop the Seed (its folder keeps everything) |
 | `seed upgrade` | give a stopped Seed the kernel of your `seed` CLI, as a new generation |
 

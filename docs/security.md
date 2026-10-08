@@ -108,10 +108,22 @@ the kernel restarts into its own new source.
 The control plane shares an origin with the organism (`/_seed` and `/`). The organism's
 JavaScript is code the Seed wrote, so the kernel does not trust it:
 
-- **Control token.** A random token is generated each time the kernel starts. It is embedded only
-  in the control-plane page and written to `.seed/control-token` (hidden from sandboxes) for the
-  CLI. Every `/_seed/api` call needs it (the logo is the only exception).
-- **Only for navigations.** The page carrying the token is served only for top-level navigations
+- **Owner sign-in.** The control plane is only for its owner. A browser signs in with a one-time
+  link (`seed login`, or opened by `seed run`; one use, 15 minutes). The kernel then sets an
+  HttpOnly, `SameSite=Lax` cookie scoped to `/_seed`, valid for 30 days and renewed with use.
+  Anyone without it gets a "this Seed is private" page. Sessions are stored as hashes in kernel
+  memory, so they survive restarts. They can be signed out from Settings.
+- **The cookie is never enough.** Organism scripts share the origin, so their requests to `/_seed`
+  would carry the cookie too. The cookie therefore only unlocks the control-plane page. That page
+  carries an API token derived from the cookie, and every `/_seed/api` call must present it in a
+  header (the logo is the only exception). Signing out invalidates both.
+- **CLI token.** The CLI uses a separate random token generated each time the kernel starts and
+  written to `.seed/control-token` (hidden from sandboxes). It never reaches a browser.
+- **Seeds on one machine.** Browsers share cookies across ports, so each Seed uses its own cookie
+  name. Every local Seed's kernel still receives the others' cookies on requests to `/_seed`.
+  Kernels are code the owner approved, but it is one more reason a Seed's kernel changes need
+  approval.
+- **Only for navigations.** The page carrying the token, and sign-in links, are served only for top-level navigations
   (`Sec-Fetch-Dest: document`), never to `fetch`/XHR. It cannot be framed
   (`frame-ancestors 'none'`), so the Approve button cannot be clickjacked.
 - **Opener isolation.** The control plane sends `Cross-Origin-Opener-Policy: same-origin`, and the

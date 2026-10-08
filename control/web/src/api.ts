@@ -2,9 +2,17 @@
 
 export const API_BASE = '/_seed/api';
 
-/** The kernel embeds a per-start control token in this page; every API call carries it. */
+/** The kernel embeds this signed-in browser's API token in the page; every API call carries it. */
 export const CONTROL_TOKEN =
   document.querySelector<HTMLMetaElement>('meta[name="seed-token"]')?.content ?? '';
+
+export type OwnerSession = {
+  id: string;
+  label: string;
+  created_at: string;
+  last_seen_at: string;
+  current: boolean;
+};
 
 export type OrganismState = 'stopped' | 'building' | 'starting' | 'running' | 'failed';
 
@@ -239,7 +247,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     reportReachable(false);
     throw new NetworkError();
   }
-  // The kernel restarted (new control token): reload to pick up the new page.
+  // Signed out (here or from another browser), or a dev token went stale:
+  // reload, which shows the sign-in page if this browser's session is gone.
   if (res.status === 401 && !sessionStorage.getItem('seed-reloaded')) {
     try { sessionStorage.setItem('seed-reloaded', '1'); } catch { /* ignore */ }
     window.location.reload();
@@ -300,6 +309,10 @@ export const api = {
   modelOptions: (provider: string) => request<ModelOptions>('GET', `/model/options?provider=${enc(provider)}`),
   setModel: (body: SetModelBody) => request<ModelConfig>('POST', '/model', body),
   forgetKey: (provider: string) => request<ModelConfig>('POST', '/model/forget-key', { provider }),
+  ownerSessions: () => request<OwnerSession[]>('GET', '/owner/sessions'),
+  revokeSession: (id: string) => request<{ ok: boolean }>('POST', `/owner/sessions/${enc(id)}/revoke`),
+  logout: () => request<{ ok: boolean }>('POST', '/owner/logout'),
+  loginLink: () => request<{ path: string; expires_at: string }>('POST', '/login-links'),
 };
 
 // ---- helpers shared by views ----

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"io/fs"
 	"net"
@@ -57,9 +58,14 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/model/options", k.handleModelOptions)
 	mux.HandleFunc("POST "+api+"/model", k.handleSetModel)
 	mux.HandleFunc("POST "+api+"/model/forget-key", k.handleForgetKey)
+	mux.HandleFunc("POST "+api+"/login-links", k.handleLoginLink)
+	mux.HandleFunc("GET "+api+"/owner/sessions", k.handleOwnerSessions)
+	mux.HandleFunc("POST "+api+"/owner/sessions/{id}/revoke", k.handleRevokeSession)
+	mux.HandleFunc("POST "+api+"/owner/logout", k.handleLogout)
 	mux.HandleFunc(api+"/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, errors.New("no such endpoint"))
 	})
+	mux.HandleFunc("GET /_seed/login", k.handleLogin)
 	mux.Handle("/_seed/", k.controlUI())
 	mux.HandleFunc("/_seed", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/_seed/", http.StatusFound)
@@ -125,8 +131,12 @@ func organismOrigin(next http.Handler) http.Handler {
 	})
 }
 
-// requireToken protects the control-plane API with the kernel's token
-// (header X-Seed-Token, or ?token= for EventSource). The logo is public.
+type sessionKey struct{}
+
+// requireToken protects the control-plane API: a call must carry the CLI's
+// token or a signed-in browser's API token (header X-Seed-Token, or ?token=
+// for EventSource). The owner's cookie is deliberately not enough (see
+// Owner). The logo is public.
 func (k *Kernel) requireToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/_seed/api/") && r.URL.Path != "/_seed/api/identity/logo" {
@@ -135,12 +145,25 @@ func (k *Kernel) requireToken(next http.Handler) http.Handler {
 				tok = r.URL.Query().Get("token")
 			}
 			if subtle.ConstantTimeCompare([]byte(tok), []byte(k.Token)) != 1 {
-				writeErr(w, http.StatusUnauthorized, errors.New("missing or invalid control token (reload the control plane)"))
-				return
+				id, ok := "", false
+				if k.Owner != nil {
+					id, ok = k.Owner.SessionForToken(r.Context(), tok)
+				}
+				if !ok {
+					writeErr(w, http.StatusUnauthorized, errors.New("signed out (reload the control plane)"))
+					return
+				}
+				r = r.WithContext(context.WithValue(r.Context(), sessionKey{}, id))
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// currentSession is the browser session making a request ("" for the CLI).
+func currentSession(r *http.Request) string {
+	id, _ := r.Context().Value(sessionKey{}).(string)
+	return id
 }
 
 // guardHost refuses requests whose Host is not this machine (or explicitly
@@ -219,18 +242,24 @@ func (k *Kernel) controlUI() http.Handler {
 				return
 			}
 		}
-		// The page carries the control token, so it is only served to real
+		// The page carries an API token, so it is only served to real
 		// top-level navigations: never to fetch()/XHR from organism scripts.
 		if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" && dest != "document" {
 			http.Error(w, "the control plane can only be opened as a page", http.StatusForbidden)
 			return
 		}
+		token, ok := k.pageToken(r)
+		if !ok {
+			k.privatePage(w, http.StatusUnauthorized, "")
+			return
+		}
+		k.setOwnerCookie(w, r, k.ownerCookie(r)) // keep it as long as the session
 		index, err := fs.ReadFile(ui, "index.html")
 		if err != nil {
 			http.Error(w, "control plane not built (run make control)", http.StatusInternalServerError)
 			return
 		}
-		meta := `<meta name="seed-token" content="` + k.Token + `">`
+		meta := `<meta name="seed-token" content="` + token + `">`
 		page := strings.Replace(string(index), "<head>", "<head>"+meta, 1)
 		w.Header().Set("content-type", "text/html; charset=utf-8")
 		w.Header().Set("cache-control", "no-store")
@@ -668,4 +697,112 @@ func (k *Kernel) handleAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, m)
+}
+
+// ---- owner sign-in
+
+func (k *Kernel) ownerCookie(r *http.Request) string {
+	c, err := r.Cookie(k.cookieName)
+	if err != nil {
+		return ""
+	}
+	return c.Value
+}
+
+func (k *Kernel) pageToken(r *http.Request) (string, bool) {
+	if k.Owner == nil {
+		return "", false
+	}
+	return k.Owner.PageToken(r.Context(), k.ownerCookie(r))
+}
+
+func (k *Kernel) setOwnerCookie(w http.ResponseWriter, r *http.Request, secret string) {
+	c := &http.Cookie{Name: k.cookieName, Value: secret, Path: "/_seed", HttpOnly: true, SameSite: http.SameSiteLaxMode,
+		Secure: r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")}
+	if secret == "" {
+		c.MaxAge = -1
+	} else {
+		c.MaxAge = int(sessionTTL / time.Second)
+	}
+	http.SetCookie(w, c)
+}
+
+// handleLogin redeems a one-time sign-in link.
+func (k *Kernel) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if dest := r.Header.Get("Sec-Fetch-Dest"); dest != "" && dest != "document" {
+		http.Error(w, "sign-in links can only be opened as a page", http.StatusForbidden)
+		return
+	}
+	secret, err := k.Owner.Redeem(r.Context(), r.URL.Query().Get("code"), r.UserAgent())
+	if err != nil {
+		if _, ok := k.pageToken(r); ok { // already signed in (e.g. the link was opened twice)
+			http.Redirect(w, r, "/_seed/", http.StatusSeeOther)
+			return
+		}
+		k.privatePage(w, http.StatusForbidden, ErrBadLoginCode.Error()+".")
+		return
+	}
+	k.setOwnerCookie(w, r, secret)
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("cache-control", "no-store")
+	http.Redirect(w, r, "/_seed/", http.StatusSeeOther)
+}
+
+// handleLoginLink makes a one-time sign-in link (for `seed login`, or to
+// sign in another browser).
+func (k *Kernel) handleLoginLink(w http.ResponseWriter, r *http.Request) {
+	code := k.Owner.NewLoginCode()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"path":       "/_seed/login?code=" + code,
+		"expires_at": time.Now().Add(loginCodeTTL),
+	})
+}
+
+func (k *Kernel) handleOwnerSessions(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, k.Owner.List(currentSession(r)))
+}
+
+func (k *Kernel) handleRevokeSession(w http.ResponseWriter, r *http.Request) {
+	if err := k.Owner.Revoke(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, http.StatusNotFound, errors.New("no such session"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleLogout signs out the browser making the request.
+func (k *Kernel) handleLogout(w http.ResponseWriter, r *http.Request) {
+	id := currentSession(r)
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, errors.New("only a signed-in browser can sign out"))
+		return
+	}
+	_ = k.Owner.Revoke(r.Context(), id)
+	k.setOwnerCookie(w, r, "")
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// privatePage is what anyone who isn't my signed-in owner sees.
+func (k *Kernel) privatePage(w http.ResponseWriter, status int, problem string) {
+	name := html.EscapeString(knowledge.Name(k.Cfg.Root))
+	note := ""
+	if problem != "" {
+		note = `<p class="problem">` + html.EscapeString(problem) + `</p>`
+	}
+	w.Header().Set("content-type", "text/html; charset=utf-8")
+	w.Header().Set("cache-control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.WriteHeader(status)
+	_, _ = io.WriteString(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>`+name+`</title><link rel="icon" href="/_seed/api/identity/logo"><style>
+:root{--bg:#f6f4ee;--fg:#1d2420;--muted:#5d675f;--card:#fffdf8;--line:#e2ddd0;--code:#efeadf;--warn:#9a4a1c}
+@media (prefers-color-scheme:dark){:root{--bg:#121512;--fg:#e8ece6;--muted:#9aa49a;--card:#1a1e1a;--line:#2b312b;--code:#232823;--warn:#e9a072}}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+main{max-width:420px;width:100%;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:32px 28px;text-align:center}
+img{width:64px;height:64px;border-radius:16px;animation:breathe 4s ease-in-out infinite}
+@keyframes breathe{50%{transform:scale(1.06)}}@media (prefers-reduced-motion:reduce){img{animation:none}}
+h1{font-size:22px;margin:16px 0 6px}p{color:var(--muted);margin:8px 0}.problem{color:var(--warn)}
+code{background:var(--code);border-radius:6px;padding:2px 7px;font-size:14px;color:var(--fg)}
+</style></head><body><main><img src="/_seed/api/identity/logo" alt=""><h1>`+name+` is private</h1>`+note+`
+<p>Only my owner can come in here.</p><p>To sign in, run <code>seed login</code> in my folder.</p></main></body></html>`)
 }

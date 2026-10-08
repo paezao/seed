@@ -60,10 +60,14 @@ type Kernel struct {
 	Logs      *LogBuffer
 
 	restart chan struct{}
-	// Token authorizes control-plane API calls. It is embedded only in the
-	// control plane page and written to .seed/control-token for the CLI, so
-	// organism code (same origin) cannot drive the kernel.
+	// Token authorizes the CLI's control-plane API calls. It is written to
+	// .seed/control-token (hidden from sandboxes) and never sent to a browser.
 	Token string
+	// Owner holds the browsers my owner signed in with (see owner.go).
+	Owner *Owner
+	// cookieName is unique per Seed: browsers share cookies across ports, so
+	// Seeds on the same machine must not overwrite each other's sessions.
+	cookieName string
 }
 
 // Boot assembles a kernel for the Seed at root.
@@ -128,6 +132,17 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	if err := k.bootstrapGenerations(ctx); err != nil {
 		return nil, err
 	}
+	if k.Owner, err = NewOwner(ctx, k.Store); err != nil {
+		return nil, fmt.Errorf("owner sessions: %w", err)
+	}
+	instance, err := k.Store.Setting(ctx, "instance_id")
+	if err != nil {
+		instance = randomHex(4)
+		if err := k.Store.SetSetting(ctx, "instance_id", instance); err != nil {
+			return nil, err
+		}
+	}
+	k.cookieName = "seed_owner_" + instance
 
 	// The organism's own database identity (least privilege: it cannot see kernel memory).
 	role := cfg.DBName("organism")

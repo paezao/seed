@@ -1252,3 +1252,7 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 .approval-invisible, .approval-nonascii { border-radius: 3px; padding: 0 2px; color: var(--fg);
   background: color-mix(in srgb, var(--bad) 22%, transparent); outline: 1px solid color-mix(in srgb, var(--bad) 50%, transparent); }
 .approval-nonascii sub { font-size: 9px; margin-left: 2px; opacity: 0.8; }
+
+/* Settings: owner sign-in */
+.owner-actions { margin-top: 12px; }
+.signin-link { display: grid; gap: 6px; }

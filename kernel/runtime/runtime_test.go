@@ -43,14 +43,28 @@ func TestLogBuffer(t *testing.T) {
 }
 
 func TestControlUIFallsBackToIndex(t *testing.T) {
-	k := &Kernel{}
+	k, _ := ownerKernel(t)
 	h := k.controlUI()
+	secret, err := k.Owner.Redeem(t.Context(), k.Owner.NewLoginCode(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, p := range []string{"/_seed/", "/_seed/evolutions/evo_123"} {
 		rec := httptest.NewRecorder()
-		h.ServeHTTP(rec, httptest.NewRequest("GET", p, nil))
-		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<div id=\"root\">") {
+		req := httptest.NewRequest("GET", p, nil)
+		req.AddCookie(&http.Cookie{Name: k.cookieName, Value: secret})
+		h.ServeHTTP(rec, req)
+		if rec.Code != 200 || !strings.Contains(rec.Body.String(), "<div id=\"root\">") || !strings.Contains(rec.Body.String(), apiToken(secret)) {
 			t.Fatalf("%s: %d", p, rec.Code)
 		}
+		if strings.Contains(rec.Body.String(), k.Token) {
+			t.Fatal("the CLI token must never reach a browser")
+		}
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "/_seed/", nil))
+	if rec.Code != http.StatusUnauthorized || strings.Contains(rec.Body.String(), "seed-token") {
+		t.Fatal("signed out: the private page, no token")
 	}
 }
 
@@ -176,20 +190,27 @@ func TestControlToken(t *testing.T) {
 }
 
 func TestControlPageOnlyForNavigations(t *testing.T) {
-	k := &Kernel{Token: "secret"}
+	k, _ := ownerKernel(t)
+	secret, err := k.Owner.Redeem(t.Context(), k.Owner.NewLoginCode(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := apiToken(secret)
 	h := k.controlUI()
 	r := httptest.NewRequest("GET", "/_seed/", nil)
-	r.Header.Set("Sec-Fetch-Dest", "empty") // fetch() from an organism script
+	r.AddCookie(&http.Cookie{Name: k.cookieName, Value: secret}) // same-origin fetch() carries the cookie
+	r.Header.Set("Sec-Fetch-Dest", "empty")                      // fetch() from an organism script
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
-	if rec.Code != 403 || strings.Contains(rec.Body.String(), "secret") {
+	if rec.Code != 403 || strings.Contains(rec.Body.String(), token) {
 		t.Fatalf("token page served to a script: %d", rec.Code)
 	}
 	r = httptest.NewRequest("GET", "/_seed/evolutions", nil)
+	r.AddCookie(&http.Cookie{Name: k.cookieName, Value: secret})
 	r.Header.Set("Sec-Fetch-Dest", "document")
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, r)
-	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `name="seed-token" content="secret"`) || rec.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" {
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `name="seed-token" content="`+token+`"`) || rec.Header().Get("Cross-Origin-Opener-Policy") != "same-origin" {
 		t.Fatalf("navigation should get the page with token and COOP: %d %v", rec.Code, rec.Header())
 	}
 }
