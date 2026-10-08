@@ -25,6 +25,7 @@ import (
 	"seed/kernel/fsx"
 	"seed/kernel/knowledge"
 	"seed/kernel/memory"
+	"seed/kernel/routines"
 	"seed/kernel/skills"
 )
 
@@ -59,6 +60,12 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/model/options", k.handleModelOptions)
 	mux.HandleFunc("POST "+api+"/model", k.handleSetModel)
 	mux.HandleFunc("POST "+api+"/model/forget-key", k.handleForgetKey)
+	mux.HandleFunc("GET "+api+"/routines", k.handleRoutines)
+	mux.HandleFunc("POST "+api+"/routines", k.handleCreateRoutine)
+	mux.HandleFunc("POST "+api+"/routines/{id}/update", k.handleUpdateRoutine)
+	mux.HandleFunc("POST "+api+"/routines/{id}/run", k.handleRunRoutine)
+	mux.HandleFunc("POST "+api+"/routines/{id}/delete", k.handleDeleteRoutine)
+	mux.HandleFunc("GET "+api+"/routines/{id}/runs", k.handleRoutineRuns)
 	mux.HandleFunc("GET "+api+"/outbound", k.handleOutbound)
 	mux.HandleFunc("POST "+api+"/outbound/grant", k.handleOutboundGrant)
 	mux.HandleFunc("POST "+api+"/outbound/revoke", k.handleOutboundRevoke)
@@ -996,4 +1003,169 @@ func (k *Kernel) handleOutboundRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	k.handleOutbound(w, r)
+}
+
+// ---- routines
+
+type routineView struct {
+	*memory.Routine
+	ScheduleText string             `json:"schedule_text"`
+	LastRun      *memory.RoutineRun `json:"last_run"`
+}
+
+func (k *Kernel) routineView(ctx context.Context, r *memory.Routine) routineView {
+	v := routineView{Routine: r, ScheduleText: describeSchedule(r)}
+	if runs, err := k.Store.RoutineRuns(ctx, r.ID, 1); err == nil && len(runs) > 0 {
+		v.LastRun = &runs[0]
+	}
+	return v
+}
+
+func (k *Kernel) handleRoutines(w http.ResponseWriter, r *http.Request) {
+	all, err := k.Store.Routines(r.Context())
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	out := []routineView{}
+	for _, x := range all {
+		out = append(out, k.routineView(r.Context(), x))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+type routineBody struct {
+	Name     *string `json:"name"`
+	Kind     string  `json:"kind"`
+	Schedule *string `json:"schedule"`
+	Timezone *string `json:"timezone"`
+	Prompt   *string `json:"prompt"`
+	Method   *string `json:"method"`
+	Path     *string `json:"path"`
+	Enabled  *bool   `json:"enabled"`
+}
+
+func str(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func (k *Kernel) handleCreateRoutine(w http.ResponseWriter, r *http.Request) {
+	var b routineBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&b); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	rt := &memory.Routine{Name: str(b.Name), Kind: b.Kind, Schedule: str(b.Schedule), Timezone: str(b.Timezone),
+		Prompt: str(b.Prompt), Method: str(b.Method), Path: str(b.Path)}
+	if err := k.Routines.Create(r.Context(), rt); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, k.routineView(r.Context(), rt))
+}
+
+// handleUpdateRoutine pauses/resumes any routine, and edits my owner's own.
+// (My organism's jobs are edited by evolving: they live in its code.)
+func (k *Kernel) handleUpdateRoutine(w http.ResponseWriter, r *http.Request) {
+	rt, err := k.Store.Routine(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, errors.New("no such routine"))
+		return
+	}
+	var b routineBody
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10)).Decode(&b); err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	edits := b.Name != nil || b.Schedule != nil || b.Timezone != nil || b.Prompt != nil || b.Method != nil || b.Path != nil
+	if edits && rt.Source != "owner" {
+		writeErr(w, http.StatusBadRequest, errors.New("this job is part of my organism's code: ask me to change it"))
+		return
+	}
+	if edits {
+		updated := *rt
+		for dst, src := range map[*string]*string{&updated.Name: b.Name, &updated.Schedule: b.Schedule, &updated.Timezone: b.Timezone,
+			&updated.Prompt: b.Prompt, &updated.Method: b.Method, &updated.Path: b.Path} {
+			if src != nil {
+				*dst = *src
+			}
+		}
+		if err := routines.ValidateName(updated.Name); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if _, err := routines.ValidateSchedule(updated.Kind, updated.Schedule, updated.Timezone); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		if updated.Kind == routines.KindJob {
+			m, err := routines.ValidateRequest(updated.Method, updated.Path)
+			if err != nil {
+				writeErr(w, http.StatusBadRequest, err)
+				return
+			}
+			updated.Method = m
+		} else if p := strings.TrimSpace(updated.Prompt); p == "" || len(p) > 4000 {
+			writeErr(w, http.StatusBadRequest, errors.New("say what I should do (up to 4000 characters)"))
+			return
+		}
+		rt = &updated
+	}
+	if b.Enabled != nil {
+		rt.Enabled = *b.Enabled
+	}
+	if err := k.Store.SaveRoutine(r.Context(), rt); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	k.Routines.schedule(r.Context(), rt)
+	k.Bus.Publish("routine", map[string]any{"id": rt.ID})
+	writeJSON(w, http.StatusOK, k.routineView(r.Context(), rt))
+}
+
+func (k *Kernel) handleRunRoutine(w http.ResponseWriter, r *http.Request) {
+	rt, err := k.Store.Routine(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, errors.New("no such routine"))
+		return
+	}
+	run, err := k.Routines.Launch(r.Context(), rt, "manual")
+	if err != nil {
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, run)
+}
+
+func (k *Kernel) handleDeleteRoutine(w http.ResponseWriter, r *http.Request) {
+	rt, err := k.Store.Routine(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusNotFound, errors.New("no such routine"))
+		return
+	}
+	if rt.Source != "owner" {
+		writeErr(w, http.StatusBadRequest, errors.New("this job is part of my organism's code: pause it, or ask me to remove it"))
+		return
+	}
+	if err := k.Store.DeleteRoutine(r.Context(), rt.ID); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	k.Bus.Publish("routine", map[string]any{"id": rt.ID, "deleted": true})
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (k *Kernel) handleRoutineRuns(w http.ResponseWriter, r *http.Request) {
+	runs, err := k.Store.RoutineRuns(r.Context(), r.PathValue("id"), 30)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if runs == nil {
+		runs = []memory.RoutineRun{}
+	}
+	writeJSON(w, http.StatusOK, runs)
 }

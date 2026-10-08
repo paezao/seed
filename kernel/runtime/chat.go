@@ -25,13 +25,15 @@ import (
 type Chat struct {
 	// Egress lets the chat ask the owner for outbound access for the organism.
 	Egress *Egress
-	Root   string
-	Store  *memory.Store
-	Bus    *events.Bus
-	Model  models.Model
-	Orch   *evolution.Orchestrator
-	Repo   *git.Repo
-	Policy *permissions.Policy
+	// Routines lets the chat show and (with approval) create routines.
+	Routines *Scheduler
+	Root     string
+	Store    *memory.Store
+	Bus      *events.Bus
+	Model    models.Model
+	Orch     *evolution.Orchestrator
+	Repo     *git.Repo
+	Policy   *permissions.Policy
 	// Live is my running organism and its data (for operating myself).
 	Live *Organism
 	// Approvals asks my owner before I change live data.
@@ -87,6 +89,7 @@ func (c *Chat) respond(ctx context.Context) {
 	if c.Egress != nil {
 		reg.Add(c.Egress.RequestTool())
 	}
+	reg.Add(c.routineTools()...)
 	reg.Add(&tools.Tool{
 		Name:        "start_evolution",
 		Description: "Start evolving myself according to the owner's intent. The intent must be self-contained: include every relevant detail from the conversation.",
@@ -192,6 +195,10 @@ func toModelMessages(history []memory.Message) []models.Message {
 			// record so the agent never imitates it (and never claims an
 			// evolution happened without starting one).
 			content = "[kernel record] " + content
+		case m.Kind == "routine":
+			// Written by an unattended routine run that may have read data:
+			// a record to weigh, not something I said in this conversation.
+			content = "[routine report, written while my owner was away] " + content
 		case m.Role == "seed":
 			role = models.Assistant
 		case m.Role == "system":

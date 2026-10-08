@@ -125,3 +125,31 @@ func (o *Organism) Call(ctx context.Context, method, path, body string) (string,
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	return fmt.Sprintf("HTTP %d\n%s", resp.StatusCode, tools.Truncate(string(b), 8000)), nil
 }
+
+// CallJob calls one of my organism's job endpoints for my scheduler, with
+// the job token the live process holds (SEED_JOB_TOKEN).
+func (o *Organism) CallJob(ctx context.Context, name, method, path string) (int, string, error) {
+	o.mu.Lock()
+	sb := o.sb
+	o.mu.Unlock()
+	if sb == nil {
+		return 0, "", errors.New("my body is not running")
+	}
+	base, err := sb.URL(ctx)
+	if err != nil {
+		return 0, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, method, base+path, nil)
+	if err != nil {
+		return 0, "", err
+	}
+	req.Header.Set("X-Seed-Job", o.JobToken)
+	req.Header.Set("X-Seed-Routine", name)
+	resp, err := (&http.Client{Transport: sb.Transport()}).Do(req)
+	if err != nil {
+		return 0, "", err
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+	return resp.StatusCode, string(b), nil
+}

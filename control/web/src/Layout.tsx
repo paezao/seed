@@ -15,6 +15,7 @@ const ICONS: Record<string, string> = {
   skills: 'M8 2.5l1.6 3.3 3.6.5-2.6 2.5.6 3.6L8 10.7l-3.2 1.7.6-3.6-2.6-2.5 3.6-.5z',
   knowledge: 'M3 3.5h4a1.5 1.5 0 0 1 1 .5 1.5 1.5 0 0 1 1-.5h4V12H9a1 1 0 0 0-1 1 1 1 0 0 0-1-1H3z',
   logs: 'M3 4h10M3 7h10M3 10h7M3 13h5',
+  routines: 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 1 0 0-11M8 5v3l2 1.5',
   settings: 'M3 5h6M11 5h2M3 11h2M7 11h6M9 3.5v3M5 9.5v3',
   ext: 'M3 3h10v10H3zM3 6h10',
 };
@@ -31,6 +32,7 @@ const NAV = [
   { to: '/', label: 'Chat', icon: 'chat', end: true },
   { to: '/evolutions', label: 'Evolutions', icon: 'evolutions' },
   { to: '/generations', label: 'Generations', icon: 'generations' },
+  { to: '/routines', label: 'Routines', icon: 'routines' },
   { to: '/skills', label: 'Skills', icon: 'skills' },
   { to: '/knowledge', label: 'Knowledge', icon: 'knowledge' },
   { to: '/logs', label: 'Logs', icon: 'logs' },

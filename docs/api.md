@@ -167,6 +167,12 @@ type Skill = { name: string; description: string; path: string; files: string[];
 | GET | `/logs?source=organism\|kernel&tail=500` | | `{lines: string[]}` |
 | GET | `/settings` | | redacted configuration object |
 | GET | `/extensions` | | `{id, title, path}[]` — control-plane pages contributed by the organism |
+| GET | `/routines` | | `Routine[]` with `schedule_text` and `last_run` (see [routines](routines.md)) |
+| POST | `/routines` | `{name, kind: "agent"\|"job", schedule, timezone, prompt?, method?, path?}` | `Routine` |
+| POST | `/routines/:id/update` | `{enabled?, name?, schedule?, timezone?, prompt?, method?, path?}` | `Routine`. Only the owner's own routines can be edited; the organism's jobs can be paused. |
+| POST | `/routines/:id/run` | | `RoutineRun` (started now; 409 if already running) |
+| POST | `/routines/:id/delete` | | `{ok}` (owner's routines only) |
+| GET | `/routines/:id/runs` | | `RoutineRun[]` (newest first, up to 30) |
 | GET | `/outbound` | | `{hosts, secrets, denied, available_secrets}`: what the live organism may reach and read, and recently refused connections |
 | POST | `/outbound/grant` | `{hosts?, secrets?, reason?}` | same as GET, after granting |
 | POST | `/outbound/revoke` | `{kind: "host"\|"secret", value}` | same as GET, after revoking |

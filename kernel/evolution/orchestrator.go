@@ -33,6 +33,7 @@ import (
 	"seed/kernel/memory"
 	"seed/kernel/models"
 	"seed/kernel/permissions"
+	"seed/kernel/routines"
 	"seed/kernel/sandbox"
 	"seed/kernel/skills"
 	"seed/kernel/tools"
@@ -849,6 +850,11 @@ func (o *Orchestrator) verify(ctx context.Context, e *memory.Evolution, ws *work
 		return fail(memory.Check{Name: "build", Detail: "Build failed", Attempt: attempt}, res.Output), nil
 	}
 	o.addCheck(ctx, e, memory.Check{Name: "build", OK: true, Detail: fmt.Sprintf("Build successful (%.0fs)", res.Duration.Seconds()), Attempt: attempt})
+	if jobs, err := routines.LoadFile(ws.dir); err != nil {
+		return fail(memory.Check{Name: "routines", Detail: routines.File + " is invalid", Attempt: attempt}, err.Error()), nil
+	} else if len(jobs) > 0 {
+		o.addCheck(ctx, e, memory.Check{Name: "routines", OK: true, Detail: fmt.Sprintf("%d scheduled job(s) declared", len(jobs)), Attempt: attempt})
+	}
 
 	// fresh database + migrations + tests
 	if err := o.transition(ctx, e, memory.Testing); err != nil {

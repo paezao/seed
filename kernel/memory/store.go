@@ -588,3 +588,157 @@ func (s *Store) DeleteEgressGrant(ctx context.Context, kind, value string) error
 	}
 	return err
 }
+
+// ---- routines
+
+// Routine is something I do on a schedule.
+type Routine struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Kind        string     `json:"kind"`   // "agent" or "job"
+	Source      string     `json:"source"` // "owner" or "organism"
+	Schedule    string     `json:"schedule"`
+	Timezone    string     `json:"timezone"`
+	Prompt      string     `json:"prompt,omitempty"`
+	Method      string     `json:"method,omitempty"`
+	Path        string     `json:"path,omitempty"`
+	Description string     `json:"description,omitempty"`
+	Enabled     bool       `json:"enabled"`
+	NextRunAt   *time.Time `json:"next_run_at"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+// RoutineRun is one run of a routine.
+type RoutineRun struct {
+	ID         string     `json:"id"`
+	RoutineID  string     `json:"routine_id"`
+	Trigger    string     `json:"trigger"` // "schedule" or "manual"
+	Status     string     `json:"status"`  // running, ok, quiet, failed
+	Output     string     `json:"output"`
+	StartedAt  time.Time  `json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at"`
+}
+
+const routineCols = `id, name, kind, source, schedule, timezone, prompt, method, path, description, enabled, next_run_at, created_at`
+
+func scanRoutine(row pgx.Row) (*Routine, error) {
+	r := &Routine{}
+	err := row.Scan(&r.ID, &r.Name, &r.Kind, &r.Source, &r.Schedule, &r.Timezone, &r.Prompt, &r.Method, &r.Path, &r.Description, &r.Enabled, &r.NextRunAt, &r.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return r, err
+}
+
+func (s *Store) SaveRoutine(ctx context.Context, r *Routine) error {
+	if r.ID == "" {
+		r.ID = ids.New("rtn")
+	}
+	if r.CreatedAt.IsZero() {
+		r.CreatedAt = time.Now()
+	}
+	_, err := s.Pool.Exec(ctx, `INSERT INTO routines (`+routineCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+		ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, schedule=EXCLUDED.schedule, timezone=EXCLUDED.timezone, prompt=EXCLUDED.prompt,
+		method=EXCLUDED.method, path=EXCLUDED.path, description=EXCLUDED.description, enabled=EXCLUDED.enabled, next_run_at=EXCLUDED.next_run_at, updated_at=now()`,
+		r.ID, r.Name, r.Kind, r.Source, r.Schedule, r.Timezone, r.Prompt, r.Method, r.Path, r.Description, r.Enabled, r.NextRunAt, r.CreatedAt)
+	return err
+}
+
+func (s *Store) Routine(ctx context.Context, id string) (*Routine, error) {
+	return scanRoutine(s.Pool.QueryRow(ctx, `SELECT `+routineCols+` FROM routines WHERE id=$1`, id))
+}
+
+func (s *Store) Routines(ctx context.Context) ([]*Routine, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT `+routineCols+` FROM routines ORDER BY source, name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Routine
+	for rows.Next() {
+		r, err := scanRoutine(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// DueRoutines are enabled routines whose next run has come.
+func (s *Store) DueRoutines(ctx context.Context, now time.Time) ([]*Routine, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT `+routineCols+` FROM routines WHERE enabled AND next_run_at <= $1 ORDER BY next_run_at`, now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Routine
+	for rows.Next() {
+		r, err := scanRoutine(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) SetRoutineNextRun(ctx context.Context, id string, next *time.Time) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE routines SET next_run_at=$2 WHERE id=$1`, id, next)
+	return err
+}
+
+func (s *Store) DeleteRoutine(ctx context.Context, id string) error {
+	tag, err := s.Pool.Exec(ctx, `DELETE FROM routines WHERE id=$1`, id)
+	if err == nil && tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return err
+}
+
+func (s *Store) StartRoutineRun(ctx context.Context, routineID, trigger string) (*RoutineRun, error) {
+	r := &RoutineRun{ID: ids.New("run"), RoutineID: routineID, Trigger: trigger, Status: "running"}
+	err := s.Pool.QueryRow(ctx, `INSERT INTO routine_runs (id, routine_id, trigger, status) VALUES ($1,$2,$3,'running') RETURNING started_at`,
+		r.ID, routineID, trigger).Scan(&r.StartedAt)
+	return r, err
+}
+
+func (s *Store) FinishRoutineRun(ctx context.Context, r *RoutineRun) error {
+	now := time.Now()
+	r.FinishedAt = &now
+	_, err := s.Pool.Exec(ctx, `UPDATE routine_runs SET status=$2, output=$3, finished_at=$4 WHERE id=$1`, r.ID, r.Status, r.Output, now)
+	if err == nil {
+		// Keep the last 100 runs of each routine.
+		_, err = s.Pool.Exec(ctx, `DELETE FROM routine_runs WHERE routine_id=$1 AND id NOT IN
+			(SELECT id FROM routine_runs WHERE routine_id=$1 ORDER BY started_at DESC LIMIT 100)`, r.RoutineID)
+	}
+	return err
+}
+
+// FailInterruptedRuns marks runs left "running" by a previous kernel as failed.
+func (s *Store) FailInterruptedRuns(ctx context.Context) error {
+	_, err := s.Pool.Exec(ctx, `UPDATE routine_runs SET status='failed', output='interrupted: I restarted while this ran', finished_at=now() WHERE status='running'`)
+	return err
+}
+
+func (s *Store) RoutineRuns(ctx context.Context, routineID string, limit int) ([]RoutineRun, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT id, routine_id, trigger, status, output, started_at, finished_at FROM routine_runs WHERE routine_id=$1 ORDER BY started_at DESC LIMIT $2`, routineID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []RoutineRun
+	for rows.Next() {
+		var r RoutineRun
+		if err := rows.Scan(&r.ID, &r.RoutineID, &r.Trigger, &r.Status, &r.Output, &r.StartedAt, &r.FinishedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// AddRoutineReport records what a routine has to tell my owner.
+func (s *Store) AddRoutineReport(ctx context.Context, conv, content string) (*Message, error) {
+	return s.addMessage(ctx, conv, "seed", "routine", content, "")
+}

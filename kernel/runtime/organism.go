@@ -43,6 +43,11 @@ type Organism struct {
 	Egress       *Egress
 	EgressSocket string
 	Secrets      *Secrets
+	// JobToken is given to the live process (SEED_JOB_TOKEN) and sent with
+	// every scheduled job call (X-Seed-Job), so the organism can tell my
+	// calls from anyone else's. AfterDeploy runs once a generation is live.
+	JobToken    string
+	AfterDeploy func()
 
 	mu     sync.Mutex
 	sb     sandbox.Sandbox
@@ -175,6 +180,9 @@ func (o *Organism) Deploy(ctx context.Context) error {
 		_ = os.MkdirAll(filepath.Dir(o.builtMarker()), 0o755)
 		_ = os.WriteFile(o.builtMarker(), []byte(head), 0o644)
 	}
+	if o.AfterDeploy != nil {
+		o.AfterDeploy()
+	}
 	return nil
 }
 
@@ -227,6 +235,9 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "service workers are not allowed (they would control /_seed)", http.StatusForbidden)
 		return
 	}
+	// Only my scheduler sends X-Seed-Job (see CallJob), never a visitor.
+	r.Header.Del("X-Seed-Job")
+	r.Header.Del("X-Seed-Routine")
 	state, msg := o.State()
 	o.mu.Lock()
 	sb, proxy := o.sb, o.proxy
@@ -323,6 +334,9 @@ func (o *Organism) egressSocket() string {
 // secret in, so none are given.
 func (o *Organism) processEnv() map[string]string {
 	env := map[string]string{}
+	if o.JobToken != "" {
+		env["SEED_JOB_TOKEN"] = o.JobToken
+	}
 	if o.egressSocket() == "" {
 		return env
 	}

@@ -22,6 +22,33 @@ export type Outbound = {
   available_secrets: string[];
 };
 
+export type RoutineRun = {
+  id: string;
+  routine_id: string;
+  trigger: 'schedule' | 'manual';
+  status: 'running' | 'ok' | 'quiet' | 'failed';
+  output: string;
+  started_at: string;
+  finished_at: string | null;
+};
+export type Routine = {
+  id: string;
+  name: string;
+  kind: 'agent' | 'job';
+  source: 'owner' | 'organism';
+  schedule: string;
+  schedule_text: string;
+  timezone: string;
+  prompt?: string;
+  method?: string;
+  path?: string;
+  description?: string;
+  enabled: boolean;
+  next_run_at: string | null;
+  last_run: RoutineRun | null;
+};
+export type NewRoutine = { name: string; kind: 'agent' | 'job'; schedule: string; timezone: string; prompt?: string; method?: string; path?: string };
+
 export type OrganismState = 'stopped' | 'building' | 'starting' | 'running' | 'failed';
 
 export type Identity = {
@@ -48,7 +75,7 @@ export type Message = {
   role: 'user' | 'seed' | 'system';
   content: string;
   evolution_id?: string;
-  kind?: 'chat' | 'report';
+  kind?: 'chat' | 'report' | 'routine';
   created_at: string;
 };
 
@@ -206,10 +233,11 @@ export type LiveEventMap = {
   approval: Approval;
   status: Status;
   chat: { thinking: boolean };
+  routine: { id?: string; run?: RoutineRun; deleted?: boolean; synced?: boolean };
 };
 export type LiveEventName = keyof LiveEventMap;
 export type LiveEvent = { [K in LiveEventName]: { type: K; data: LiveEventMap[K] } }[LiveEventName];
-export const LIVE_EVENT_NAMES: LiveEventName[] = ['message', 'evolution', 'evolution_event', 'approval', 'status', 'chat'];
+export const LIVE_EVENT_NAMES: LiveEventName[] = ['message', 'evolution', 'evolution_event', 'approval', 'status', 'chat', 'routine'];
 
 // ---- errors ----
 
@@ -317,6 +345,12 @@ export const api = {
   modelOptions: (provider: string) => request<ModelOptions>('GET', `/model/options?provider=${enc(provider)}`),
   setModel: (body: SetModelBody) => request<ModelConfig>('POST', '/model', body),
   forgetKey: (provider: string) => request<ModelConfig>('POST', '/model/forget-key', { provider }),
+  routines: () => request<Routine[]>('GET', '/routines'),
+  createRoutine: (body: NewRoutine) => request<Routine>('POST', '/routines', body),
+  updateRoutine: (id: string, body: Partial<NewRoutine> & { enabled?: boolean }) => request<Routine>('POST', `/routines/${enc(id)}/update`, body),
+  runRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${enc(id)}/run`),
+  deleteRoutine: (id: string) => request<{ ok: boolean }>('POST', `/routines/${enc(id)}/delete`),
+  routineRuns: (id: string) => request<RoutineRun[]>('GET', `/routines/${enc(id)}/runs`),
   outbound: () => request<Outbound>('GET', '/outbound'),
   grantOutbound: (body: { hosts?: string[]; secrets?: string[]; reason?: string }) => request<Outbound>('POST', '/outbound/grant', body),
   revokeOutbound: (kind: 'host' | 'secret', value: string) => request<Outbound>('POST', '/outbound/revoke', { kind, value }),

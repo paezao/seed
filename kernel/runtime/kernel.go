@@ -68,6 +68,8 @@ type Kernel struct {
 	Owner *Owner
 	// Egress is the live organism's only way out.
 	Egress *Egress
+	// Routines runs what I do on a schedule.
+	Routines *Scheduler
 	// cookieName is unique per Seed: browsers share cookies across ports, so
 	// Seeds on the same machine must not overwrite each other's sessions.
 	cookieName string
@@ -248,10 +250,16 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		DB:              evolution.DBCreds{Role: evoRole, Password: evoPass},
 		OnKernelChanged: k.requestRestart,
 		ExtraTools:      func() []*tools.Tool { return []*tools.Tool{k.Egress.RequestTool()} },
-		ExtraContext:    func(context.Context) string { return k.Egress.Describe(k.Secrets.Names()) },
+		ExtraContext: func(ctx context.Context) string {
+			return k.Egress.Describe(k.Secrets.Names()) + k.Routines.Describe(ctx)
+		},
 	}
 	k.Chat = &Chat{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Model: k.Mind, Orch: k.Orch, Repo: k.Repo, Policy: k.Policy,
 		Live: k.Organism, Approvals: k.Approvals, Egress: k.Egress}
+	k.Routines = &Scheduler{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Agent: k.Chat, Jobs: k.Organism}
+	k.Chat.Routines = k.Routines
+	k.Organism.JobToken = randomHex(24)
+	k.Organism.AfterDeploy = func() { k.Routines.SyncJobs(context.Background()) }
 	return k, nil
 }
 
@@ -328,6 +336,7 @@ func (k *Kernel) Serve(ctx context.Context) error {
 		slog.Error("recovering evolutions", "err", err)
 	}
 	go k.Orch.Run(ctx)
+	go k.Routines.Start(ctx)
 	go func() {
 		if err := k.Organism.EnsureRunning(ctx); err != nil {
 			slog.Error("starting organism", "err", err)
