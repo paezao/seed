@@ -73,7 +73,10 @@ func cmdRun(ctx context.Context, args []string) error {
 	name := containerName(ctx, cfg)
 
 	if state, err := engine(ctx, "inspect", "-f", "{{.State.Running}}", name); err == nil && state == "true" {
-		addr := readSeedFile(cfg.Root, ".seed/host-addr")
+		addr, err := publishedAddr(ctx, name)
+		if err != nil {
+			return err
+		}
 		fmt.Fprintf(os.Stderr, "I'm already running at http://%s/_seed/\n", localhost(addr))
 		if f.open {
 			openWhenUp(ctx, func() string { return addr })
@@ -126,10 +129,6 @@ func cmdRun(ctx context.Context, args []string) error {
 		return fmt.Errorf("%s run: %w: %s", containerEngine(), err, strings.TrimSpace(string(out)))
 	}
 	addr := "127.0.0.1:" + strconv.Itoa(hostPort)
-	// The Seed's folder is under the Seed's control: never follow a symlink in it.
-	if err := fsx.WriteFileNoFollow(cfg.Root, ".seed/host-addr", []byte(addr), 0o644); err != nil {
-		return err
-	}
 	if f.open {
 		go openWhenUp(ctx, func() string { return addr })
 	}
@@ -377,4 +376,39 @@ func kernelHint(root string) {
 	if mine := template.SeedVersion(root); mine != latest {
 		fmt.Fprintf(os.Stderr, "A newer kernel is available (%s → %s): run `seed upgrade` while I'm stopped.\n", mine, latest)
 	}
+}
+
+// publishedAddr asks the container engine where a Seed's port is published.
+// Addresses are never taken from the Seed's folder: the Seed controls it, and
+// could otherwise point the CLI at any host (SSRF). Only loopback is accepted.
+func publishedAddr(ctx context.Context, name string) (string, error) {
+	out, err := engine(ctx, "port", name, "8080/tcp")
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if a, ok := loopbackAddr(strings.TrimSpace(line)); ok {
+			return a, nil
+		}
+	}
+	return "", fmt.Errorf("%s publishes no loopback port", name)
+}
+
+// loopbackAddr accepts only host:port on this machine's loopback interface.
+func loopbackAddr(s string) (string, bool) {
+	host, port, err := net.SplitHostPort(s)
+	if err != nil {
+		return "", false
+	}
+	if p, err := strconv.Atoi(port); err != nil || p < 1 || p > 65535 {
+		return "", false
+	}
+	if host == "localhost" {
+		host = "127.0.0.1"
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return "", false
+	}
+	return net.JoinHostPort(ip.String(), port), true
 }

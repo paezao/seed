@@ -330,7 +330,9 @@ func runNative(ctx context.Context, f runFlags) error {
 		}
 		if f.open {
 			go openWhenUp(ctx, func() string {
-				return readSeedFile(f.dir, ".seed/addr")
+				// Native mode: the kernel I just started writes its address; accept only loopback.
+				a, _ := loopbackAddr(readSeedFile(f.dir, ".seed/addr"))
+				return a
 			})
 			f.open = false // only the first start, not kernel restarts
 		}
@@ -386,12 +388,11 @@ func baseURL() (string, *config.Config, error) {
 	// In a container: the published address, if my container is running.
 	// Natively (--native): the address the kernel wrote. Never guess a port
 	// (another program may be listening on it).
-	if state, err := engine(context.Background(), "inspect", "-f", "{{.State.Running}}", containerName(context.Background(), cfg)); err == nil && state == "true" {
-		if a := readSeedFile(cfg.Root, ".seed/host-addr"); a != "" {
-			return "http://" + a + "/_seed/api", cfg, nil
-		}
+	// Never trust an address from the Seed's folder (the Seed controls it).
+	if a, err := publishedAddr(context.Background(), containerName(context.Background(), cfg)); err == nil {
+		return "http://" + a + "/_seed/api", cfg, nil
 	}
-	if a := readSeedFile(cfg.Root, ".seed/addr"); a != "" && !strings.HasPrefix(a, "0.0.0.0") && !strings.HasPrefix(a, "[::]") {
+	if a, ok := loopbackAddr(readSeedFile(cfg.Root, ".seed/addr")); ok { // --native
 		return "http://" + a + "/_seed/api", cfg, nil
 	}
 	return "", cfg, errors.New("I'm not running: start me with `seed run -e OPENROUTER_API_KEY`")

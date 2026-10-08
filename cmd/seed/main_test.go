@@ -31,3 +31,15 @@ func TestSecretFlags(t *testing.T) {
 		t.Error("invalid names should be rejected")
 	}
 }
+
+func TestLoopbackAddrOnly(t *testing.T) {
+	for in, want := range map[string]bool{
+		"127.0.0.1:8081": true, "localhost:8081": true, "[::1]:8081": true,
+		"169.254.169.254:80": false, "10.0.0.5:5432": false, "example.com:443": false,
+		"0.0.0.0:8080": false, "[::]:8080": false, "127.0.0.1:0": false, "127.0.0.1": false,
+	} {
+		if _, ok := loopbackAddr(in); ok != want {
+			t.Errorf("loopbackAddr(%q) = %v, want %v", in, ok, want)
+		}
+	}
+}
