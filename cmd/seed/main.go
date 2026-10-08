@@ -324,14 +324,15 @@ func runNative(ctx context.Context, f runFlags) error {
 		if f.addr != "" {
 			child.Env = append(child.Env, "SEED_ADDR="+f.addr)
 		}
-		_ = os.Remove(runtime.AddrPath(f.dir))
+		if p, err := runtime.NativeAddrPath(f.dir); err == nil {
+			_ = os.Remove(p)
+		}
 		if err := child.Start(); err != nil {
 			return err
 		}
 		if f.open {
 			go openWhenUp(ctx, func() string {
-				// Native mode: the kernel I just started writes its address; accept only loopback.
-				a, _ := loopbackAddr(readSeedFile(f.dir, ".seed/addr"))
+				a, _ := nativeAddr(f.dir)
 				return a
 			})
 			f.open = false // only the first start, not kernel restarts
@@ -392,7 +393,7 @@ func baseURL() (string, *config.Config, error) {
 	if a, err := publishedAddr(context.Background(), containerName(context.Background(), cfg)); err == nil {
 		return "http://" + a + "/_seed/api", cfg, nil
 	}
-	if a, ok := loopbackAddr(readSeedFile(cfg.Root, ".seed/addr")); ok { // --native
+	if a, ok := nativeAddr(cfg.Root); ok { // --native
 		return "http://" + a + "/_seed/api", cfg, nil
 	}
 	return "", cfg, errors.New("I'm not running: start me with `seed run -e OPENROUTER_API_KEY`")
@@ -622,4 +623,18 @@ func firstNonEmpty(s ...string) string {
 		}
 	}
 	return ""
+}
+
+// nativeAddr reads where a natively running kernel listens, from the owner's
+// cache directory (never from the Seed's folder), loopback only.
+func nativeAddr(root string) (string, bool) {
+	p, err := runtime.NativeAddrPath(root)
+	if err != nil {
+		return "", false
+	}
+	b, err := os.ReadFile(p)
+	if err != nil {
+		return "", false
+	}
+	return loopbackAddr(strings.TrimSpace(string(b)))
 }

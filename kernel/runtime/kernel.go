@@ -5,6 +5,8 @@ package runtime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -276,8 +278,13 @@ func (k *Kernel) Serve(ctx context.Context) error {
 		return err
 	}
 	k.Cfg.Server.Addr = ln.Addr().String()
-	if err := os.WriteFile(AddrPath(k.Cfg.Root), []byte(k.Cfg.Server.Addr), 0o600); err != nil {
-		return err
+	// Running natively (--native), tell the CLI where I listen. In a
+	// container the CLI asks the engine instead, so nothing is written.
+	if os.Getenv("SEED_IN_CONTAINER") != "1" {
+		if p, err := NativeAddrPath(k.Cfg.Root); err == nil {
+			_ = os.MkdirAll(filepath.Dir(p), 0o700)
+			_ = os.WriteFile(p, []byte(k.Cfg.Server.Addr), 0o600)
+		}
 	}
 	srv := &http.Server{Handler: k.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	errc := make(chan error, 1)
@@ -325,8 +332,18 @@ func WriteControlToken(root, token string) error {
 	return os.WriteFile(p, []byte(token), 0o600)
 }
 
-// AddrPath records where the running kernel listens (for the CLI).
-func AddrPath(root string) string { return filepath.Join(root, ".seed", "addr") }
+// NativeAddrPath is where a natively running kernel records its address for
+// the CLI: in the owner's cache directory, keyed by the Seed's path, never in
+// the Seed's folder (which the Seed controls, so it could point the CLI at
+// another local service).
+func NativeAddrPath(root string) (string, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(root))
+	return filepath.Join(dir, "seed", "native", hex.EncodeToString(sum[:8])+".addr"), nil
+}
 
 // listen binds addr. Unless the address was given explicitly, a busy port
 // moves on to the next free one, so several Seeds can run side by side.
