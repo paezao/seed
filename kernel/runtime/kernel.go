@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"seed/kernel/tools"
+	"seed/kernel/update"
 	"strconv"
 	"strings"
 	"time"
@@ -71,6 +72,8 @@ type Kernel struct {
 	Egress *Egress
 	// Routines runs what I do on a schedule.
 	Routines *Scheduler
+	// Updates brings me new kernels from signed releases.
+	Updates *KernelUpdates
 	// cookieName is unique per Seed: browsers share cookies across ports, so
 	// Seeds on the same machine must not overwrite each other's sessions.
 	cookieName string
@@ -279,6 +282,15 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	k.Routines = &Scheduler{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Agent: k.Chat, Jobs: k.Organism}
 	k.Chat.Routines = k.Routines
 	k.Organism.JobToken = randomHex(24)
+	k.Updates = &KernelUpdates{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Restart: k.requestRestart,
+		Busy: func() bool { return k.Orch.Active(context.Background()) != nil }}
+	if os.Getenv("SEED_UPDATES") != "off" {
+		source := update.DefaultSource
+		if v := firstNonEmpty(os.Getenv("SEED_RELEASES_URL"), k.Secrets.Get("SEED_RELEASES_URL")); v != "" {
+			source = v // a mirror: releases must still be signed by a key I carry
+		}
+		k.Updates.Client = &update.Client{Source: source, Keys: update.TrustedKeys}
+	}
 	k.Organism.AfterDeploy = func() { k.Routines.SyncJobs(context.Background()) }
 	return k, nil
 }
@@ -357,6 +369,7 @@ func (k *Kernel) Serve(ctx context.Context) error {
 	}
 	go k.Orch.Run(ctx)
 	go k.Routines.Start(ctx)
+	go k.Updates.Start(ctx)
 	go func() {
 		if err := k.Organism.EnsureRunning(ctx); err != nil {
 			slog.Error("starting organism", "err", err)

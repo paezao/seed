@@ -27,6 +27,7 @@ import (
 	"seed/kernel/memory"
 	"seed/kernel/routines"
 	"seed/kernel/skills"
+	"seed/kernel/template"
 )
 
 // Handler builds the kernel's HTTP surface: the control plane under /_seed
@@ -60,6 +61,9 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/model/options", k.handleModelOptions)
 	mux.HandleFunc("POST "+api+"/model", k.handleSetModel)
 	mux.HandleFunc("POST "+api+"/model/forget-key", k.handleForgetKey)
+	mux.HandleFunc("GET "+api+"/kernel", k.handleKernel)
+	mux.HandleFunc("POST "+api+"/kernel/check", k.handleKernelCheck)
+	mux.HandleFunc("POST "+api+"/kernel/update", k.handleKernelUpdate)
 	mux.HandleFunc("GET "+api+"/routines", k.handleRoutines)
 	mux.HandleFunc("POST "+api+"/routines", k.handleCreateRoutine)
 	mux.HandleFunc("POST "+api+"/routines/{id}/update", k.handleUpdateRoutine)
@@ -1178,4 +1182,37 @@ func (k *Kernel) handleRoutineRuns(w http.ResponseWriter, r *http.Request) {
 		runs = []memory.RoutineRun{}
 	}
 	writeJSON(w, http.StatusOK, runs)
+}
+
+// ---- kernel updates
+
+func (k *Kernel) handleKernel(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, k.Updates.Status(r.Context()))
+}
+
+func (k *Kernel) handleKernelCheck(w http.ResponseWriter, r *http.Request) {
+	s, err := k.Updates.Check(r.Context())
+	if err != nil && s.Latest == nil {
+		writeErr(w, http.StatusBadGateway, fmt.Errorf("couldn't check for a new kernel: %w", err))
+		return
+	}
+	writeJSON(w, http.StatusOK, s)
+}
+
+func (k *Kernel) handleKernelUpdate(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Force bool `json:"force"`
+	}
+	_ = json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body)
+	res, err := k.Updates.Apply(r.Context(), body.Force)
+	var km *template.ErrKernelModified
+	switch {
+	case errors.As(err, &km):
+		writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error(), "modified_files": km.Files})
+		return
+	case err != nil:
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }

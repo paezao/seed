@@ -49,6 +49,18 @@ export type Routine = {
 };
 export type NewRoutine = { name: string; kind: 'agent' | 'job'; schedule: string; timezone: string; prompt?: string; method?: string; path?: string };
 
+export type KernelRelease = { version: string; published_at: string; notes: string };
+export type KernelStatus = {
+  version: string;
+  latest: KernelRelease | null;
+  available: boolean;
+  needs_runtime: boolean;
+  checked_at: string | null;
+  check_error?: string;
+  applying: boolean;
+  last_event: { ok: boolean; message: string; log?: string; at: string } | null;
+};
+
 export type OrganismState = 'stopped' | 'building' | 'starting' | 'running' | 'failed';
 
 export type Identity = {
@@ -234,10 +246,11 @@ export type LiveEventMap = {
   status: Status;
   chat: { thinking: boolean };
   routine: { id?: string; run?: RoutineRun; deleted?: boolean; synced?: boolean };
+  kernel: KernelStatus;
 };
 export type LiveEventName = keyof LiveEventMap;
 export type LiveEvent = { [K in LiveEventName]: { type: K; data: LiveEventMap[K] } }[LiveEventName];
-export const LIVE_EVENT_NAMES: LiveEventName[] = ['message', 'evolution', 'evolution_event', 'approval', 'status', 'chat', 'routine'];
+export const LIVE_EVENT_NAMES: LiveEventName[] = ['message', 'evolution', 'evolution_event', 'approval', 'status', 'chat', 'routine', 'kernel'];
 
 // ---- errors ----
 
@@ -345,6 +358,9 @@ export const api = {
   modelOptions: (provider: string) => request<ModelOptions>('GET', `/model/options?provider=${enc(provider)}`),
   setModel: (body: SetModelBody) => request<ModelConfig>('POST', '/model', body),
   forgetKey: (provider: string) => request<ModelConfig>('POST', '/model/forget-key', { provider }),
+  kernel: () => request<KernelStatus>('GET', '/kernel'),
+  checkKernel: () => request<KernelStatus>('POST', '/kernel/check'),
+  updateKernel: (force = false) => request<{ to: string; generation: number }>('POST', '/kernel/update', { force }),
   routines: () => request<Routine[]>('GET', '/routines'),
   createRoutine: (body: NewRoutine) => request<Routine>('POST', '/routines', body),
   updateRoutine: (id: string, body: Partial<NewRoutine> & { enabled?: boolean }) => request<Routine>('POST', `/routines/${enc(id)}/update`, body),

@@ -5,6 +5,7 @@ import { api, shortCommit, type Evolution } from './api';
 import { Logo } from './components/Logo';
 import { SeedMark } from './components/SeedMark';
 import { useApplyIdentity } from './identity';
+import { KernelBanner } from './components/KernelUpdate';
 import { OrganismBadge } from './components/ui';
 import { useLive } from './live';
 
@@ -162,6 +163,7 @@ export default function Layout() {
             <Link className="btn btn-sm" to="/logs">View logs</Link>
           </div>
         )}
+        {reachable && <KernelBanner />}
         <main className="content" ref={contentRef}>
           <Outlet />
         </main>

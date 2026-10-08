@@ -1,0 +1,33 @@
+# Publishes a signed kernel release when a version tag is pushed:
+#   git tag -a v2026.10.20 -m "What's new (markdown, shown in Seeds' update banner)"
+#   git push origin v2026.10.20
+# Seeds check releases/latest and install only releases signed by a key they
+# carry (kernel/update/keys.go). The private key is the SEED_RELEASE_KEY secret.
+name: release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Build the template
+        run: make template VERSION="${GITHUB_REF_NAME#v}"
+      - name: Release notes (the tag's message)
+        run: git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
+      - name: Sign
+        env:
+          SEED_RELEASE_KEY: ${{ secrets.SEED_RELEASE_KEY }}
+        run: |
+          go run ./cmd/seed release sign --template kernel/template/assets/template.tar.gz \
+            --dockerfile Dockerfile --version "${GITHUB_REF_NAME#v}" --notes notes.md --out dist
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Kernel ${GITHUB_REF_NAME#v}" --notes-file notes.md

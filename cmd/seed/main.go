@@ -85,6 +85,10 @@ func main() {
 		err = cmdStop(ctx, args)
 	case "image":
 		err = cmdImage(ctx, args)
+	case "kernel-rollback":
+		err = cmdKernelRollback(ctx, args)
+	case "release":
+		err = cmdRelease(args)
 	case "plant":
 		err = cmdPlant(ctx, args)
 	case "login":

@@ -68,6 +68,7 @@ seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # 
 - [Evolution lifecycle](docs/evolution.md): how software modifies itself safely
 - [Skills](docs/skills.md): how a Seed acquires reusable capabilities
 - [Knowledge](docs/knowledge.md): how a Seed keeps continuity of identity
+- [Kernel updates](docs/updates.md): signed releases, updating from the control plane, automatic rollback
 - [Hosting](docs/hosting.md): deploying a Seed with a volume and an external PostgreSQL
 - [Routines](docs/routines.md): what a Seed does on a schedule (agent routines and jobs)
 - [Security](docs/security.md): sandboxing, permissions, the kernel boundary

@@ -32,8 +32,9 @@ ENV PATH=/usr/lib/postgresql/17/bin:/usr/local/go/bin:$PATH \
     HOME=/tmp/home \
     SEED_IN_CONTAINER=1 \
     GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=*
-# Boot: build this Seed's own kernel from its own source, run it, and rebuild
-# and restart when an evolution changed the kernel (exit code 75).
+# Boot: build this Seed's own kernel from its own source, run it, rebuild and
+# restart when an evolution or update changed the kernel (exit code 75), and
+# roll back to the last kernel that ran well if a new one fails.
 RUN printf '%s\n' \
   '#!/bin/sh' \
   'set -u' \
@@ -47,14 +48,31 @@ RUN printf '%s\n' \
   'cd /seed' \
   'child=""' \
   'trap '"'"'[ -n "$child" ] && kill -TERM "$child" 2>/dev/null; wait "$child"; exit 0'"'"' TERM INT' \
+  '# Back to the last kernel that ran well (its files only, as a new generation),' \
+  '# using that kernel'"'"'s own binary. Fails (exit 3) when the kernel files are' \
+  '# already those: then the problem is not a kernel change.' \
+  'rollback() {' \
+  '  [ -x .seed/bin/seed.good ] || return 1' \
+  '  .seed/bin/seed.good kernel-rollback --dir /seed --reason "$1" --log "$2"' \
+  '}' \
   'while :; do' \
   '  echo "building my kernel…"' \
-  '  GOWORK=off GOFLAGS="-mod=readonly -buildvcs=false -modcacherw" go build -o .seed/bin/seed ./cmd/seed || exit 1' \
+  '  if ! GOWORK=off GOFLAGS="-mod=readonly -buildvcs=false -modcacherw" go build -o .seed/bin/seed.next ./cmd/seed 2>.seed/kernel-build.log; then' \
+  '    cat .seed/kernel-build.log >&2' \
+  '    rollback "didn'"'"'t build" .seed/kernel-build.log && continue' \
+  '    exit 1' \
+  '  fi' \
+  '  mv .seed/bin/seed.next .seed/bin/seed' \
+  '  started=$(date +%s)' \
   '  .seed/bin/seed serve --dir /seed --addr "0.0.0.0:${PORT:-8080}" & child=$!' \
   '  wait "$child"; code=$?; child=""' \
-  '  [ "$code" -eq 75 ] || exit "$code"' \
-  '  echo "my kernel changed; restarting into it…"' \
-  'done' > /usr/local/bin/seed-boot \
+  '  if [ "$code" -eq 75 ]; then echo "my kernel changed; restarting into it…"; continue; fi' \
+  '  if [ "$code" -ne 0 ] && [ $(( $(date +%s) - started )) -lt 60 ]; then' \
+  '    rollback "stopped right after starting (exit $code)" "" && continue' \
+  '  fi' \
+  '  exit "$code"' \
+  'done' \
+  > /usr/local/bin/seed-boot \
  && chmod 0755 /usr/local/bin/seed-boot
 WORKDIR /seed
 EXPOSE 8080

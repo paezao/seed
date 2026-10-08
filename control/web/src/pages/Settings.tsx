@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api, errorMessage, type ModelConfig, type ProviderInfo } from '../api';
+import { KernelPanel } from '../components/KernelUpdate';
 import { ModelForm } from '../components/ModelForm';
 import { CopyCommand, keyEnvOf, keySourceText, restartCommand } from '../components/Brain';
 import { Badge, ErrorNote, Loading, PageHeader, relTime, useLoad } from '../components/ui';
@@ -345,6 +346,7 @@ export default function Settings() {
     <div className="page">
       <PageHeader title="Settings" />
       <MindPanel />
+      <KernelPanel />
       <OutboundPanel />
       <OwnerPanel />
       <section className="panel" aria-labelledby="config-h">
