@@ -2,9 +2,12 @@ package runtime
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -20,7 +23,14 @@ import (
 // root and is styled through the CSSOM, so the organism's CSS can't restyle
 // it and a strict CSP doesn't block it.
 
-const badgeScriptTag = `<script src="/_seed/badge.js" defer></script>`
+// badgeScriptTag carries the script's hash, so a new kernel's badge is never
+// hidden behind a cached old one.
+var badgeScriptTag = func() string {
+	sum := sha256.Sum256([]byte(badgeJS))
+	return `<script src="/_seed/badge.js?v=` + hex.EncodeToString(sum[:6]) + `" defer></script>`
+}()
+
+var bodyCloseRe = regexp.MustCompile(`(?i)</body\s*>`)
 
 // maxInjectable bounds the pages I rewrite (larger ones pass untouched).
 const maxInjectable = 8 << 20
@@ -62,7 +72,10 @@ func injectBadge(resp *http.Response) error {
 		return nil
 	}
 	resp.Body.Close()
-	if i := bytes.LastIndex(bytes.ToLower(body), []byte("</body>")); i >= 0 {
+	// Found in the original bytes (lowercasing a copy can change its length
+	// for some non-ASCII text, and the index would point elsewhere).
+	if m := bodyCloseRe.FindAllIndex(body, -1); len(m) > 0 {
+		i := m[len(m)-1][0]
 		body = append(body[:i:i], append([]byte(badgeScriptTag), body[i:]...)...)
 	} else {
 		body = append(body, []byte(badgeScriptTag)...)
@@ -104,19 +117,39 @@ const badgeJS = `(() => {
     a.title = 'Back to my control plane';
     a.setAttribute('aria-label', 'Back to my control plane');
     Object.assign(a.style, {
-      display: 'flex', alignItems: 'center', justifyContent: 'center', width: '40px', height: '40px',
-      borderRadius: '50%', background: '#10140f', color: '#7cc495', border: '1px solid rgba(124,196,149,.35)',
-      boxShadow: '0 4px 14px rgba(0,0,0,.25)', opacity: '.82', transition: 'opacity .15s, transform .15s',
-      textDecoration: 'none', outlineOffset: '3px',
+      display: 'block', width: '34px', height: '34px', color: '#5fbf85', textDecoration: 'none',
+      // Just the seed: a soft shadow keeps it readable on light and dark pages.
+      filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,.45)) drop-shadow(0 0 6px rgba(0,0,0,.18))',
+      opacity: '.9', transition: 'opacity .2s', outlineOffset: '4px', borderRadius: '6px',
     });
-    const grow = (on) => { a.style.opacity = on ? '1' : '.82'; a.style.transform = on ? 'scale(1.07)' : 'none'; };
-    a.addEventListener('mouseenter', () => grow(true));
-    a.addEventListener('mouseleave', () => grow(false));
-    a.addEventListener('focus', () => grow(true));
-    a.addEventListener('blur', () => grow(false));
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let swaying = null;
+    const sway = () => {
+      a.style.opacity = '1';
+      if (still.matches || !svg.animate || swaying) return;
+      // A sprout in a breeze: lean, sway back, settle.
+      swaying = svg.animate([
+        { transform: 'rotate(0deg) scale(1)' },
+        { transform: 'rotate(-14deg) scale(1.12)', offset: 0.25 },
+        { transform: 'rotate(10deg) scale(1.12)', offset: 0.5 },
+        { transform: 'rotate(-5deg) scale(1.1)', offset: 0.75 },
+        { transform: 'rotate(0deg) scale(1.1)' },
+      ], { duration: 900, easing: 'ease-in-out', fill: 'forwards' });
+      swaying.onfinish = () => { swaying = null; };
+    };
+    const rest = () => {
+      a.style.opacity = '.9';
+      if (!still.matches && svg.animate) svg.animate([{ transform: 'scale(1.1)' }, { transform: 'scale(1)' }], { duration: 200, fill: 'forwards' });
+    };
+    a.addEventListener('mouseenter', sway);
+    a.addEventListener('focus', sway);
+    a.addEventListener('mouseleave', rest);
+    a.addEventListener('blur', rest);
     const NS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('width', '20'); svg.setAttribute('height', '20'); svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '34'); svg.setAttribute('height', '34'); svg.setAttribute('viewBox', '0 0 24 24');
+    svg.style.display = 'block';
+    svg.style.transformOrigin = '50% 90%'; // sway from the stem's base
     svg.setAttribute('aria-hidden', 'true');
     for (const [d, attrs] of [
       ['M12 21v-9', { stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', fill: 'none' }],

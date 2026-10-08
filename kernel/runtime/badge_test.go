@@ -34,6 +34,9 @@ func TestInjectBadge(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := bodyOf(t, r)
+	if !strings.Contains(badgeScriptTag, "badge.js?v=") {
+		t.Fatal("the script URL carries its version (no stale cached badge)")
+	}
 	if !strings.Contains(got, badgeScriptTag+"</body>") || r.ContentLength != int64(len(got)) || r.Header.Get("Content-Length") == "" {
 		t.Fatalf("pages get the badge before </body>: %q", got)
 	}
@@ -70,5 +73,19 @@ func TestBadgeAnswersOnlyYesOrNo(t *testing.T) {
 	k.handleBadge(w, req)
 	if w.Code != 200 || strings.Contains(w.Body.String(), apiToken(secret)) || strings.Contains(w.Body.String(), secret) {
 		t.Fatalf("owner: yes, and nothing usable: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestInjectBadgeIndexesTheOriginalBytes(t *testing.T) {
+	// "İ" (U+0130) lowercases to a longer byte sequence: an index found in a
+	// lowercased copy would point before the real </BODY>.
+	page := "<html><body>" + strings.Repeat("İ", 50) + "<p>end</p></BODY></html>"
+	r := pageResp(t, "localhost:8081", "document", "text/html", "", page)
+	if err := injectBadge(r); err != nil {
+		t.Fatal(err)
+	}
+	got := bodyOf(t, r)
+	if !strings.Contains(got, "<p>end</p>"+badgeScriptTag+"</BODY>") {
+		t.Fatalf("the script goes right before </BODY>: %q", got[len(got)-120:])
 	}
 }
