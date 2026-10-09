@@ -91,7 +91,7 @@ export default function Layout() {
               <Icon name={n.icon} />
               <span>{n.label}</span>
               {n.to === '/' && approvals.length > 0 && <span className="nav-count">{approvals.length}</span>}
-              {n.to === '/health' && (status?.open_incidents ?? 0) > 0 && <span className="nav-count nav-count-warn">{status?.open_incidents}</span>}
+              {n.to === '/health' && (status?.open_incidents ?? 0) > 0 && <span className="nav-count">{status?.open_incidents}</span>}
             </NavLink>
           ))}
           {extensions.length > 0 && <div className="nav-section">Admin</div>}
