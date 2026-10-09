@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import Welcome from './pages/Welcome';
-import { api, shortCommit, type Evolution } from './api';
+import { api, shortCommit, type Evolution, evolutionTitle } from './api';
 import { Logo } from './components/Logo';
 import { SeedMark } from './components/SeedMark';
 import { useApplyIdentity } from './identity';
@@ -203,7 +203,7 @@ function ActiveEvolutionPill({ evolution }: { evolution: Evolution | null }) {
   return (
     <Link to={`/evolutions/${live.id}`} className={`active-evo${done ? (ok ? ' is-done' : ' is-failed') : ''}${leaving ? ' is-leaving' : ''}`}>
       {done ? <span className="active-evo-mark" aria-hidden>{ok ? '✓' : '✗'}</span> : <span className="spinner" />}
-      <span className="truncate">{live.title || live.intent}</span>
+      <span className="truncate">{evolutionTitle(live)}</span>
       <span className="muted mono">{ok && live.new_generation != null ? `generation ${live.new_generation}` : live.status.replace('_', ' ')}</span>
     </Link>
   );

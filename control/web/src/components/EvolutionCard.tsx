@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, errorMessage, isActive, isWaitingOnOwner, shortCommit, type EvolutionEvent } from '../api';
+import { api, evolutionTitle, errorMessage, isActive, isWaitingOnOwner, shortCommit, type EvolutionEvent } from '../api';
 import { useEvolution, useLiveEvent } from '../live';
 import { stepProgress } from '../phases';
 import { ActivityTicker } from './ActivityTicker';
@@ -67,7 +67,7 @@ export function EvolutionCard({ id }: { id: string }) {
   const isRollback = evo.kind === 'rollback';
   // Before there's a plan, the intent stands in for a title, without the
   // owner's words the kernel appends for the agent (the chat shows them).
-  const title = evo.plan?.title || evo.title || evo.intent.split(/\n+The owner's exact words:/)[0];
+  const title = evolutionTitle(evo);
   const activeStep = prog.active >= 0 && prog.active < steps.length ? steps[prog.active] : null;
 
   if (!expanded) {
@@ -116,7 +116,7 @@ export function EvolutionCard({ id }: { id: string }) {
         <div className="evo-card-title">
           <span className="evo-kicker">{isRollback ? 'Rollback' : 'Evolution'}</span>
           <span className="evo-title-row">
-            <Link to={`/evolutions/${evo.id}`} className="evo-title">{evo.plan?.title || evo.title || evo.intent}</Link>
+            <Link to={`/evolutions/${evo.id}`} className="evo-title">{evolutionTitle(evo)}</Link>
             <StageBadge plan={evo.plan} />
           </span>
         </div>

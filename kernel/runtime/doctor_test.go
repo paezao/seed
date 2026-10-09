@@ -298,3 +298,16 @@ func TestFencesCantBeBroken(t *testing.T) {
 		t.Fatalf("exactly my two fences (4 markers), got %d:\n%s", n, (*intents)[0])
 	}
 }
+
+func TestNoFixWithoutAProposal(t *testing.T) {
+	d, _, intents := testDoctor(t)
+	ctx := context.Background()
+	inc := &memory.Incident{Signature: "crash abc", Kind: "crash", Title: "My app crashed", Status: "diagnosed", Count: 1,
+		FirstSeen: time.Now(), LastSeen: time.Now(), Diagnosis: "Something stopped me on purpose; not my code."}
+	if err := d.Store.SaveIncident(ctx, inc); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Fix(ctx, inc.ID); err == nil || len(*intents) != 0 {
+		t.Fatal("no evolution when my investigation found nothing to fix in my code")
+	}
+}

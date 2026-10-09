@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, evolutionTitle } from '../api';
 import { Empty, ErrorNote, EvolutionBadge, Loading, PageHeader, Time, useLoad } from '../components/ui';
 import { useLive } from '../live';
 
@@ -40,9 +40,9 @@ export default function Evolutions() {
                   <td className="cell-main">
                     <Link to={`/evolutions/${e.id}`} onClick={(ev) => ev.stopPropagation()}>
                       {e.kind === 'rollback' && <span className="tag">rollback</span>}
-                      {e.title || e.plan?.title || e.intent}
+                      <span className="evo-list-title">{evolutionTitle(e)}</span>
                     </Link>
-                    {e.intent && e.intent !== (e.title || e.plan?.title) && <div className="muted small truncate">{e.intent}</div>}
+                    {e.intent && evolutionTitle(e) !== e.intent && <div className="muted small truncate">{e.intent.split('\n')[0]}</div>}
                   </td>
                   <td className="mono">
                     {e.base_generation}

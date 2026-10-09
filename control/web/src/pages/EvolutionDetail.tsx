@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, errorMessage, isActive, isWaitingOnOwner, shortCommit, type Diff, type EvolutionEvent } from '../api';
+import { api, evolutionTitle, errorMessage, isActive, isWaitingOnOwner, shortCommit, type Diff, type EvolutionEvent } from '../api';
 import { ActivityTicker } from '../components/ActivityTicker';
 import { DiffView } from '../components/DiffView';
 import { EventList, isToolEvent, mergeEvents } from '../components/EventList';
@@ -63,7 +63,7 @@ export default function EvolutionDetail() {
     <div className="page">
       <div className="crumbs"><Link to="/evolutions">Evolutions</Link> <span className="muted">/</span> <code>{evo.id}</code></div>
       <PageHeader
-        title={<>{evo.kind === 'rollback' && <span className="tag">rollback</span>}{evo.title || evo.plan?.title || evo.intent}<StageBadge plan={evo.plan} /></>}
+        title={<>{evo.kind === 'rollback' && <span className="tag">rollback</span>}{evolutionTitle(evo)}<StageBadge plan={evo.plan} /></>}
         sub={
           <span className="meta-row">
             <EvolutionBadge status={evo.status} />

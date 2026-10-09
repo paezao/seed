@@ -412,3 +412,13 @@ export const isActive = (s: EvolutionStatus) => !TERMINAL_STATUSES.includes(s);
 export const isWaitingOnOwner = (e: Evolution | null | undefined) => !!e && e.status === 'needs_input' && !!e.questions?.length;
 export const shortCommit = (c?: string) => (c ? c.slice(0, 7) : '');
 export const errorMessage = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** An evolution's name for people: its plan's title once there is one;
+ *  before that, the first line of what it was asked (without the owner's
+ *  words or evidence the kernel adds for the agent). */
+export function evolutionTitle(e: { title?: string; intent: string; plan?: { title?: string } | null }): string {
+  if (e.plan?.title) return e.plan.title;
+  if (e.title) return e.title;
+  const first = e.intent.split(/\n\s*\n|\n+The owner's exact words:/)[0].trim();
+  return first.length > 140 ? first.slice(0, 140).trimEnd() + '…' : first;
+}

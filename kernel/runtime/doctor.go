@@ -415,7 +415,7 @@ func (d *Doctor) report(ctx context.Context, inc *memory.Incident) {
 	}
 }
 
-var errNothingToFix = errors.New("there's no fix to apply for this one yet")
+var errNothingToFix = errors.New("my investigation didn't find a change to my code that fixes this one: ignore it, or ask me to investigate again")
 
 // Fix starts an evolution that fixes an incident, with a regression test.
 func (d *Doctor) Fix(ctx context.Context, id string) (*memory.Evolution, error) {
@@ -426,13 +426,12 @@ func (d *Doctor) Fix(ctx context.Context, id string) (*memory.Evolution, error) 
 	if inc.Status != "diagnosed" && inc.Status != "open" {
 		return nil, fmt.Errorf("this incident is %s", inc.Status)
 	}
-	if inc.Diagnosis == "" {
+	// Only a fix my investigation proposed: never a vague "find the cause"
+	// evolution for something that isn't in my code.
+	if inc.Diagnosis == "" || inc.Fix == "" {
 		return nil, errNothingToFix
 	}
 	fix := inc.Fix
-	if fix == "" {
-		fix = "Find the cause and fix it."
-	}
 	// Everything about the incident is data: its name and evidence come from
 	// my app's requests and logs, and my investigation read them. The fix
 	// gets them fenced, as leads to verify, within a narrow scope.

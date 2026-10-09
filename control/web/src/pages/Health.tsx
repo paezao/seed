@@ -38,11 +38,14 @@ function IncidentCard({ inc, onChange }: { inc: Incident; onChange: () => void }
       {inc.status === 'diagnosing' && <p className="small muted">I'm looking into it: reading my code, logs and data.</p>}
       {inc.diagnosis && <div className="incident-diagnosis"><Markdown source={inc.diagnosis} /></div>}
       {inc.fix && !done && <p className="incident-fix small"><strong>Fix:</strong> {inc.fix}</p>}
+      {inc.status === 'diagnosed' && !inc.fix && (
+        <p className="small muted">I don't think a change to my code fixes this one. Ignore it, or ask me to investigate again if it keeps happening.</p>
+      )}
       {inc.note && <p className="small muted">{inc.note}</p>}
       {inc.evolution_id && <Link className="small link-quiet" to={`/evolutions/${inc.evolution_id}`}>The fix evolution →</Link>}
       {!done && (
         <div className="incident-actions">
-          {(inc.status === 'diagnosed' || inc.status === 'open') && inc.diagnosis && (
+          {(inc.status === 'diagnosed' || inc.status === 'open') && inc.fix && (
             <button className="btn btn-sm btn-primary" disabled={busy !== null} onClick={() => act('fix', () => api.fixIncident(inc.id))}>
               {busy === 'fix' ? 'Starting…' : 'Fix it'}
             </button>
