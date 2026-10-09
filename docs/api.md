@@ -167,6 +167,8 @@ type Skill = { name: string; description: string; path: string; files: string[];
 | GET | `/logs?source=organism\|kernel&tail=500` | | `{lines: string[]}` |
 | GET | `/settings` | | redacted configuration object |
 | GET | `/extensions` | | `{id, title, path}[]` — control-plane pages contributed by the organism |
+| POST | `/evolutions/:id/decide` | `{action: "apply"\|"changes"\|"discard", feedback?}` | `{ok}`: the owner's decision after trying a ready evolution |
+| GET/POST | `/evolution-settings` | `{preview}` | `{preview}`: whether evolutions wait to be tried before going live |
 | GET | `/incidents` | | `Incident[]`: live ones first (see [health](health.md)) |
 | POST | `/incidents/:id/fix` | | `Evolution`: the fix evolution |
 | POST | `/incidents/:id/diagnose` | | `{ok}`: investigate again |

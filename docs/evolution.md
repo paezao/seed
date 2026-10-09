@@ -98,6 +98,28 @@ Planning is where the owner and the Seed agree on what to build.
 - **Approvals** still gate dangerous actions such as kernel changes. `require_plan_approval` and
   `require_apply_approval` can also put a human gate before mutation and before applying.
 
+## Trying it before it goes live
+
+With **Let me try changes before they go live** on (the default, on the Evolutions page), an
+evolution that passed its checks stops at **ready** and waits for its owner:
+
+- **Try it.** The new generation runs in its evolution's sandbox against a **copy of the live
+  data**: dumped and restored into a preview database, with the generation's migrations
+  applied. A live database over 512 MB, or one that can't be copied, is previewed with fresh
+  data instead. **Try it** gives only the owner's browser a preview ticket, bound to their session:
+  in that browser the app's pages are the new generation, with a bar saying so ("Previewing: …",
+  **Decide**, **Exit preview**). Everyone else keeps seeing the live app, and the preview cookie never
+  reaches the app.
+- **Apply.** It goes live as usual.
+- **Ask for changes.** The owner's words go back to the agent. It changes the work (the commit is
+  reopened, so the result is still one generation), verifies it again, and previews it again.
+- **Discard.** Nothing goes live; the evolution ends as cancelled.
+
+Fixes the Seed starts on its own ([health](health.md), with "fix problems on my own") and
+rollbacks don't wait. Evolutions are processed one at a time, so one that waits for its owner
+holds the others back until it's decided. A kernel restart ends a waiting evolution, like any
+interrupted one: its workspace is kept.
+
 ## Generations and rollback
 
 A generation is a commit on main with `Generation:` and `Evolution:` trailers. Git is the source

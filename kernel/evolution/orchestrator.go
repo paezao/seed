@@ -72,6 +72,9 @@ type Orchestrator struct {
 	// for outbound access); ExtraContext adds to what I know about myself.
 	ExtraTools   func() []*tools.Tool
 	ExtraContext func(ctx context.Context) string
+	// PreviewOn reports whether evolutions wait for their owner to try them
+	// before going live (preview.go).
+	PreviewOn func(ctx context.Context) bool
 
 	mu      sync.Mutex
 	wake    chan struct{}
@@ -79,6 +82,8 @@ type Orchestrator struct {
 	running string
 	// answers delivers the owner's answer to an evolution waiting on questions.
 	answers map[string]*waiter
+	// previews are evolutions running for their owner to try.
+	previews map[string]*previewRun
 }
 
 func (o *Orchestrator) init() {
@@ -88,6 +93,7 @@ func (o *Orchestrator) init() {
 		o.wake = make(chan struct{}, 1)
 		o.cancels = map[string]context.CancelFunc{}
 		o.answers = map[string]*waiter{}
+		o.previews = map[string]*previewRun{}
 	}
 }
 
@@ -272,6 +278,13 @@ func (o *Orchestrator) process(parent context.Context, e *memory.Evolution) {
 	switch {
 	case err == nil:
 		return
+	case errors.Is(err, errDiscarded):
+		e.Status = memory.Cancelled
+		e.Error = err.Error()
+		e.CompletedAt = &now
+		_ = o.save(bg, e)
+		o.event(bg, e, "note", "Discarded after previewing", nil)
+		o.say(bg, e, fmt.Sprintf("Discarded **%s** after you tried it. Nothing about the live me changed.", titleOr(e)))
 	case errors.Is(err, context.Canceled) && parent.Err() == nil:
 		e.Status = memory.Cancelled
 		e.Error = "cancelled by owner"
@@ -415,62 +428,93 @@ func (o *Orchestrator) evolve(ctx context.Context, e *memory.Evolution) error {
 
 	transcript := []models.Message{{Role: models.User, Content: o.mutationBrief(ctx, e, ws)}}
 	maxAttempts := max(1, o.Cfg.Evolution.MaxRepairAttempts)
-	var finish *finishInput
-	for attempt := 1; ; attempt++ {
-		e.Attempts = attempt
-		if err := o.transition(ctx, e, memory.Mutating); err != nil {
+	// Rounds: an owner who previews the result may ask for changes, which
+	// sends me back to mutating with their words.
+	previewed := false
+	var kernelChanged bool
+	for round := 0; ; round++ {
+		var finish *finishInput
+		for attempt := 1; ; attempt++ {
+			e.Attempts = attempt
+			if err := o.transition(ctx, e, memory.Mutating); err != nil {
+				return err
+			}
+			transcript, finish, err = o.mutate(ctx, e, ws, transcript)
+			if err != nil {
+				return fmt.Errorf("evolving: %w", err)
+			}
+			e.Summary = finish.Summary
+			_ = o.save(ctx, e)
+			feedback, err := o.verify(ctx, e, ws, finish)
+			if err != nil {
+				return err
+			}
+			if feedback == "" {
+				break
+			}
+			if attempt >= maxAttempts {
+				return fmt.Errorf("verification still failing after %d attempts:\n%s", attempt, tools.Truncate(feedback, 3000))
+			}
+			transcript = append(transcript, models.Message{Role: models.User, Content: fmt.Sprintf(
+				"The kernel's independent verification failed (attempt %d of %d):\n\n%s\n\n"+
+					"Diagnose the root cause before changing anything. If a check you declared in finish has the wrong expectation "+
+					"(for example the code correctly returns 404 for a missing resource but the check expected 204), fix the check, not the code. "+
+					"Verify with your tools, then call finish again with corrected checks.",
+				attempt, maxAttempts, feedback)})
+		}
+
+		if err := o.transition(ctx, e, memory.Reflecting); err != nil {
 			return err
 		}
-		transcript, finish, err = o.mutate(ctx, e, ws, transcript)
+		refl, err := o.reflect(ctx, e, ws)
 		if err != nil {
-			return fmt.Errorf("evolving: %w", err)
+			return fmt.Errorf("reflecting: %w", err)
 		}
-		e.Summary = finish.Summary
+		e.Reflection = refl
 		_ = o.save(ctx, e)
-		feedback, err := o.verify(ctx, e, ws, finish)
+		o.event(ctx, e, "note", "Reflection: "+firstLine(refl.Summary), refl)
+
+		if e.Plan != nil && len(e.Plan.Stages) > 0 {
+			if err := writeRoadmap(ws.dir, e); err != nil {
+				return fmt.Errorf("recording the roadmap: %w", err)
+			}
+		}
+		commit, changedKernel, err := o.commit(ctx, e, ws)
 		if err != nil {
 			return err
 		}
-		if feedback == "" {
+		e.Commit, kernelChanged = commit, changedKernel
+		if err := o.transition(ctx, e, memory.Ready); err != nil {
+			return err
+		}
+		if !o.wantsPreview(ctx, e) {
 			break
 		}
-		if attempt >= maxAttempts {
-			return fmt.Errorf("verification still failing after %d attempts:\n%s", attempt, tools.Truncate(feedback, 3000))
+		d, err := o.previewAndWait(ctx, e, ws)
+		if err != nil {
+			return err
 		}
-		transcript = append(transcript, models.Message{Role: models.User, Content: fmt.Sprintf(
-			"The kernel's independent verification failed (attempt %d of %d):\n\n%s\n\n"+
-				"Diagnose the root cause before changing anything. If a check you declared in finish has the wrong expectation "+
-				"(for example the code correctly returns 404 for a missing resource but the check expected 204), fix the check, not the code. "+
-				"Verify with your tools, then call finish again with corrected checks.",
-			attempt, maxAttempts, feedback)})
-	}
-
-	if err := o.transition(ctx, e, memory.Reflecting); err != nil {
-		return err
-	}
-	refl, err := o.reflect(ctx, e, ws)
-	if err != nil {
-		return fmt.Errorf("reflecting: %w", err)
-	}
-	e.Reflection = refl
-	_ = o.save(ctx, e)
-	o.event(ctx, e, "note", "Reflection: "+firstLine(refl.Summary), refl)
-
-	if e.Plan != nil && len(e.Plan.Stages) > 0 {
-		if err := writeRoadmap(ws.dir, e); err != nil {
-			return fmt.Errorf("recording the roadmap: %w", err)
+		previewed = true
+		if d.Action == "discard" {
+			return errDiscarded
 		}
+		if d.Action == "apply" {
+			break
+		}
+		// Changes: undo the commit (keeping the work), and carry on with
+		// the owner's words, in a fresh set of repair attempts.
+		if _, err := ws.repo.Run(ctx, "reset", "--soft", "HEAD~1"); err != nil {
+			return fmt.Errorf("reopening the change: %w", err)
+		}
+		e.Commit = ""
+		e.Preview.Round++
+		_ = o.save(ctx, e)
+		o.event(ctx, e, "note", "My owner asked for changes after trying it", map[string]string{"feedback": d.Feedback})
+		transcript = append(transcript, models.Message{Role: models.User, Content: "My owner tried this generation before it went live and asks for changes:\n\n> " +
+			strings.ReplaceAll(d.Feedback, "\n", "\n> ") + "\n\nMake these changes (keeping what already works), verify with your tools, and call finish again."})
 	}
-	commit, kernelChanged, err := o.commit(ctx, e, ws)
-	if err != nil {
-		return err
-	}
-	e.Commit = commit
-	if err := o.transition(ctx, e, memory.Ready); err != nil {
-		return err
-	}
-	if o.Cfg.Permissions.RequireApplyApproval {
-		if err := o.ask(ctx, e, "apply generation: "+e.Title, permissions.Review, "commit "+short(commit)); err != nil {
+	if o.Cfg.Permissions.RequireApplyApproval && !previewed {
+		if err := o.ask(ctx, e, "apply generation: "+e.Title, permissions.Review, "commit "+short(e.Commit)); err != nil {
 			return err
 		}
 	}

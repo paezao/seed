@@ -77,6 +77,8 @@ type Kernel struct {
 	Updates *KernelUpdates
 	// Doctor keeps my live organism healthy.
 	Doctor *Doctor
+	// previews are browsers trying candidate generations.
+	previews previews
 	// badgeOff: my owner turned off the badge on my organism's pages.
 	badgeOff atomic.Bool
 	// cookieName is unique per Seed: browsers share cookies across ports, so
@@ -301,10 +303,26 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		k.Updates.Client = &update.Client{Source: source, Keys: update.TrustedKeys}
 	}
 	k.Doctor = &Doctor{Store: k.Store, Bus: k.Bus, Body: k.Organism, Diagnose: k.Chat.DiagnoseIncident,
-		Evolve: func(ctx context.Context, intent string) (*memory.Evolution, error) {
+		Evolve: func(ctx context.Context, intent string, onMyOwn bool) (*memory.Evolution, error) {
+			if onMyOwn {
+				return k.Orch.RequestWithoutPreview(ctx, memory.DefaultConversation, intent)
+			}
 			return k.Orch.Request(ctx, memory.DefaultConversation, intent)
 		}}
 	k.Organism.Observe = k.Doctor.ObserveResponse
+	k.Organism.PreviewRoute = func(w http.ResponseWriter, r *http.Request) bool {
+		_, sb, ok := k.previewFor(r)
+		if !ok {
+			stripCookie(r, k.previewCookieName()) // never passed on to my organism
+			return false
+		}
+		k.servePreview(w, r, sb)
+		return true
+	}
+	k.Orch.PreviewOn = func(ctx context.Context) bool {
+		v, err := k.Store.Setting(ctx, settingPreview)
+		return err != nil || v != "off"
+	}
 	k.Routines.OnJob = k.Doctor.ObserveJob
 	k.Organism.AfterDeploy = func() {
 		k.Routines.SyncJobs(context.Background())

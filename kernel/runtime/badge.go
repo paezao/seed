@@ -54,7 +54,11 @@ func wantsBadge(r *http.Request) bool {
 }
 
 // injectBadge adds the badge script to an HTML page response.
-func injectBadge(resp *http.Response) error {
+func injectBadge(resp *http.Response) error { return injectScript(resp, badgeScriptTag) }
+
+// injectScript adds one script tag to an HTML page response (a top-level
+// page load on my main origin; uncompressed; not too large).
+func injectScript(resp *http.Response, tag string) error {
 	if resp.Request == nil || !wantsBadge(resp.Request) || resp.StatusCode != http.StatusOK {
 		return nil
 	}
@@ -80,9 +84,9 @@ func injectBadge(resp *http.Response) error {
 	// for some non-ASCII text, and the index would point elsewhere).
 	if m := bodyCloseRe.FindAllIndex(body, -1); len(m) > 0 {
 		i := m[len(m)-1][0]
-		body = append(body[:i:i], append([]byte(badgeScriptTag), body[i:]...)...)
+		body = append(body[:i:i], append([]byte(tag), body[i:]...)...)
 	} else {
-		body = append(body, []byte(badgeScriptTag)...)
+		body = append(body, []byte(tag)...)
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 	resp.ContentLength = int64(len(body))

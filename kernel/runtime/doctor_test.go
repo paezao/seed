@@ -76,7 +76,7 @@ func testDoctor(t *testing.T) (*Doctor, *fakeBody, *[]string) {
 		Diagnose: func(_ context.Context, inc *memory.Incident) (*Diagnosis, error) {
 			return &Diagnosis{Cause: "The handler indexes past the end of the list.", Fix: "Check the length first.", CanFix: true}, nil
 		},
-		Evolve: func(ctx context.Context, intent string) (*memory.Evolution, error) {
+		Evolve: func(ctx context.Context, intent string, _ bool) (*memory.Evolution, error) {
 			intents = append(intents, intent)
 			e := &memory.Evolution{Kind: "evolve", Intent: intent, Status: memory.Requested}
 			return e, store.CreateEvolution(ctx, e)

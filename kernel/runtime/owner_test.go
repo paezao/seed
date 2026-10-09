@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"seed/kernel/config"
+	"seed/kernel/evolution"
 	"seed/kernel/memory"
 	"seed/kernel/testutil"
 )
@@ -26,7 +27,8 @@ func ownerKernel(t *testing.T) (*Kernel, http.Handler) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	k := &Kernel{Cfg: &config.Config{Root: t.TempDir()}, Store: store, Owner: owner, Token: "cli-token", cookieName: "seed_owner_test"}
+	k := &Kernel{Cfg: &config.Config{Root: t.TempDir()}, Store: store, Owner: owner, Token: "cli-token", cookieName: "seed_owner_test",
+		Orch: &evolution.Orchestrator{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /_seed/login", k.handleLogin)
 	mux.HandleFunc("POST /_seed/login", k.handlePasswordLogin)

@@ -34,8 +34,9 @@ type Doctor struct {
 	Store *memory.Store
 	Bus   interface{ Publish(string, any) }
 	Body  doctorBody
-	// Evolve starts a fix evolution.
-	Evolve func(ctx context.Context, intent string) (*memory.Evolution, error)
+	// Evolve starts a fix evolution; on my own, it goes live without waiting
+	// for my owner to try it (they chose that with "fix problems on my own").
+	Evolve func(ctx context.Context, intent string, onMyOwn bool) (*memory.Evolution, error)
 	// Diagnose investigates an incident (read-only) and proposes a fix.
 	Diagnose func(ctx context.Context, inc *memory.Incident) (*Diagnosis, error)
 
@@ -390,7 +391,7 @@ func (d *Doctor) startDiagnosis(ctx context.Context, inc *memory.Incident) bool 
 		d.report(dctx, cur)
 		_ = d.Store.SaveIncident(dctx, cur)
 		if dg.CanFix && d.autoFix(dctx) {
-			if _, err := d.Fix(dctx, cur.ID); err != nil {
+			if _, err := d.fix(dctx, cur.ID, true); err != nil {
 				slog.Warn("fixing on my own", "incident", cur.Title, "err", err)
 			}
 		}
@@ -417,8 +418,13 @@ func (d *Doctor) report(ctx context.Context, inc *memory.Incident) {
 
 var errNothingToFix = errors.New("my investigation didn't find a change to my code that fixes this one: ignore it, or ask me to investigate again")
 
-// Fix starts an evolution that fixes an incident, with a regression test.
+// Fix starts an evolution that fixes an incident, with a regression test
+// (my owner clicked Fix it).
 func (d *Doctor) Fix(ctx context.Context, id string) (*memory.Evolution, error) {
+	return d.fix(ctx, id, false)
+}
+
+func (d *Doctor) fix(ctx context.Context, id string, onMyOwn bool) (*memory.Evolution, error) {
 	inc, err := d.Store.Incident(ctx, id)
 	if err != nil {
 		return nil, err
@@ -444,7 +450,7 @@ func (d *Doctor) Fix(ctx context.Context, id string) (*memory.Evolution, error) 
 		"```\n" + fenced(fmt.Sprintf("Incident: %s (%d times since %s)\nMy earlier investigation: %s\nProposed fix: %s",
 		inc.Title, inc.Count, inc.FirstSeen.UTC().Format(time.RFC1123), inc.Diagnosis, fix)) + "\n```\n\n" +
 		"```\n" + fenced(inc.Evidence) + "\n```"
-	e, err := d.Evolve(ctx, intent)
+	e, err := d.Evolve(ctx, intent, onMyOwn)
 	if err != nil {
 		return nil, err
 	}

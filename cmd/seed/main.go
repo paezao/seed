@@ -598,6 +598,7 @@ func follow(ctx context.Context, base, id string) error {
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 1<<20), 16<<20)
 	var event string
+	previewHinted := false
 	for sc.Scan() {
 		line := sc.Text()
 		switch {
@@ -624,8 +625,15 @@ func follow(ctx context.Context, base, id string) error {
 					ID, Status, Error string
 					NewGeneration     *int   `json:"new_generation"`
 					Commit            string `json:"commit"`
+					Preview           *struct {
+						State string `json:"state"`
+					} `json:"preview"`
 				}
 				if json.Unmarshal(data, &ev) == nil && ev.ID == id {
+					if ev.Status == "ready" && ev.Preview != nil && ev.Preview.State == "ready" && !previewHinted {
+						previewHinted = true
+						fmt.Printf("  ⏸ ready to try before it goes live: open the control plane to try it, then apply it, ask for changes or discard it\n")
+					}
 					switch ev.Status {
 					case "complete":
 						fmt.Printf("\nI am now generation %d (%s).\n", *ev.NewGeneration, shortHash(ev.Commit))

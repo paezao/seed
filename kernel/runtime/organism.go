@@ -52,6 +52,9 @@ type Organism struct {
 	Badge func() bool
 	// Observe sees every response's status (my doctor counts server errors).
 	Observe func(method, path string, status int)
+	// PreviewRoute serves a request from a candidate generation when this
+	// browser is previewing one (preview.go), reporting whether it did.
+	PreviewRoute func(w http.ResponseWriter, r *http.Request) bool
 
 	mu     sync.Mutex
 	sb     sandbox.Sandbox
@@ -246,6 +249,9 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Only my scheduler sends X-Seed-Job (see CallJob), never a visitor.
 	r.Header.Del("X-Seed-Job")
 	r.Header.Del("X-Seed-Routine")
+	if o.PreviewRoute != nil && o.PreviewRoute(w, r) {
+		return
+	}
 	state, msg := o.State()
 	o.mu.Lock()
 	sb, proxy := o.sb, o.proxy

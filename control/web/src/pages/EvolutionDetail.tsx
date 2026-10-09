@@ -5,6 +5,7 @@ import { ActivityTicker } from '../components/ActivityTicker';
 import { DiffView } from '../components/DiffView';
 import { EventList, isToolEvent, mergeEvents } from '../components/EventList';
 import { PhaseList } from '../components/PhaseList';
+import { PreviewPanel, awaitingPreview } from '../components/PreviewPanel';
 import { Clarifications, QuestionPrompt } from '../components/Questions';
 import { Roadmap, StageBadge } from '../components/Roadmap';
 import { Sprout } from '../components/Sprout';
@@ -84,6 +85,7 @@ export default function EvolutionDetail() {
       <div className="detail-grid">
         <div className="detail-main">
           {isWaitingOnOwner(evo) && <QuestionPrompt key={JSON.stringify(evo.questions)} evolution={evo} />}
+          {awaitingPreview(evo) && <PreviewPanel evolution={evo} />}
 
           <section className="panel">
             <h2>Intent</h2>

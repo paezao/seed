@@ -52,6 +52,21 @@ type Plan struct {
 	Stage  int     `json:"stage,omitempty"`
 }
 
+// Preview is how trying an evolution before it goes live is going.
+type Preview struct {
+	// Skip: this evolution goes live without waiting (e.g. a fix the Seed
+	// started on its own, or previews turned off).
+	Skip bool `json:"skip,omitempty"`
+	// State: starting, ready (waiting for the owner), failed (couldn't
+	// start: the owner can still apply or discard), or done.
+	State string `json:"state,omitempty"`
+	// Data: "copy" (a copy of the live data) or "fresh" (only migrations).
+	Data string `json:"data,omitempty"`
+	Note string `json:"note,omitempty"`
+	// Round counts changes the owner asked for after previewing.
+	Round int `json:"round,omitempty"`
+}
+
 // Stage is one step of a larger goal.
 type Stage struct {
 	Title   string `json:"title"`
@@ -120,9 +135,11 @@ type Evolution struct {
 	// Questions the evolution is waiting on (needs_input), if any.
 	Questions      []Question      `json:"questions,omitempty"`
 	Clarifications []Clarification `json:"clarifications,omitempty"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	CompletedAt    *time.Time      `json:"completed_at,omitempty"`
+	// Preview: trying the new generation before it goes live.
+	Preview     *Preview   `json:"preview,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 }
 
 type Usage struct {
@@ -235,14 +252,14 @@ func (s *Store) Messages(ctx context.Context, conv string, limit int) ([]Message
 
 const evoCols = `id, coalesce(conversation_id, ''), kind, intent, title, status, plan, base_generation, new_generation,
 	target_generation, base_commit, branch, worktree, commit, attempts, checks, reflection, summary, error, usage,
-	created_at, updated_at, completed_at, questions, clarifications`
+	created_at, updated_at, completed_at, questions, clarifications, preview`
 
 func scanEvolution(r pgx.Row) (*Evolution, error) {
 	var e Evolution
-	var plan, checks, refl, usage, questions, clar []byte
+	var plan, checks, refl, usage, questions, clar, preview []byte
 	err := r.Scan(&e.ID, &e.ConversationID, &e.Kind, &e.Intent, &e.Title, &e.Status, &plan, &e.BaseGeneration,
 		&e.NewGeneration, &e.TargetGeneration, &e.BaseCommit, &e.Branch, &e.Worktree, &e.Commit, &e.Attempts,
-		&checks, &refl, &e.Summary, &e.Error, &usage, &e.CreatedAt, &e.UpdatedAt, &e.CompletedAt, &questions, &clar)
+		&checks, &refl, &e.Summary, &e.Error, &usage, &e.CreatedAt, &e.UpdatedAt, &e.CompletedAt, &questions, &clar, &preview)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -266,6 +283,10 @@ func scanEvolution(r pgx.Row) (*Evolution, error) {
 		_ = json.Unmarshal(questions, &e.Questions)
 	}
 	_ = json.Unmarshal(clar, &e.Clarifications)
+	if len(preview) > 0 && string(preview) != "null" {
+		e.Preview = &Preview{}
+		_ = json.Unmarshal(preview, e.Preview)
+	}
 	return &e, nil
 }
 
@@ -301,11 +322,15 @@ func (s *Store) SaveEvolution(ctx context.Context, e *Evolution) error {
 		e.Clarifications = []Clarification{}
 	}
 	clar, _ := json.Marshal(e.Clarifications)
+	var preview []byte
+	if e.Preview != nil {
+		preview, _ = json.Marshal(e.Preview)
+	}
 	return s.Pool.QueryRow(ctx, `UPDATE evolutions SET title=$2, status=$3, plan=$4, base_generation=$5, new_generation=$6,
 		base_commit=$7, branch=$8, worktree=$9, commit=$10, attempts=$11, checks=$12, reflection=$13, summary=$14,
-		error=$15, usage=$16, completed_at=$17, questions=$18, clarifications=$19, updated_at=now() WHERE id=$1 RETURNING updated_at`,
+		error=$15, usage=$16, completed_at=$17, questions=$18, clarifications=$19, preview=$20, updated_at=now() WHERE id=$1 RETURNING updated_at`,
 		e.ID, e.Title, e.Status, plan, e.BaseGeneration, e.NewGeneration, e.BaseCommit, e.Branch, e.Worktree,
-		e.Commit, e.Attempts, checks, refl, e.Summary, e.Error, usage, e.CompletedAt, questions, clar).Scan(&e.UpdatedAt)
+		e.Commit, e.Attempts, checks, refl, e.Summary, e.Error, usage, e.CompletedAt, questions, clar, preview).Scan(&e.UpdatedAt)
 }
 
 func (s *Store) Evolution(ctx context.Context, id string) (*Evolution, error) {

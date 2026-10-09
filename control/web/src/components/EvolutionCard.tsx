@@ -6,6 +6,7 @@ import { stepProgress } from '../phases';
 import { ActivityTicker } from './ActivityTicker';
 import { EventList, isToolEvent, mergeEvents } from './EventList';
 import { PhaseBar, PhaseList } from './PhaseList';
+import { PreviewPanel, awaitingPreview } from './PreviewPanel';
 import { Clarifications, QuestionPrompt } from './Questions';
 import { Roadmap, StageBadge } from './Roadmap';
 import { Sprout } from './Sprout';
@@ -85,6 +86,7 @@ export function EvolutionCard({ id }: { id: string }) {
           <EvolutionBadge status={evo.status} />
         </div>
         {waiting && <QuestionPrompt key={JSON.stringify(evo.questions)} evolution={evo} />}
+        {awaitingPreview(evo) && <PreviewPanel evolution={evo} />}
         <PhaseBar evolution={evo} />
         {steps.length > 0 && evo.status !== 'complete' && (
           <div className="evo-plan-line small">
@@ -129,6 +131,7 @@ export function EvolutionCard({ id }: { id: string }) {
       {evo.plan?.summary && <p className="evo-summary">{evo.plan.summary}</p>}
 
       {waiting && <QuestionPrompt key={JSON.stringify(evo.questions)} evolution={evo} />}
+      {awaitingPreview(evo) && <PreviewPanel evolution={evo} />}
 
       <Roadmap plan={evo.plan} currentDone={evo.status === 'complete'} />
 

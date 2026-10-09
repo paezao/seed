@@ -179,6 +179,7 @@ export type Evolution = {
   /** Set while status is "needs_input" because the Seed asked its owner. */
   questions?: Question[];
   clarifications?: Clarification[];
+  preview?: { skip?: boolean; state?: 'starting' | 'ready' | 'failed' | 'done'; data?: 'copy' | 'fresh'; note?: string; round?: number };
   created_at: string;
   updated_at: string;
   completed_at?: string;
@@ -382,6 +383,10 @@ export const api = {
   modelOptions: (provider: string) => request<ModelOptions>('GET', `/model/options?provider=${enc(provider)}`),
   setModel: (body: SetModelBody) => request<ModelConfig>('POST', '/model', body),
   forgetKey: (provider: string) => request<ModelConfig>('POST', '/model/forget-key', { provider }),
+  decideEvolution: (id: string, action: 'apply' | 'changes' | 'discard', feedback?: string) =>
+    request<{ ok: boolean }>('POST', `/evolutions/${enc(id)}/decide`, { action, feedback }),
+  evolutionSettings: () => request<{ preview: boolean }>('GET', '/evolution-settings'),
+  setEvolutionSettings: (preview: boolean) => request<{ preview: boolean }>('POST', '/evolution-settings', { preview }),
   incidents: () => request<Incident[]>('GET', '/incidents'),
   fixIncident: (id: string) => request<Evolution>('POST', `/incidents/${enc(id)}/fix`),
   ignoreIncident: (id: string) => request<{ ok: boolean }>('POST', `/incidents/${enc(id)}/ignore`),

@@ -22,7 +22,7 @@ func TestTransitions(t *testing.T) {
 	}
 	illegal := [][2]Status{
 		{Requested, Mutating}, {Planning, Complete}, {Mutating, Complete}, {Reflecting, Applying},
-		{Complete, Planning}, {Failed, Mutating}, {Ready, Mutating}, {Testing, Reflecting},
+		{Complete, Planning}, {Failed, Mutating}, {Ready, Planning}, {Testing, Reflecting},
 	}
 	for _, p := range illegal {
 		if CanTransition(p[0], p[1]) {
@@ -36,6 +36,9 @@ func TestTransitions(t *testing.T) {
 	}
 	if !CanTransition(Mutating, NeedsInput) || !CanTransition(NeedsInput, Mutating) {
 		t.Error("needs_input round trip should be allowed")
+	}
+	if !CanTransition(Ready, Mutating) {
+		t.Error("ready -> mutating (the owner asked for changes after previewing) should be allowed")
 	}
 	if !CanTransition(Applying, RolledBack) || CanTransition(Mutating, RolledBack) {
 		t.Error("only applying may roll back")

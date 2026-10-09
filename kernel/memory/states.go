@@ -38,7 +38,7 @@ var transitions = map[Status][]Status{
 	Running:    {Observing, Mutating},
 	Observing:  {Reflecting, Mutating},
 	Reflecting: {Ready},
-	Ready:      {Applying},
+	Ready:      {Applying, Mutating}, // back to mutating: the owner asked for changes after previewing
 	Applying:   {Complete, RolledBack},
 }
 

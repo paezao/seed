@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api, evolutionTitle } from '../api';
+import { Toggle } from '../components/Toggle';
 import { Empty, ErrorNote, EvolutionBadge, Loading, PageHeader, Time, useLoad } from '../components/ui';
 import { useLive } from '../live';
 
@@ -24,6 +25,7 @@ export default function Evolutions() {
   return (
     <div className="page">
       <PageHeader title="Evolutions" sub="How I have changed myself." />
+      <PreviewSwitch />
       {load.error && <ErrorNote error={load.error} onRetry={load.reload} />}
       {!load.data && load.loading ? <Loading /> : list.length === 0 ? (
         <Empty title="No evolutions yet">Tell me what to become in Chat.</Empty>
@@ -58,5 +60,21 @@ export default function Evolutions() {
         </div>
       )}
     </div>
+  );
+}
+
+function PreviewSwitch() {
+  const load = useLoad(() => api.evolutionSettings(), []);
+  return (
+    <section className="panel preview-switch">
+      <Toggle
+        checked={load.data?.preview ?? true}
+        disabled={!load.data}
+        title="Let me try changes before they go live"
+        on="When I've built and checked a change, I wait for you to try it on a copy of your data, then apply it, ask me for changes, or discard it. Fixes I start on my own don't wait."
+        off="When I've built and checked a change, it goes live right away. You can always roll back."
+        onChange={async (next) => { const r = await api.setEvolutionSettings(next); load.setData(r); return r.preview; }}
+      />
+    </section>
   );
 }

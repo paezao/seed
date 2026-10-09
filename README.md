@@ -52,7 +52,8 @@ cd myapp && seed run -e OPENROUTER_API_KEY --open   # later: start it again
 ## What a Seed can do
 
 - **Grow by conversation.** Every change is planned, built in an isolated workspace, tested,
-  checked against the running app and committed as a new **generation**. You can roll back
+  checked against the running app and committed as a new **generation**. You try it on a copy of
+  your data before it goes live, then apply it or ask for changes. You can roll back
   to any of them. It asks before guessing, and it breaks big goals into stages.
 - **Answer about itself and its data.** Its chat can query the app's data (read-only) and call
   its API. Changing data waits for your approval.
