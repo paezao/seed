@@ -138,6 +138,11 @@ It creates a **new** generation whose tree equals the target's, so history is ne
 Code and knowledge roll back. **Database migrations do not**, which is why the
 `postgres-migration` skill requires additive, backwards-compatible migrations.
 
+Before any generation goes live (an evolution or a rollback), the kernel copies the live data
+([backups](backups.md)); without a copy, nothing goes live. A rollback can also bring back the data
+of then: **with its data** on the Generations page restores the last copy taken while the target
+generation was live (the data of now is copied first, so that can be undone too).
+
 ## Failure, interruption and recovery
 
 - A failed evolution leaves the live Seed untouched. Its worktree is kept under

@@ -1469,3 +1469,16 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 .chip-toggle-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
 .chip-toggle.is-on .chip-toggle-dot { background: var(--accent); border-color: var(--accent); }
 .chip-toggle .count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Backups */
+.backup-list { list-style: none; padding: 4px 18px; }
+.backup { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 12px 0; border-top: 1px solid var(--border); }
+.backup:first-child { border-top: 0; }
+.backup-main { min-width: 0; flex: 1; display: grid; gap: 4px; }
+.backup-title { display: flex; gap: 8px; align-items: center; min-width: 0; font-size: 13px; color: var(--fg); }
+.backup-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.backup-confirm { color: var(--fg-2); background: var(--warn-soft); border: 1px solid var(--warn); border-radius: var(--radius-sm); padding: 8px 10px; margin-top: 4px; }
+.backups-keep { margin: 12px 0 0 !important; }
+.rollback-data { display: inline-flex; align-items: center; gap: 5px; color: var(--fg-2); cursor: pointer; white-space: nowrap; }
+.rollback-data input { accent-color: var(--accent); margin: 0; }
+@media (max-width: 640px) { .backup { flex-direction: column; } }

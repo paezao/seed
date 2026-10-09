@@ -54,7 +54,9 @@ cd myapp && seed run -e OPENROUTER_API_KEY --open   # later: start it again
 - **Grow by conversation.** Every change is planned, built in an isolated workspace, tested,
   checked against the running app and committed as a new **generation**. You try it on a copy of
   your data before it goes live, then apply it or ask for changes. You can roll back
-  to any of them. It asks before guessing, and it breaks big goals into stages.
+  to any of them, with the data of then too: it copies the app's data before every change goes
+  live and once a day ([backups](docs/backups.md)). It asks before guessing, and it breaks big
+  goals into stages.
 - **Point at what to change.** On the app's own pages, hover the seed, pick **Change something
   here**, drag a box around part of the page and say what should change; it lands in chat with
   a picture of that area, for you to send.
@@ -110,6 +112,7 @@ seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # 
 - [Health](docs/health.md): noticing, diagnosing and fixing what goes wrong in the app
 - [Routines](docs/routines.md): what a Seed does on a schedule (agent routines and jobs)
 - [Spending](docs/spending.md): what its model calls cost, and a monthly budget
+- [Backups](docs/backups.md): copies of the app's data, restoring them, rolling back with data
 - [Security](docs/security.md): sandboxing, permissions, the kernel boundary
 - [Development](docs/development.md): running, testing, contributing
 - [Control plane API](docs/api.md)

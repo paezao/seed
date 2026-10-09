@@ -43,6 +43,11 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("POST "+api+"/messages", k.handlePostMessage)
 	mux.HandleFunc("GET "+api+"/images/{id}", k.handleImage)
 	mux.HandleFunc("GET "+api+"/spending", k.handleSpending)
+	mux.HandleFunc("GET "+api+"/backups", k.handleBackups)
+	mux.HandleFunc("POST "+api+"/backups", k.handleTakeBackup)
+	mux.HandleFunc("POST "+api+"/backups/settings", k.handleBackupSettings)
+	mux.HandleFunc("POST "+api+"/backups/{id}/restore", k.handleRestoreBackup)
+	mux.HandleFunc("GET "+api+"/backups/{id}/download", k.handleDownloadBackup)
 	mux.HandleFunc("POST "+api+"/spending/budget", k.handleSetBudget)
 	mux.HandleFunc("GET "+api+"/ask-drafts/{id}", k.handleAskDraftImage)
 	mux.HandleFunc("GET "+api+"/evolutions", k.handleEvolutions)
@@ -645,7 +650,27 @@ func (k *Kernel) handleRollback(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, err)
 		return
 	}
-	e, err := k.Orch.RequestRollback(r.Context(), memory.DefaultConversation, n)
+	var body struct {
+		// WithData also brings back the data of then: the last copy taken
+		// while generation n was live.
+		WithData bool `json:"with_data"`
+	}
+	if r.ContentLength > 0 {
+		if err := decodeBody(r, &body); err != nil {
+			writeErr(w, 400, err)
+			return
+		}
+	}
+	backup := ""
+	if body.WithData {
+		bk, err := k.Store.LastBackupOf(r.Context(), n)
+		if err != nil {
+			writeErr(w, 400, fmt.Errorf("I have no copy of the data from generation %d", n))
+			return
+		}
+		backup = bk.ID
+	}
+	e, err := k.Orch.RequestRollbackWithData(r.Context(), memory.DefaultConversation, n, backup)
 	if err != nil {
 		writeErr(w, 400, err)
 		return

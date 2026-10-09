@@ -610,3 +610,71 @@ func TestQuestionRoundAcceptsOneAnswer(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+type fakeData struct {
+	mu         sync.Mutex
+	before     int
+	restored   []string
+	failBefore bool
+}
+
+func (f *fakeData) BeforeLive(context.Context, *memory.Evolution) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failBefore {
+		return errors.New("disk full")
+	}
+	f.before++
+	return nil
+}
+
+func (f *fakeData) Restore(_ context.Context, id string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.restored = append(f.restored, id)
+	return "bak_safety", nil
+}
+
+// A copy of the live data is taken before every generation goes live, and a
+// rollback can bring back the data of then.
+func TestLiveDataIsCopiedAndCanComeBack(t *testing.T) {
+	h := newHarness(t, nil)
+	data := &fakeData{}
+	h.o.Data = data
+	steps := []step{planStep(), models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "v1"}), finishStep()}
+	e := h.run("become a thing tracker", append(steps, reflectSteps()...)...)
+	if e.Status != memory.Complete || data.before != 1 {
+		t.Fatalf("evolution: %s %q, copies %d", e.Status, e.Error, data.before)
+	}
+	ctx := context.Background()
+	rb, err := h.o.RequestRollbackWithData(ctx, memory.DefaultConversation, 1, "bak_gen1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.o.process(ctx, rb)
+	rb, _ = h.o.Store.Evolution(ctx, rb.ID)
+	if rb.Status != memory.Complete || len(data.restored) != 1 || data.restored[0] != "bak_gen1" || !strings.Contains(rb.Title, "with its data") {
+		t.Fatalf("rollback with data: %s %q, restored %v", rb.Status, rb.Error, data.restored)
+	}
+	if data.before != 1 {
+		t.Fatal("a restore keeps its own copy of the data of now; no second copy")
+	}
+	rb2, _ := h.o.RequestRollback(ctx, memory.DefaultConversation, 2)
+	h.o.process(ctx, rb2)
+	if data.before != 2 || len(data.restored) != 1 {
+		t.Fatalf("a code-only rollback copies the data first and restores nothing: %d %v", data.before, data.restored)
+	}
+}
+
+func TestNothingGoesLiveWithoutACopy(t *testing.T) {
+	h := newHarness(t, nil)
+	h.o.Data = &fakeData{failBefore: true}
+	steps := []step{planStep(), models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "v1"}), finishStep()}
+	e := h.run("become a thing tracker", append(steps, reflectSteps()...)...)
+	if e.Status == memory.Complete || !strings.Contains(e.Error, "copy of my live data") {
+		t.Fatalf("status %s, error %q", e.Status, e.Error)
+	}
+	if h.head() != h.base || h.live.deploys != 0 {
+		t.Fatal("nothing may go live without a copy of the data")
+	}
+}

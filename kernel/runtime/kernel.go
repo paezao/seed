@@ -77,6 +77,8 @@ type Kernel struct {
 	Updates *KernelUpdates
 	// Doctor keeps my live organism healthy.
 	Doctor *Doctor
+	// Backups keeps copies of my live data and brings them back.
+	Backups *Backups
 	// previews are browsers trying candidate generations.
 	previews previews
 	// asks are screenshots from the badge, waiting for my owner to send them.
@@ -277,9 +279,13 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		}()
 	}
 	k.Approvals = &evolution.Approvals{Store: k.Store, Bus: k.Bus}
+	k.Backups = &Backups{Dir: filepath.Join(stateDir, "backups"), Store: k.Store, Bus: k.Bus, Admin: k.Admin, Organism: k.Organism,
+		Grants: func(ctx context.Context) error {
+			return k.Admin.EnsureReader(ctx, readRole, readPass, cfg.DBName("app"), role)
+		}}
 	k.Orch = &evolution.Orchestrator{
 		Cfg: cfg, Store: k.Store, Bus: k.Bus, Repo: k.Repo, Model: k.Mind, Driver: k.Driver,
-		Admin: k.Admin, Policy: k.Policy, Approvals: k.Approvals, Live: k.Organism,
+		Admin: k.Admin, Policy: k.Policy, Approvals: k.Approvals, Live: k.Organism, Data: k.Backups,
 		DB:              evolution.DBCreds{Role: evoRole, Password: evoPass},
 		OnKernelChanged: k.requestRestart,
 		ExtraTools:      func() []*tools.Tool { return []*tools.Tool{k.Egress.RequestTool()} },
@@ -409,6 +415,7 @@ func (k *Kernel) Serve(ctx context.Context) error {
 	}
 	go k.Orch.Run(ctx)
 	go k.Routines.Start(ctx)
+	go k.Backups.Run(ctx)
 	go k.Updates.Start(ctx)
 	go k.Doctor.Run(ctx)
 	go func() {

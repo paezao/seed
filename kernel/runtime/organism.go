@@ -223,6 +223,20 @@ func (o *Organism) Stop(ctx context.Context) {
 	o.setState("stopped", "")
 }
 
+// StopForRestore stops my app's process while its data is replaced; it
+// stays down ("restoring") until the next deploy starts it.
+func (o *Organism) StopForRestore(ctx context.Context) {
+	o.deploy.Lock()
+	defer o.deploy.Unlock()
+	o.setState("restoring", "")
+	o.mu.Lock()
+	sb := o.sb
+	o.mu.Unlock()
+	if sb != nil {
+		_ = sb.Stop(ctx, liveProcess)
+	}
+}
+
 // Logs returns the live organism's recent output.
 func (o *Organism) Logs(ctx context.Context, tail int) string {
 	o.mu.Lock()
@@ -303,7 +317,7 @@ func (o *Organism) unavailable(w http.ResponseWriter, state, msg string) {
 	w.WriteHeader(http.StatusServiceUnavailable)
 	name := knowledge.Name(o.Cfg.Root)
 	refresh := ""
-	if state == "building" || state == "starting" {
+	if state == "building" || state == "starting" || state == "restoring" {
 		refresh = `<meta http-equiv="refresh" content="2">`
 	}
 	fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8">%s<title>%s</title>

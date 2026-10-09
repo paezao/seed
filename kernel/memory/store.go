@@ -140,10 +140,12 @@ type Evolution struct {
 	// Preview: trying the new generation before it goes live.
 	Preview *Preview `json:"preview,omitempty"`
 	// Images my owner attached to the request (see AddImage).
-	Images      []string   `json:"images,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Images []string `json:"images,omitempty"`
+	// RestoreBackup: a rollback that also brings back the data of then.
+	RestoreBackup string     `json:"restore_backup,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	CompletedAt   *time.Time `json:"completed_at,omitempty"`
 }
 
 type Usage struct {
@@ -292,14 +294,14 @@ func (s *Store) Messages(ctx context.Context, conv string, limit int) ([]Message
 
 const evoCols = `id, coalesce(conversation_id, ''), kind, intent, title, status, plan, base_generation, new_generation,
 	target_generation, base_commit, branch, worktree, commit, attempts, checks, reflection, summary, error, usage,
-	created_at, updated_at, completed_at, questions, clarifications, preview, images`
+	created_at, updated_at, completed_at, questions, clarifications, preview, images, restore_backup`
 
 func scanEvolution(r pgx.Row) (*Evolution, error) {
 	var e Evolution
 	var plan, checks, refl, usage, questions, clar, preview []byte
 	err := r.Scan(&e.ID, &e.ConversationID, &e.Kind, &e.Intent, &e.Title, &e.Status, &plan, &e.BaseGeneration,
 		&e.NewGeneration, &e.TargetGeneration, &e.BaseCommit, &e.Branch, &e.Worktree, &e.Commit, &e.Attempts,
-		&checks, &refl, &e.Summary, &e.Error, &usage, &e.CreatedAt, &e.UpdatedAt, &e.CompletedAt, &questions, &clar, &preview, &e.Images)
+		&checks, &refl, &e.Summary, &e.Error, &usage, &e.CreatedAt, &e.UpdatedAt, &e.CompletedAt, &questions, &clar, &preview, &e.Images, &e.RestoreBackup)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -350,9 +352,9 @@ func (s *Store) CreateEvolution(ctx context.Context, e *Evolution) error {
 	if images == nil {
 		images = []string{}
 	}
-	return s.Pool.QueryRow(ctx, `INSERT INTO evolutions (id, conversation_id, kind, intent, title, status, base_generation, target_generation, images)
-		VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, $9) RETURNING created_at, updated_at`,
-		e.ID, e.ConversationID, e.Kind, e.Intent, e.Title, e.Status, e.BaseGeneration, e.TargetGeneration, images).Scan(&e.CreatedAt, &e.UpdatedAt)
+	return s.Pool.QueryRow(ctx, `INSERT INTO evolutions (id, conversation_id, kind, intent, title, status, base_generation, target_generation, images, restore_backup)
+		VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, $9, $10) RETURNING created_at, updated_at`,
+		e.ID, e.ConversationID, e.Kind, e.Intent, e.Title, e.Status, e.BaseGeneration, e.TargetGeneration, images, e.RestoreBackup).Scan(&e.CreatedAt, &e.UpdatedAt)
 }
 
 // SaveEvolution persists all mutable fields.

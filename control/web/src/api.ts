@@ -106,6 +106,43 @@ export type Status = {
   ui_version?: string;
 };
 
+export type Backup = {
+  id: string;
+  kind: 'before_generation' | 'daily' | 'manual' | 'before_restore';
+  generation: number;
+  label?: string;
+  size: number;
+  created_at: string;
+};
+export type BackupsInfo = { backups: Backup[]; daily: boolean; unavailable: string; keep: Record<string, number> };
+
+/** Saves a backup's file (the kernel needs the token header, so it's fetched). */
+export async function downloadBackup(id: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/backups/${encodeURIComponent(id)}/download`, { headers: { 'X-Seed-Token': CONTROL_TOKEN } });
+  if (!res.ok) throw new Error(res.status === 404 ? 'That backup is gone.' : `HTTP ${res.status}`);
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || `${id}.dump`;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** The copy that holds the data of generation n (the last one taken while it was live). */
+export function backupOf(backups: Backup[], n: number): Backup | undefined {
+  return backups.find((b) => b.generation === n && b.kind !== 'before_restore');
+}
+
+export function bytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
 export type SpendTotal = { key: string; ref?: string; label?: string; cost_usd: number; calls: number };
 export type Spending = {
   month: {
@@ -298,10 +335,12 @@ export type LiveEventMap = {
   routine: { id?: string; run?: RoutineRun; deleted?: boolean; synced?: boolean };
   kernel: KernelStatus;
   incident: Incident;
+  backup: Backup;
+  restore: { id: string; state: 'restoring' | 'done' | 'failed' };
 };
 export type LiveEventName = keyof LiveEventMap;
 export type LiveEvent = { [K in LiveEventName]: { type: K; data: LiveEventMap[K] } }[LiveEventName];
-export const LIVE_EVENT_NAMES: LiveEventName[] = ['message', 'evolution', 'evolution_event', 'approval', 'status', 'chat', 'routine', 'kernel', 'incident'];
+export const LIVE_EVENT_NAMES: LiveEventName[] = ['message', 'evolution', 'evolution_event', 'approval', 'status', 'chat', 'routine', 'kernel', 'incident', 'backup', 'restore'];
 
 // ---- errors ----
 
@@ -409,7 +448,11 @@ export const api = {
   approvals: () => request<Approval[]>('GET', '/approvals'),
   decide: (id: string, approved: boolean) => request<Approval>('POST', `/approvals/${enc(id)}`, { approved }),
   generations: () => request<Generation[]>('GET', '/generations'),
-  rollback: (n: number) => request<Evolution>('POST', `/generations/${n}/rollback`),
+  rollback: (n: number, withData = false) => request<Evolution>('POST', `/generations/${n}/rollback`, withData ? { with_data: true } : undefined),
+  backups: () => request<BackupsInfo>('GET', '/backups'),
+  takeBackup: () => request<Backup>('POST', '/backups'),
+  restoreBackup: (id: string) => request<{ state: string }>('POST', `/backups/${enc(id)}/restore`),
+  setDailyBackups: (daily: boolean) => request<BackupsInfo>('POST', '/backups/settings', { daily }),
   skills: () => request<Skill[]>('GET', '/skills'),
   skill: (name: string) => request<Skill>('GET', `/skills/${enc(name)}`),
   knowledge: () => request<Knowledge>('GET', '/knowledge'),

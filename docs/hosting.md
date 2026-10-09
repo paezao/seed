@@ -26,7 +26,7 @@ Docker does it for an empty volume, and on Kubernetes use `fsGroup: 1000`.
 
 | variable | |
 |---|---|
-| `DATABASE_URL` | an external PostgreSQL (see below). Without it, the Seed runs its own PostgreSQL inside the volume. |
+| `DATABASE_URL` | an external PostgreSQL (see below). Without it, the Seed runs its own PostgreSQL inside the volume. Either way, [backups](backups.md) of the app's data are kept in the volume (`.seed/backups`). |
 | `OPENROUTER_API_KEY` | the Seed's mind |
 | `SEED_OWNER_PASSWORD`, `SEED_OWNER_USER` | owner sign-in (password at least 12 characters; user defaults to `owner`) |
 | `SEED_NAME` | the name of a newly planted Seed |

@@ -64,7 +64,10 @@ type Orchestrator struct {
 	Policy    *permissions.Policy
 	Approvals *Approvals
 	Live      Live
-	DB        DBCreds
+	// Data keeps copies of my live data (before each generation goes live)
+	// and restores them (a rollback with its data).
+	Data DataKeeper
+	DB   DBCreds
 	// OnKernelChanged is called after applying a generation that changed
 	// kernel files (the running kernel binary is now stale).
 	OnKernelChanged func()
@@ -128,7 +131,37 @@ func (o *Orchestrator) RequestWithImages(ctx context.Context, conv, intent strin
 }
 
 // RequestRollback records a rollback to generation n.
+// DataKeeper keeps copies of my live data and brings them back.
+type DataKeeper interface {
+	// BeforeLive copies the live data before another generation replaces
+	// the live one.
+	BeforeLive(ctx context.Context, e *memory.Evolution) error
+	// Restore replaces the live data with a backup, keeping a copy of the
+	// data of now first (whose id it returns). My app is left stopped; the
+	// next deploy starts it.
+	Restore(ctx context.Context, backup string) (string, error)
+}
+
+// saveLiveData copies the live data before a generation goes live; without
+// a copy, nothing goes live.
+func (o *Orchestrator) saveLiveData(ctx context.Context, e *memory.Evolution) error {
+	if o.Data == nil {
+		return nil
+	}
+	if err := o.Data.BeforeLive(ctx, e); err != nil {
+		return fmt.Errorf("I couldn't save a copy of my live data first, so nothing changed: %w", err)
+	}
+	o.event(ctx, e, "note", "Saved a copy of the live data", nil)
+	return nil
+}
+
 func (o *Orchestrator) RequestRollback(ctx context.Context, conv string, n int) (*memory.Evolution, error) {
+	return o.RequestRollbackWithData(ctx, conv, n, "")
+}
+
+// RequestRollbackWithData returns to generation n and, with a backup, to
+// the live data of then (what was saved while n was live).
+func (o *Orchestrator) RequestRollbackWithData(ctx context.Context, conv string, n int, backup string) (*memory.Evolution, error) {
 	o.init()
 	target, err := o.Store.Generation(ctx, n)
 	if err != nil {
@@ -142,7 +175,11 @@ func (o *Orchestrator) RequestRollback(ctx context.Context, conv string, n int) 
 		return nil, fmt.Errorf("generation %d is already current", n)
 	}
 	e := &memory.Evolution{ConversationID: conv, Kind: "rollback", BaseGeneration: cur.Number, TargetGeneration: &n,
-		Intent: fmt.Sprintf("Roll back to generation %d (%s)", n, target.Title), Title: fmt.Sprintf("Roll back to generation %d", n)}
+		Intent: fmt.Sprintf("Roll back to generation %d (%s)", n, target.Title), Title: fmt.Sprintf("Roll back to generation %d", n), RestoreBackup: backup}
+	if backup != "" {
+		e.Intent += ", with its data"
+		e.Title += ", with its data"
+	}
 	if err := o.Store.CreateEvolution(ctx, e); err != nil {
 		return nil, err
 	}
@@ -1142,6 +1179,9 @@ func (o *Orchestrator) apply(ctx context.Context, e *memory.Evolution) error {
 	if head != e.BaseCommit {
 		return fmt.Errorf("my live generation moved from %s to %s during this evolution; evolve again from the new state", short(e.BaseCommit), short(head))
 	}
+	if err := o.saveLiveData(ctx, e); err != nil {
+		return err
+	}
 	if err := o.Repo.MergeFastForward(ctx, e.Commit); err != nil {
 		return err
 	}
@@ -1247,20 +1287,49 @@ func (o *Orchestrator) rollback(ctx context.Context, e *memory.Evolution) error 
 	if status, _ := o.Repo.Status(ctx); status != "" {
 		return fmt.Errorf("my live working tree has uncommitted changes, refusing to roll back:\n%s", status)
 	}
+	if e.RestoreBackup == "" {
+		if err := o.saveLiveData(ctx, e); err != nil {
+			return err
+		}
+	} else if o.Data == nil {
+		return errors.New("I can't restore data here")
+	}
 	if err := o.Repo.RestoreTree(ctx, target.Commit); err != nil {
 		return err
 	}
 	o.Repo.AuthorName, o.Repo.AuthorEmail = knowledge.Name(o.Cfg.Root), o.Cfg.Name+"@seed.local"
-	msg := fmt.Sprintf("rollback: return to generation %d\n\n%s\n\nRestores the tree of generation %d (%s). Database migrations applied since then are kept.\n\nEvolution: %s\nGeneration: %d -> %d\n",
-		target.Number, target.Title, target.Number, short(target.Commit), e.ID, e.BaseGeneration, e.BaseGeneration+1)
+	dataNote := "Database migrations applied since then are kept."
+	if e.RestoreBackup != "" {
+		dataNote = "The live data is restored from backup " + e.RestoreBackup + ", saved while it was live."
+	}
+	msg := fmt.Sprintf("rollback: return to generation %d\n\n%s\n\nRestores the tree of generation %d (%s). %s\n\nEvolution: %s\nGeneration: %d -> %d\n",
+		target.Number, target.Title, target.Number, short(target.Commit), dataNote, e.ID, e.BaseGeneration, e.BaseGeneration+1)
 	commit, err := o.Repo.CommitAll(ctx, msg)
 	if err != nil {
 		_ = o.Repo.ResetHard(ctx, base)
 		return err
 	}
 	e.Commit = commit
+	// The data of then: my app is stopped, the data replaced (a copy of the
+	// data of now is kept first), and the deploy below starts it again.
+	safety := ""
+	if e.RestoreBackup != "" {
+		o.event(ctx, e, "note", "Bringing back the data of generation "+strconv.Itoa(target.Number), nil)
+		safety, err = o.Data.Restore(ctx, e.RestoreBackup)
+		if err != nil {
+			_ = o.Repo.ResetHard(ctx, base)
+			_ = o.Live.Deploy(ctx)
+			return fmt.Errorf("I couldn't bring back the data, so I changed nothing: %w", err)
+		}
+		o.event(ctx, e, "note", "Data restored; a copy of the data as it was is kept in Backups", map[string]string{"backup": safety})
+	}
 	if err := o.Live.Deploy(ctx); err != nil {
 		_ = o.Repo.ResetHard(ctx, base)
+		if safety != "" {
+			if _, rerr := o.Data.Restore(ctx, safety); rerr != nil {
+				slog.Error("putting the data back after a failed rollback", "backup", safety, "err", rerr)
+			}
+		}
 		_ = o.Live.Deploy(ctx)
 		e.Status = memory.RolledBack
 		return fmt.Errorf("generation %d did not come up healthy: %w", target.Number, err)
@@ -1274,7 +1343,11 @@ func (o *Orchestrator) rollback(ctx context.Context, e *memory.Evolution) error 
 	now := time.Now()
 	e.CompletedAt = &now
 	_ = o.save(ctx, e)
-	o.say(ctx, e, fmt.Sprintf("I rolled back to what I was in generation %d (%s). That is now **generation %d** (`%s`).", target.Number, target.Title, *e.NewGeneration, short(commit)))
+	withData := ""
+	if e.RestoreBackup != "" {
+		withData = " My data is back to how it was then too; the data as it was just before is kept in **Backups**."
+	}
+	o.say(ctx, e, fmt.Sprintf("I rolled back to what I was in generation %d (%s). That is now **generation %d** (`%s`).%s", target.Number, target.Title, *e.NewGeneration, short(commit), withData))
 	return nil
 }
 

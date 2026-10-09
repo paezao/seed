@@ -11,6 +11,7 @@ import Logs from './pages/Logs';
 import NotFound from './pages/NotFound';
 import Health from './pages/Health';
 import Spending from './pages/Spending';
+import Backups from './pages/Backups';
 import Routines from './pages/Routines';
 import Settings from './pages/Settings';
 import Skills from './pages/Skills';
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="evolutions" element={<Evolutions />} />
             <Route path="evolutions/:id" element={<EvolutionDetail />} />
             <Route path="generations" element={<Generations />} />
+            <Route path="backups" element={<Backups />} />
             <Route path="routines" element={<Routines />} />
             <Route path="health" element={<Health />} />
             <Route path="spending" element={<Spending />} />
