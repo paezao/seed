@@ -311,3 +311,25 @@ func TestNoFixWithoutAProposal(t *testing.T) {
 		t.Fatal("no evolution when my investigation found nothing to fix in my code")
 	}
 }
+
+// With spending paused, I don't investigate or fix on my own; my owner
+// still can ask me to.
+func TestDoctorWaitsWhenSpendingPaused(t *testing.T) {
+	d, _, intents := testDoctor(t)
+	ctx := context.Background()
+	_ = d.Store.SetSetting(ctx, settingAutoFix, "on")
+	d.Paused = func(context.Context) string { return "Paused: this month's budget is spent." }
+	d.record(ctx, observation{kind: "http", signature: "http GET /a 500", title: "GET /a → 500"}, "")
+	d.Follow(ctx)
+	inc := live(t, d, "http GET /a 500")
+	if inc.Status != "open" || !strings.Contains(inc.Note, "budget") {
+		t.Fatalf("paused: the incident waits, saying why: %+v", inc)
+	}
+	if err := d.Rediagnose(ctx, inc.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitStatus(t, d, inc.ID, "diagnosed")
+	if len(*intents) != 0 {
+		t.Fatal("no fix on my own while paused")
+	}
+}

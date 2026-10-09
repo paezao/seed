@@ -42,6 +42,8 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/messages", k.handleMessages)
 	mux.HandleFunc("POST "+api+"/messages", k.handlePostMessage)
 	mux.HandleFunc("GET "+api+"/images/{id}", k.handleImage)
+	mux.HandleFunc("GET "+api+"/spending", k.handleSpending)
+	mux.HandleFunc("POST "+api+"/spending/budget", k.handleSetBudget)
 	mux.HandleFunc("GET "+api+"/ask-drafts/{id}", k.handleAskDraftImage)
 	mux.HandleFunc("GET "+api+"/evolutions", k.handleEvolutions)
 	mux.HandleFunc("POST "+api+"/evolutions", k.handleCreateEvolution)
@@ -343,6 +345,7 @@ type status struct {
 	ActiveEvolution  *memory.Evolution  `json:"active_evolution"`
 	PendingApprovals int                `json:"pending_approvals"`
 	OpenIncidents    int                `json:"open_incidents"`
+	Spend            *spendStatus       `json:"spend,omitempty"`
 	// UIVersion identifies the control plane I serve; an open page with
 	// another one offers to reload.
 	UIVersion string `json:"ui_version,omitempty"`
@@ -380,6 +383,7 @@ func (k *Kernel) Status(ctx context.Context) status {
 	if live, err := k.Store.IncidentsWithStatus(ctx, "open", "diagnosing", "diagnosed", "fixing"); err == nil {
 		s.OpenIncidents = len(live)
 	}
+	s.Spend = k.spendStatus(ctx)
 	s.UIVersion = uiVersion()
 	return s
 }

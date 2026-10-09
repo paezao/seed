@@ -66,6 +66,10 @@ type Usage struct {
 	OutputTokens     int `json:"output_tokens"`
 	CacheReadTokens  int `json:"cache_read_tokens,omitempty"`
 	CacheWriteTokens int `json:"cache_write_tokens,omitempty"`
+	// CostUSD is what the provider charged for the call, when it says
+	// (Priced); otherwise it is 0 and unknown.
+	CostUSD float64 `json:"cost_usd,omitempty"`
+	Priced  bool    `json:"priced,omitempty"`
 }
 
 type Response struct {

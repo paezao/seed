@@ -10,6 +10,7 @@ import Knowledge from './pages/Knowledge';
 import Logs from './pages/Logs';
 import NotFound from './pages/NotFound';
 import Health from './pages/Health';
+import Spending from './pages/Spending';
 import Routines from './pages/Routines';
 import Settings from './pages/Settings';
 import Skills from './pages/Skills';
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="generations" element={<Generations />} />
             <Route path="routines" element={<Routines />} />
             <Route path="health" element={<Health />} />
+            <Route path="spending" element={<Spending />} />
             <Route path="skills" element={<Skills />} />
             <Route path="skills/:name" element={<Skills />} />
             <Route path="knowledge" element={<Knowledge />} />

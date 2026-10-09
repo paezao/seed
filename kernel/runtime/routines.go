@@ -14,6 +14,7 @@ import (
 	"seed/kernel/events"
 	"seed/kernel/knowledge"
 	"seed/kernel/memory"
+	"seed/kernel/models"
 	"seed/kernel/permissions"
 	"seed/kernel/routines"
 	"seed/kernel/skills"
@@ -36,6 +37,9 @@ type Scheduler struct {
 	}
 	// OnJob hears how each job run went (my doctor watches for failing jobs).
 	OnJob func(name string, ok bool, output string)
+	// Paused says why scheduled agent routines shouldn't spend right now
+	// (e.g. this month's budget is spent), or "".
+	Paused func(ctx context.Context) string
 
 	mu      sync.Mutex
 	running map[string]bool
@@ -154,8 +158,10 @@ func (s *Scheduler) done(id string) {
 
 func (s *Scheduler) run(ctx context.Context, r *memory.Routine, run *memory.RoutineRun) {
 	defer s.done(r.ID)
-	switch r.Kind {
-	case routines.KindAgent:
+	switch {
+	case r.Kind == routines.KindAgent && run.Trigger == "schedule" && s.Paused != nil && s.Paused(ctx) != "":
+		run.Status, run.Output = "skipped", s.Paused(ctx)
+	case r.Kind == routines.KindAgent:
 		s.agent <- struct{}{}
 		runCtx, cancel := context.WithTimeout(ctx, agentRunTimeout)
 		text, err := s.Agent.RunRoutine(runCtx, r)
@@ -174,7 +180,7 @@ func (s *Scheduler) run(ctx context.Context, r *memory.Routine, run *memory.Rout
 				s.Bus.Publish("message", m)
 			}
 		}
-	case routines.KindJob:
+	case r.Kind == routines.KindJob:
 		s.jobs <- struct{}{}
 		runCtx, cancel := context.WithTimeout(ctx, jobRunTimeout)
 		status, body, err := s.Jobs.CallJob(runCtx, r.Name, r.Method, r.Path)
@@ -348,7 +354,7 @@ func (c *Chat) RunRoutine(ctx context.Context, r *memory.Routine) (string, error
 		"I do the task with my tools, then write a short report for my owner (it is posted in our chat). " +
 		"If there is nothing worth telling them, I reply with exactly " + nothingToReport + ". " +
 		"I cannot evolve myself from a routine; if the task needs that, I say so in the report."
-	a := &agent.Agent{Model: c.Model, Tools: reg, MaxTurns: 15, MaxTokens: 4000, System: system}
+	a := &agent.Agent{Purpose: &models.Purpose{Kind: "routine", Ref: r.ID}, Model: c.Model, Tools: reg, MaxTurns: 15, MaxTokens: 4000, System: system}
 	out, err := a.Run(ctx, toModelMessages([]memory.Message{{Role: "user", Content: "Routine task:\n\n" + r.Prompt}}))
 	if err != nil {
 		return "", err

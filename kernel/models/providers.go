@@ -164,6 +164,14 @@ type Switchable struct {
 	mu    sync.RWMutex
 	model Model
 	info  Info
+	meter func(ctx context.Context, info Info, u Usage)
+}
+
+// Meter has every successful call reported (for keeping track of spending).
+func (s *Switchable) Meter(f func(ctx context.Context, info Info, u Usage)) {
+	s.mu.Lock()
+	s.meter = f
+	s.mu.Unlock()
 }
 
 func NewSwitchable() *Switchable {
@@ -190,7 +198,11 @@ func (s *Switchable) Name() string {
 
 func (s *Switchable) Generate(ctx context.Context, req Request) (*Response, error) {
 	s.mu.RLock()
-	m := s.model
+	m, info, meter := s.model, s.info, s.meter
 	s.mu.RUnlock()
-	return m.Generate(ctx, req)
+	resp, err := m.Generate(ctx, req)
+	if err == nil && meter != nil {
+		meter(ctx, info, resp.Usage)
+	}
+	return resp, err
 }

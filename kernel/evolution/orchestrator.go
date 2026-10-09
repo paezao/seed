@@ -1282,7 +1282,8 @@ func (o *Orchestrator) rollback(ctx context.Context, e *memory.Evolution) error 
 
 func (o *Orchestrator) newAgent(ctx context.Context, e *memory.Evolution, task string, reg *tools.Registry, maxTurns int) *agent.Agent {
 	a := &agent.Agent{
-		Model: o.Model, Tools: reg, System: agent.PromptFor(task, knowledge.Name(o.Cfg.Root)), MaxTurns: maxTurns,
+		Purpose: &models.Purpose{Kind: "evolution", Ref: e.ID},
+		Model:   o.Model, Tools: reg, System: agent.PromptFor(task, knowledge.Name(o.Cfg.Root)), MaxTurns: maxTurns,
 		MaxTokens: o.Cfg.Model.MaxTokens, RequireTerminal: true,
 	}
 	a.Hooks.OnToolResult = o.toolHook(ctx, e)
@@ -1293,6 +1294,7 @@ func (o *Orchestrator) newAgent(ctx context.Context, e *memory.Evolution, task s
 		e.Usage.InputTokens += u.InputTokens
 		e.Usage.OutputTokens += u.OutputTokens
 		e.Usage.CacheReadTokens += u.CacheReadTokens
+		e.Usage.CostUSD += u.CostUSD
 		e.Usage.ModelCalls++
 	}
 	return a

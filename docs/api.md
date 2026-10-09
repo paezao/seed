@@ -173,6 +173,8 @@ type Skill = { name: string; description: string; path: string; files: string[];
 | POST | `/incidents/:id/fix` | | `Evolution`: the fix evolution |
 | POST | `/incidents/:id/diagnose` | | `{ok}`: investigate again |
 | POST | `/incidents/:id/ignore` | | `{ok}` |
+| GET | `/spending` | | `{month, budget_usd, paused}`: this month's spending by kind, day and item (see [spending](spending.md)) |
+| POST | `/spending/budget` | `{budget_usd}` | same as `GET /spending`; `0` removes the budget |
 | GET/POST | `/health/settings` | `{auto_fix}` | `{auto_fix}`: whether the Seed fixes problems on its own |
 | GET | `/routines` | | `Routine[]` with `schedule_text` and `last_run` (see [routines](routines.md)) |
 | POST | `/routines` | `{name, kind: "agent"\|"job", schedule, timezone, prompt?, method?, path?}` | `Routine` |

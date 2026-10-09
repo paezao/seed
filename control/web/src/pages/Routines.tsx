@@ -20,7 +20,7 @@ const PRESETS: { label: string; schedule: string; agent: boolean }[] = [
 function RunStatus({ run }: { run: RoutineRun | null }) {
   if (!run) return <span className="muted small">never ran</span>;
   const tone = run.status === 'ok' ? 'ok' : run.status === 'failed' ? 'bad' : run.status === 'running' ? 'active' : 'neutral';
-  const label = { ok: 'ran', quiet: 'nothing to report', failed: 'failed', running: 'running' }[run.status];
+  const label = { ok: 'ran', quiet: 'nothing to report', failed: 'failed', running: 'running', skipped: 'paused (budget)' }[run.status];
   return (
     <span className="routine-run-status">
       <Badge tone={tone} pulse={run.status === 'running'}>{label}</Badge>

@@ -238,6 +238,7 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 
 	// Mind: the model this Seed thinks with, chosen by its owner.
 	k.Mind = models.NewSwitchable()
+	k.Mind.Meter(k.meter)
 	k.loadMind(ctx)
 	if info := k.Mind.Info(); info.Configured {
 		slog.Info("I can think", "provider", info.Provider, "model", info.Name)
@@ -288,7 +289,7 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 	}
 	k.Chat = &Chat{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Model: k.Mind, Orch: k.Orch, Repo: k.Repo, Policy: k.Policy,
 		Live: k.Organism, Approvals: k.Approvals, Egress: k.Egress}
-	k.Routines = &Scheduler{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Agent: k.Chat, Jobs: k.Organism}
+	k.Routines = &Scheduler{Root: cfg.Root, Store: k.Store, Bus: k.Bus, Agent: k.Chat, Jobs: k.Organism, Paused: k.spendPaused}
 	k.Chat.Routines = k.Routines
 	k.Organism.JobToken = randomHex(24)
 	if v, err := k.Store.Setting(ctx, settingBadge); err == nil && v == "off" {
@@ -304,7 +305,7 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		}
 		k.Updates.Client = &update.Client{Source: source, Keys: update.TrustedKeys}
 	}
-	k.Doctor = &Doctor{Store: k.Store, Bus: k.Bus, Body: k.Organism, Diagnose: k.Chat.DiagnoseIncident,
+	k.Doctor = &Doctor{Store: k.Store, Bus: k.Bus, Body: k.Organism, Diagnose: k.Chat.DiagnoseIncident, Paused: k.spendPaused,
 		Evolve: func(ctx context.Context, intent string, onMyOwn bool) (*memory.Evolution, error) {
 			if onMyOwn {
 				return k.Orch.RequestWithoutPreview(ctx, memory.DefaultConversation, intent)

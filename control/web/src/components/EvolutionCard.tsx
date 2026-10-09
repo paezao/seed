@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, evolutionTitle, errorMessage, isActive, isWaitingOnOwner, shortCommit, type EvolutionEvent } from '../api';
+import { api, evolutionTitle, errorMessage, isActive, isWaitingOnOwner, shortCommit, usd, type EvolutionEvent } from '../api';
 import { useEvolution, useLiveEvent } from '../live';
 import { stepProgress } from '../phases';
 import { ActivityTicker } from './ActivityTicker';
@@ -183,6 +183,7 @@ export function EvolutionCard({ id }: { id: string }) {
             <span><span className="muted">id</span> <code>{evo.id}</code></span>
             {evo.branch && <span><span className="muted">branch</span> <code>{evo.branch}</code></span>}
             <span><span className="muted">attempts</span> {evo.attempts}</span>
+            {evo.usage?.cost_usd ? <span><span className="muted">cost</span> {usd(evo.usage.cost_usd)}</span> : null}
             <span><span className="muted">gen</span> {evo.base_generation}{evo.new_generation != null ? ` → ${evo.new_generation}` : ''}</span>
           </div>
           {loadErr && <div className="error-text small">{loadErr}</div>}

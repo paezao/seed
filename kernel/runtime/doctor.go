@@ -39,6 +39,9 @@ type Doctor struct {
 	Evolve func(ctx context.Context, intent string, onMyOwn bool) (*memory.Evolution, error)
 	// Diagnose investigates an incident (read-only) and proposes a fix.
 	Diagnose func(ctx context.Context, inc *memory.Incident) (*Diagnosis, error)
+	// Paused says why I shouldn't spend on my own right now (e.g. this
+	// month's budget is spent), or "".
+	Paused func(ctx context.Context) string
 
 	mu         sync.Mutex
 	errs       map[string][]time.Time // signature → recent errors (not yet an incident)
@@ -335,16 +338,25 @@ func (d *Doctor) Follow(ctx context.Context) {
 	}
 	open, _ := d.Store.IncidentsWithStatus(ctx, "open")
 	for _, inc := range open {
-		if !d.startDiagnosis(ctx, inc) {
+		if !d.startDiagnosis(ctx, inc, false) {
 			break
 		}
 	}
 }
 
 // startDiagnosis investigates an incident in the background, within my
-// daily budget, one at a time. It reports whether it started.
-func (d *Doctor) startDiagnosis(ctx context.Context, inc *memory.Incident) bool {
+// daily budget, one at a time. It reports whether it started. On my own
+// (not asked by my owner), it waits while spending is paused.
+func (d *Doctor) startDiagnosis(ctx context.Context, inc *memory.Incident, byOwner bool) bool {
 	if d.Diagnose == nil {
+		return false
+	}
+	if why := d.paused(ctx); why != "" && !byOwner {
+		if inc.Note != why {
+			inc.Note = why
+			_ = d.Store.SaveIncident(ctx, inc)
+			d.Bus.Publish("incident", inc)
+		}
 		return false
 	}
 	d.mu.Lock()
@@ -390,7 +402,7 @@ func (d *Doctor) startDiagnosis(ctx context.Context, inc *memory.Incident) bool 
 		// Tell my owner first: "diagnosed" means the report is there.
 		d.report(dctx, cur)
 		_ = d.Store.SaveIncident(dctx, cur)
-		if dg.CanFix && d.autoFix(dctx) {
+		if dg.CanFix && d.autoFix(dctx) && d.paused(dctx) == "" {
 			if _, err := d.fix(dctx, cur.ID, true); err != nil {
 				slog.Warn("fixing on my own", "incident", cur.Title, "err", err)
 			}
@@ -398,6 +410,13 @@ func (d *Doctor) startDiagnosis(ctx context.Context, inc *memory.Incident) bool 
 		d.Bus.Publish("incident", cur)
 	}()
 	return true
+}
+
+func (d *Doctor) paused(ctx context.Context) string {
+	if d.Paused == nil {
+		return ""
+	}
+	return d.Paused(ctx)
 }
 
 func (d *Doctor) autoFix(ctx context.Context) bool {
@@ -569,7 +588,7 @@ func (d *Doctor) Rediagnose(ctx context.Context, id string) error {
 		return fmt.Errorf("this incident is %s", inc.Status)
 	}
 	inc.Status = "open"
-	if !d.startDiagnosis(ctx, inc) {
+	if !d.startDiagnosis(ctx, inc, true) {
 		return errors.New("I'm already investigating something, or I've reached today's limit of investigations")
 	}
 	return nil

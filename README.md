@@ -63,6 +63,8 @@ cd myapp && seed run -e OPENROUTER_API_KEY --open   # later: start it again
 - **Look after itself.** It notices errors, crashes and failing jobs in its app, restarts what
   crashed, investigates the cause and fixes it when you say so, with a test that proves it
   ([health](docs/health.md)).
+- **Keep track of what it costs.** Every model call is counted, by what it was for, with an
+  optional monthly budget that pauses what it does on its own ([spending](docs/spending.md)).
 - **Do things on a schedule.** [Routines](docs/routines.md) are tasks it runs on its own and
   reports on, and jobs its app runs on a schedule.
 - **Reach the outside world, when you allow it.** Its app has no network except HTTPS to hosts
@@ -107,6 +109,7 @@ seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # 
 - [Hosting](docs/hosting.md): deploying a Seed with a volume and an external PostgreSQL
 - [Health](docs/health.md): noticing, diagnosing and fixing what goes wrong in the app
 - [Routines](docs/routines.md): what a Seed does on a schedule (agent routines and jobs)
+- [Spending](docs/spending.md): what its model calls cost, and a monthly budget
 - [Security](docs/security.md): sandboxing, permissions, the kernel boundary
 - [Development](docs/development.md): running, testing, contributing
 - [Control plane API](docs/api.md)

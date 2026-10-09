@@ -195,3 +195,48 @@ func TestImagesTranslated(t *testing.T) {
 		t.Fatalf("openai image not translated: %v", parts)
 	}
 }
+
+type pricedModel struct{}
+
+func (pricedModel) Name() string { return "priced" }
+func (pricedModel) Generate(ctx context.Context, req Request) (*Response, error) {
+	return &Response{Text: "ok", Usage: Usage{InputTokens: 3, CostUSD: 0.01, Priced: true}}, nil
+}
+
+// Every call through my mind is reported with what it was for.
+func TestSwitchableMeters(t *testing.T) {
+	s := NewSwitchable()
+	s.Set(pricedModel{}, Info{Provider: "openrouter", Name: "m"})
+	var got []Purpose
+	var cost float64
+	s.Meter(func(ctx context.Context, info Info, u Usage) {
+		got = append(got, PurposeOf(ctx))
+		cost += u.CostUSD
+	})
+	_, _ = s.Generate(WithPurpose(context.Background(), Purpose{Kind: "routine", Ref: "r1"}), Request{})
+	_, _ = s.Generate(context.Background(), Request{})
+	if len(got) != 2 || got[0] != (Purpose{Kind: "routine", Ref: "r1"}) || got[1].Kind != "other" || cost != 0.02 {
+		t.Fatalf("metered: %+v %v", got, cost)
+	}
+}
+
+// OpenRouter is asked for, and says, what each call cost.
+func TestOpenRouterCost(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(b, &got)
+		io.WriteString(w, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"cost":0.0042}}`)
+	}))
+	defer srv.Close()
+	resp, err := (&OpenAI{APIKey: "k", Model: "m", BaseURL: srv.URL, Provider: "openrouter"}).Generate(context.Background(), Request{Messages: []Message{{Role: User, Content: "hi"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u, _ := got["usage"].(map[string]any); u["include"] != true {
+		t.Fatalf("usage accounting not requested: %v", got["usage"])
+	}
+	if !resp.Usage.Priced || resp.Usage.CostUSD != 0.0042 {
+		t.Fatalf("cost: %+v", resp.Usage)
+	}
+}

@@ -151,6 +151,8 @@ type Usage struct {
 	OutputTokens    int `json:"output_tokens"`
 	CacheReadTokens int `json:"cache_read_tokens"`
 	ModelCalls      int `json:"model_calls"`
+	// CostUSD is what the provider charged, as far as it said.
+	CostUSD float64 `json:"cost_usd,omitempty"`
 }
 
 type Event struct {
@@ -683,7 +685,7 @@ type RoutineRun struct {
 	ID         string     `json:"id"`
 	RoutineID  string     `json:"routine_id"`
 	Trigger    string     `json:"trigger"` // "schedule" or "manual"
-	Status     string     `json:"status"`  // running, ok, quiet, failed
+	Status     string     `json:"status"`  // running, ok, quiet, failed, skipped
 	Output     string     `json:"output"`
 	StartedAt  time.Time  `json:"started_at"`
 	FinishedAt *time.Time `json:"finished_at"`

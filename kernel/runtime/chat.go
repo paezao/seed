@@ -163,7 +163,8 @@ func (c *Chat) respond(ctx context.Context) {
 	}
 
 	a := &agent.Agent{
-		Model: c.Model, Tools: reg, MaxTurns: 15, MaxTokens: 4000,
+		Purpose: &models.Purpose{Kind: "chat"},
+		Model:   c.Model, Tools: reg, MaxTurns: 15, MaxTokens: 4000,
 		System: agent.PromptFor("chat", knowledge.Name(c.Root)) + "\n\n" + c.Orch.SelfContext(ctx, c.Root),
 	}
 	out, err := a.Run(ctx, toModelMessagesWith(history, c.loadImage(ctx)))

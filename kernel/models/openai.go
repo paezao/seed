@@ -69,6 +69,12 @@ type oaRequest struct {
 	Messages  []oaMessage `json:"messages"`
 	Tools     []oaTool    `json:"tools,omitempty"`
 	MaxTokens int         `json:"max_tokens,omitempty"`
+	// Usage asks OpenRouter to say what the call cost.
+	Usage *oaUsageRequest `json:"usage,omitempty"`
+}
+
+type oaUsageRequest struct {
+	Include bool `json:"include"`
 }
 
 type oaResponse struct {
@@ -80,8 +86,9 @@ type oaResponse struct {
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
-		PromptTokens        int `json:"prompt_tokens"`
-		CompletionTokens    int `json:"completion_tokens"`
+		PromptTokens        int      `json:"prompt_tokens"`
+		CompletionTokens    int      `json:"completion_tokens"`
+		Cost                *float64 `json:"cost"`
 		PromptTokensDetails struct {
 			CachedTokens int `json:"cached_tokens"`
 		} `json:"prompt_tokens_details"`
@@ -105,6 +112,9 @@ func (o *OpenAI) text(s string, cache bool) any {
 
 func (o *OpenAI) Generate(ctx context.Context, req Request) (*Response, error) {
 	body := oaRequest{Model: o.Model, MaxTokens: req.MaxTokens}
+	if o.Provider == "openrouter" {
+		body.Usage = &oaUsageRequest{Include: true}
+	}
 	if body.MaxTokens == 0 {
 		body.MaxTokens = o.MaxTokens
 	}
@@ -218,6 +228,9 @@ func (o *OpenAI) Generate(ctx context.Context, req Request) (*Response, error) {
 		InputTokens: or.Usage.PromptTokens, OutputTokens: or.Usage.CompletionTokens,
 		CacheReadTokens: or.Usage.PromptTokensDetails.CachedTokens,
 	}}
+	if or.Usage.Cost != nil {
+		out.Usage.CostUSD, out.Usage.Priced = *or.Usage.Cost, true
+	}
 	if ch.Message.Content != nil {
 		out.Text = *ch.Message.Content
 	}

@@ -26,7 +26,7 @@ export type RoutineRun = {
   id: string;
   routine_id: string;
   trigger: 'schedule' | 'manual';
-  status: 'running' | 'ok' | 'quiet' | 'failed';
+  status: 'running' | 'ok' | 'quiet' | 'failed' | 'skipped';
   output: string;
   started_at: string;
   finished_at: string | null;
@@ -101,8 +101,31 @@ export type Status = {
   active_evolution: Evolution | null;
   pending_approvals: number;
   open_incidents?: number;
+  /** This month's spending on models, and the budget (if any). */
+  spend?: { month_usd: number; budget_usd?: number; paused?: boolean };
   ui_version?: string;
 };
+
+export type SpendTotal = { key: string; ref?: string; label?: string; cost_usd: number; calls: number };
+export type Spending = {
+  month: {
+    from: string;
+    total_usd: number;
+    calls: number;
+    unpriced_calls: number;
+    by_kind: SpendTotal[];
+    by_day: SpendTotal[];
+    top: SpendTotal[];
+  };
+  budget_usd: number;
+  paused: boolean;
+};
+
+/** Dollars, with cents (or more precision for tiny amounts). */
+export function usd(v: number): string {
+  if (v > 0 && v < 0.01) return '<$0.01';
+  return '$' + v.toFixed(2);
+}
 
 export type Message = {
   id: string;
@@ -173,6 +196,7 @@ export type Evolution = {
   branch: string;
   commit?: string;
   attempts: number;
+  usage?: { input_tokens: number; output_tokens: number; model_calls: number; cost_usd?: number };
   checks: Check[];
   reflection: Reflection | null;
   summary?: string;
@@ -411,6 +435,8 @@ export const api = {
   checkKernel: () => request<KernelStatus>('POST', '/kernel/check'),
   updateKernel: (force = false) => request<{ to: string; generation: number }>('POST', '/kernel/update', { force }),
   routines: () => request<Routine[]>('GET', '/routines'),
+  spending: () => request<Spending>('GET', '/spending'),
+  setBudget: (budget_usd: number) => request<Spending>('POST', '/spending/budget', { budget_usd }),
   createRoutine: (body: NewRoutine) => request<Routine>('POST', '/routines', body),
   updateRoutine: (id: string, body: Partial<NewRoutine> & { enabled?: boolean }) => request<Routine>('POST', `/routines/${enc(id)}/update`, body),
   runRoutine: (id: string) => request<RoutineRun>('POST', `/routines/${enc(id)}/run`),

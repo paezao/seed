@@ -18,6 +18,7 @@ const ICONS: Record<string, string> = {
   logs: 'M3 4h10M3 7h10M3 10h7M3 13h5',
   routines: 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 1 0 0-11M8 5v3l2 1.5',
   health: 'M2 8.5h2.5l1.5-3 2.5 6 1.5-3H14',
+  spending: 'M8 2.5a5.5 5.5 0 1 0 0 11a5.5 5.5 0 1 0 0-11M9.8 6.2c-.3-.6-1-.9-1.8-.9-1 0-1.8.5-1.8 1.3 0 1.8 3.7.9 3.7 2.7 0 .8-.8 1.4-1.9 1.4-.9 0-1.6-.4-1.9-1M8 4.3v1M8 10.7v1',
   settings: 'M3 5h6M11 5h2M3 11h2M7 11h6M9 3.5v3M5 9.5v3',
   ext: 'M3 3h10v10H3zM3 6h10',
 };
@@ -36,6 +37,7 @@ const NAV = [
   { to: '/generations', label: 'Generations', icon: 'generations' },
   { to: '/routines', label: 'Routines', icon: 'routines' },
   { to: '/health', label: 'Health', icon: 'health' },
+  { to: '/spending', label: 'Spending', icon: 'spending' },
   { to: '/skills', label: 'Skills', icon: 'skills' },
   { to: '/knowledge', label: 'Knowledge', icon: 'knowledge' },
   { to: '/logs', label: 'Logs', icon: 'logs' },
@@ -92,6 +94,7 @@ export default function Layout() {
               <span>{n.label}</span>
               {n.to === '/' && approvals.length > 0 && <span className="nav-count">{approvals.length}</span>}
               {n.to === '/health' && (status?.open_incidents ?? 0) > 0 && <span className="nav-count">{status?.open_incidents}</span>}
+              {n.to === '/spending' && status?.spend?.paused && <span className="nav-dot" title="This month's budget is spent" />}
             </NavLink>
           ))}
           {extensions.length > 0 && <div className="nav-section">Admin</div>}

@@ -23,6 +23,8 @@ type Hooks struct {
 }
 
 type Agent struct {
+	// Purpose labels this agent's model calls (for keeping track of spending).
+	Purpose   *models.Purpose
 	Model     models.Model
 	Tools     *tools.Registry
 	System    string
@@ -51,6 +53,9 @@ var ErrMaxTurns = errors.New("agent reached its turn limit without finishing")
 
 // Run continues the conversation in msgs until done.
 func (a *Agent) Run(ctx context.Context, msgs []models.Message) (*Outcome, error) {
+	if a.Purpose != nil {
+		ctx = models.WithPurpose(ctx, *a.Purpose)
+	}
 	maxTurns := a.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = 50
@@ -150,6 +155,8 @@ func addUsage(total *models.Usage, u models.Usage) {
 	total.OutputTokens += u.OutputTokens
 	total.CacheReadTokens += u.CacheReadTokens
 	total.CacheWriteTokens += u.CacheWriteTokens
+	total.CostUSD += u.CostUSD
+	total.Priced = total.Priced || u.Priced
 }
 
 // Size estimates the size of a conversation in characters.
