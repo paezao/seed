@@ -25,6 +25,19 @@ func TestInjectedScriptsParse(t *testing.T) {
 	}
 }
 
+// Organism pages may not declare a charset, so my scripts are plain ASCII
+// (anything else is written as an escape).
+func TestInjectedScriptsAreASCII(t *testing.T) {
+	for name, src := range map[string]string{"badge.js": badgeJS, "preview.js": previewJS} {
+		for i, r := range src {
+			if r > 0x7f {
+				t.Errorf("%s: %q at byte %d; write it as an escape", name, r, i)
+				break
+			}
+		}
+	}
+}
+
 // The badge never sends a message itself: it asks whether to show itself,
 // leaves screenshots as drafts, and opens my control plane.
 func TestBadgeOnlyNavigates(t *testing.T) {

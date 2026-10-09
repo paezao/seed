@@ -173,27 +173,37 @@
     const option = (name, paths, angle, onPick) => {
       const a = (angle * Math.PI) / 180, R = 62;
       const x = Math.round(Math.cos(a) * R), y = Math.round(-Math.sin(a) * R);
+      // The whole option is one button: its name and its icon, with some
+      // room around them, so it doesn't take aim to hit. Its right edge
+      // sits so the icon's centre is on the wheel.
+      const PAD = 6;
       const b = el('button', {
-        position: 'absolute', left: (x - 2) + 'px', top: (y - 2) + 'px', width: '38px', height: '38px', padding: '0',
-        display: 'grid', placeItems: 'center', borderRadius: '50%', cursor: 'pointer', color: GREEN, background: PANEL,
-        border: '1px solid ' + LINE, boxShadow: '0 6px 18px ' + SHADOW, outlineOffset: '3px',
-        opacity: '0', transform: 'translate(' + (-x) + 'px,' + (-y) + 'px) scale(.4)', pointerEvents: 'none',
-        transition: 'transform .22s cubic-bezier(.2,.9,.3,1.3), opacity .15s, background .15s',
+        position: 'absolute', right: (-2 - x - PAD) + 'px', top: (y - 2 - PAD) + 'px', padding: PAD + 'px',
+        display: 'flex', alignItems: 'center', gap: '8px', border: '0', borderRadius: '999px', background: 'none',
+        cursor: 'pointer', outlineOffset: '-2px', whiteSpace: 'nowrap',
+        opacity: '0', transform: 'translate(' + (-x) + 'px,' + (-y) + 'px) scale(.4)', transformOrigin: 'right center', pointerEvents: 'none',
+        transition: 'transform .22s cubic-bezier(.2,.9,.3,1.3), opacity .15s',
       });
       b.type = 'button';
       b.tabIndex = -1;
       b.setAttribute('aria-label', name);
-      b.appendChild(icon(paths));
-      // Its name, to its left.
       const tip = el('span', {
-        position: 'absolute', right: '46px', top: '50%', transform: 'translateY(-50%)', whiteSpace: 'nowrap',
-        padding: '4px 9px', borderRadius: '8px', background: PANEL, color: INK, border: '1px solid ' + LINE,
-        font: '12px/1.3 var(--sb-font)', fontWeight: '600', pointerEvents: 'none',
-        boxShadow: '0 4px 14px ' + SHADOW, opacity: '.85', transition: 'opacity .15s',
+        padding: '5px 10px', borderRadius: '8px', background: PANEL, color: INK, border: '1px solid ' + LINE,
+        font: '12px/1.3 var(--sb-font)', fontWeight: '600', boxShadow: '0 4px 14px ' + SHADOW, opacity: '.9',
+        transition: 'opacity .15s, background .15s',
       }, name);
       tip.setAttribute('aria-hidden', 'true');
-      b.appendChild(tip);
-      const lit = (on) => { b.style.background = on ? HOVER : PANEL; tip.style.opacity = on ? '1' : '.85'; };
+      const disc = el('span', {
+        display: 'grid', placeItems: 'center', width: '38px', height: '38px', boxSizing: 'border-box', borderRadius: '50%',
+        color: GREEN, background: PANEL, border: '1px solid ' + LINE, boxShadow: '0 6px 18px ' + SHADOW, transition: 'background .15s',
+      });
+      disc.appendChild(icon(paths));
+      b.append(tip, disc);
+      const lit = (on) => {
+        disc.style.background = on ? HOVER : PANEL;
+        tip.style.background = on ? HOVER : PANEL;
+        tip.style.opacity = on ? '1' : '.9';
+      };
       b.addEventListener('mouseenter', () => lit(true));
       b.addEventListener('mouseleave', () => lit(false));
       b.addEventListener('focus', () => lit(true));
@@ -253,7 +263,7 @@
     // so it shows on any background.
     const box = el('div', { position: 'fixed', pointerEvents: 'none', border: '2px solid ' + GREEN, borderRadius: '4px', display: 'none', boxSizing: 'border-box',
       boxShadow: '0 0 0 2px ' + PANEL + ', 0 0 0 9999px rgba(0,0,0,.28)' });
-    const hint = el('div', Object.assign({ position: 'fixed', top: '14px', left: '50%', transform: 'translateX(-50%)', padding: '8px 14px', display: 'none', pointerEvents: 'none', whiteSpace: 'nowrap' }, panelStyle), 'Drag a box around what you want to change · Esc to cancel');
+    const hint = el('div', Object.assign({ position: 'fixed', top: '14px', left: '50%', transform: 'translateX(-50%)', padding: '8px 14px', display: 'none', pointerEvents: 'none', whiteSpace: 'nowrap' }, panelStyle), 'Drag a box around what you want to change \u00b7 Esc to cancel');
     const ask = el('form', Object.assign({ position: 'fixed', width: '320px', maxWidth: 'calc(100vw - 24px)', padding: '12px', display: 'none', boxSizing: 'border-box' }, panelStyle));
     const askTitle = el('div', { fontWeight: '600', marginBottom: '8px' }, 'What should change here?');
     const words = el('textarea', { width: '100%', boxSizing: 'border-box', minHeight: '72px', resize: 'vertical', padding: '8px', borderRadius: '8px', border: '1px solid ' + LINE, background: FIELD, color: INK, font: FONT });
@@ -342,7 +352,7 @@
       if (!area || !words.value.trim()) { words.focus(); return; }
       sending = true;
       send.disabled = true;
-      send.textContent = 'Taking a picture…';
+      send.textContent = 'Taking a picture\u2026';
       const payload = { v: 2, words: words.value.trim().slice(0, 2000), page: { path: location.pathname } };
       // The picture is left as a draft that does nothing until my owner sends it.
       const r = area;
