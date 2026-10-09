@@ -2,6 +2,8 @@ package evolution
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"seed/kernel/ids"
 	"seed/kernel/memory"
 	"seed/kernel/migrate"
 	"seed/kernel/sandbox"
@@ -98,16 +101,22 @@ func (o *Orchestrator) previewAndWait(ctx context.Context, e *memory.Evolution, 
 	}
 }
 
-// startPreview runs the candidate on a copy of the live data. It returns
-// what data the preview has ("copy" or "fresh").
+// startPreview runs the candidate on a copy of the live data, under the
+// same rules as my live organism: its own database role (a fresh password,
+// given only to the preview process, so no evolution sandbox can reach the
+// copy), a private network whose only way out is the egress proxy, and no
+// secrets. It returns what data the preview has ("copy" or "fresh").
 func (o *Orchestrator) startPreview(ctx context.Context, e *memory.Evolution, ws *workspace, run *previewRun) (string, error) {
-	run.sb = ws.sb
-	run.db = ws.dbName + "_pv"
-	_ = o.Admin.DropDatabase(ctx, run.db)
-	if err := o.Admin.EnsureDatabase(ctx, run.db, o.DB.Role); err != nil {
+	role, pass := o.Cfg.DBName("preview"), randomPassword()
+	if err := o.Admin.EnsureRole(ctx, role, pass); err != nil {
 		return "", err
 	}
-	hostURL := o.Admin.DatabaseURL(run.db, o.DB.Role, o.DB.Password, "")
+	run.db = ws.dbName + "_pv"
+	_ = o.Admin.DropDatabase(ctx, run.db)
+	if err := o.Admin.EnsureDatabase(ctx, run.db, role); err != nil {
+		return "", err
+	}
+	hostURL := o.Admin.DatabaseURL(run.db, role, pass, "")
 	data := "fresh"
 	if o.Live != nil {
 		if err := copyDatabase(ctx, o.Live.DatabaseURL(), hostURL); err == nil {
@@ -116,7 +125,7 @@ func (o *Orchestrator) startPreview(ctx context.Context, e *memory.Evolution, ws
 			slog.Info("previewing with fresh data", "evolution", e.ID, "why", err)
 			// Start over clean: a partial copy is worse than none.
 			_ = o.Admin.DropDatabase(ctx, run.db)
-			if err := o.Admin.EnsureDatabase(ctx, run.db, o.DB.Role); err != nil {
+			if err := o.Admin.EnsureDatabase(ctx, run.db, role); err != nil {
 				return "", err
 			}
 		}
@@ -124,21 +133,44 @@ func (o *Orchestrator) startPreview(ctx context.Context, e *memory.Evolution, ws
 	if _, err := migrate.ApplyRepo(ctx, hostURL, tools.OrganismMigrationsTable, ws.dir, o.Cfg.Organism.Migrations); err != nil {
 		return data, fmt.Errorf("migrating the preview's data: %w", err)
 	}
+	bwrap := o.Cfg.Sandbox.Driver == "bwrap"
 	dbHost := ""
 	if o.Cfg.Sandbox.Driver != "local" {
 		dbHost = o.Cfg.Sandbox.DBHost
 	}
-	env := *ws.env
-	env.SandboxEnv = map[string]string{}
-	for k, v := range ws.env.SandboxEnv {
-		env.SandboxEnv[k] = v
+	spec := sandbox.Spec{
+		Name: o.Cfg.ContainerName("preview-" + strings.ToLower(ids.Short(e.ID, 8))), Root: ws.dir,
+		Writable: []string{"organism"}, Hidden: []string{".seed"}, Port: o.Cfg.Organism.Port,
+		PrivateNetwork: bwrap,
+		Env:            map[string]string{"SEED_ENV": "preview"},
+		Labels:         map[string]string{"seed.name": o.Cfg.Name, "seed.role": "preview"},
 	}
-	env.SandboxEnv["DATABASE_URL"] = o.Admin.DatabaseURL(run.db, o.DB.Role, o.DB.Password, dbHost)
-	env.SandboxEnv["SEED_ENV"] = "preview"
-	if _, err := tools.StartApp(ctx, &env, 90*time.Second); err != nil {
+	if bwrap {
+		spec.Egress = o.EgressSocket
+	}
+	sb, err := o.Driver.Create(ctx, spec)
+	if err != nil {
+		return data, err
+	}
+	run.sb = sb
+	// The preview's database password and way out go to its process only.
+	procEnv := map[string]string{"DATABASE_URL": o.Admin.DatabaseURL(run.db, role, pass, dbHost)}
+	if bwrap && o.EgressSocket != "" && o.PreviewEnv != nil {
+		for k, v := range o.PreviewEnv() {
+			procEnv[k] = v
+		}
+	}
+	env := &tools.Env{Sandbox: sb, Root: ws.dir, RunCommand: o.Cfg.Organism.Run, HealthPath: o.Cfg.Organism.Health, SandboxEnv: procEnv}
+	if _, err := tools.StartApp(ctx, env, 90*time.Second); err != nil {
 		return data, err
 	}
 	return data, nil
+}
+
+func randomPassword() string {
+	b := make([]byte, 24)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 // copyDatabase copies the live database into the preview one (pg_dump into
@@ -190,7 +222,7 @@ func (o *Orchestrator) stopPreview(ctx context.Context, id string) {
 		return
 	}
 	if run.sb != nil {
-		_ = run.sb.Stop(ctx, "organism")
+		_ = run.sb.Close(ctx)
 	}
 	if run.db != "" {
 		_ = o.Admin.DropDatabase(ctx, run.db)

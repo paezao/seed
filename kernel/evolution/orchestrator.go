@@ -73,8 +73,12 @@ type Orchestrator struct {
 	ExtraTools   func() []*tools.Tool
 	ExtraContext func(ctx context.Context) string
 	// PreviewOn reports whether evolutions wait for their owner to try them
-	// before going live (preview.go).
-	PreviewOn func(ctx context.Context) bool
+	// before going live (preview.go). A preview runs like my live organism:
+	// in a private network whose way out is EgressSocket (with PreviewEnv's
+	// proxy settings; never secrets).
+	PreviewOn    func(ctx context.Context) bool
+	EgressSocket string
+	PreviewEnv   func() map[string]string
 
 	mu      sync.Mutex
 	wake    chan struct{}
@@ -430,9 +434,12 @@ func (o *Orchestrator) evolve(ctx context.Context, e *memory.Evolution) error {
 	maxAttempts := max(1, o.Cfg.Evolution.MaxRepairAttempts)
 	// Rounds: an owner who previews the result may ask for changes, which
 	// sends me back to mutating with their words.
-	previewed := false
+	// approved: my owner chose Apply after trying *this* version (asking
+	// for changes means the next version must be tried, or approved, again).
+	approved := false
 	var kernelChanged bool
 	for round := 0; ; round++ {
+		approved = false
 		var finish *finishInput
 		for attempt := 1; ; attempt++ {
 			e.Attempts = attempt
@@ -494,11 +501,11 @@ func (o *Orchestrator) evolve(ctx context.Context, e *memory.Evolution) error {
 		if err != nil {
 			return err
 		}
-		previewed = true
 		if d.Action == "discard" {
 			return errDiscarded
 		}
 		if d.Action == "apply" {
+			approved = true
 			break
 		}
 		// Changes: undo the commit (keeping the work), and carry on with
@@ -513,7 +520,7 @@ func (o *Orchestrator) evolve(ctx context.Context, e *memory.Evolution) error {
 		transcript = append(transcript, models.Message{Role: models.User, Content: "My owner tried this generation before it went live and asks for changes:\n\n> " +
 			strings.ReplaceAll(d.Feedback, "\n", "\n> ") + "\n\nMake these changes (keeping what already works), verify with your tools, and call finish again."})
 	}
-	if o.Cfg.Permissions.RequireApplyApproval && !previewed {
+	if o.Cfg.Permissions.RequireApplyApproval && !approved {
 		if err := o.ask(ctx, e, "apply generation: "+e.Title, permissions.Review, "commit "+short(e.Commit)); err != nil {
 			return err
 		}

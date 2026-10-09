@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 
 	"seed/kernel/config"
 	"seed/kernel/memory"
@@ -153,5 +156,83 @@ func TestDecideValidates(t *testing.T) {
 	}
 	if err := h.o.Decide("evo_x", Decision{Action: "discard"}); err == nil {
 		t.Fatal("one decision per preview")
+	}
+}
+
+func TestPreviewDataIsOutOfEvolutionsReach(t *testing.T) {
+	h := previewHarness(t)
+	checked := make(chan string, 1)
+	go func() {
+		for i := 0; i < 800; i++ {
+			h.o.mu.Lock()
+			var run *previewRun
+			var id string
+			for k, r := range h.o.previews {
+				id, run = k, r
+			}
+			h.o.mu.Unlock()
+			if run != nil && run.sb != nil {
+				// The evolution role (every evolution sandbox's) can't open the copy.
+				evo := h.o.Admin.DatabaseURL(run.db, h.o.DB.Role, h.o.DB.Password, "")
+				c, err := pgx.Connect(context.Background(), evo)
+				if err == nil {
+					c.Close(context.Background())
+					checked <- "an evolution sandbox's role could open the live data's copy"
+				} else {
+					checked <- ""
+				}
+				_ = h.o.Decide(id, Decision{Action: "discard"})
+				return
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		checked <- "never previewed"
+	}()
+	steps := []step{planStep(), models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "v1"}), finishStep()}
+	h.run("become a thing tracker", append(steps, reflectSteps()...)...)
+	if msg := <-checked; msg != "" {
+		t.Fatal(msg)
+	}
+}
+
+func TestChangesNeedApprovalAgainWhenPreviewsAreTurnedOff(t *testing.T) {
+	h := previewHarness(t)
+	h.o.Cfg.Permissions.RequireApplyApproval = true
+	var previewOff atomic.Bool
+	h.o.PreviewOn = func(context.Context) bool { return !previewOff.Load() }
+	asked := make(chan bool, 1)
+	go func() {
+		ctx := context.Background()
+		// Round 1: try it, ask for changes, then turn previews off.
+		for i := 0; i < 800; i++ {
+			evs, _ := h.o.Store.EvolutionsByStatus(ctx, memory.Ready)
+			if len(evs) == 1 {
+				if _, ok := h.o.PreviewSandbox(evs[0].ID); ok {
+					previewOff.Store(true)
+					_ = h.o.Decide(evs[0].ID, Decision{Action: "changes", Feedback: "Make it blue."})
+					break
+				}
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		// Round 2 wasn't tried: it must ask for the apply approval.
+		for i := 0; i < 800; i++ {
+			aps, _ := h.o.Store.PendingApprovals(ctx)
+			if len(aps) == 1 {
+				asked <- true
+				_, _ = h.o.Approvals.Decide(ctx, aps[0].ID, true)
+				return
+			}
+			time.Sleep(25 * time.Millisecond)
+		}
+		asked <- false
+	}()
+	steps := []step{planStep(), models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "v1"}), finishStep()}
+	steps = append(steps, reflectSteps()...)
+	steps = append(steps, models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "v2 blue"}), finishStep())
+	steps = append(steps, reflectSteps()...)
+	h.run("become a thing tracker", steps...)
+	if !<-asked {
+		t.Fatal("a version my owner didn't try must still get the apply approval they require")
 	}
 }

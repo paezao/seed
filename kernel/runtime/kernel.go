@@ -319,6 +319,7 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		k.servePreview(w, r, sb)
 		return true
 	}
+	k.Orch.EgressSocket, k.Orch.PreviewEnv = k.Organism.EgressSocket, ProxyEnv
 	k.Orch.PreviewOn = func(ctx context.Context) bool {
 		v, err := k.Store.Setting(ctx, settingPreview)
 		return err != nil || v != "off"

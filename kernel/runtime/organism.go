@@ -364,12 +364,9 @@ func (o *Organism) processEnv() map[string]string {
 	if o.egressSocket() == "" {
 		return env
 	}
-	proxy := "http://127.0.0.1:" + strconv.Itoa(sandbox.EgressPort)
-	for _, k := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
-		env[k] = proxy
+	for k, v := range ProxyEnv() {
+		env[k] = v
 	}
-	env["NO_PROXY"], env["no_proxy"] = "localhost,127.0.0.1", "localhost,127.0.0.1"
-	env["NODE_USE_ENV_PROXY"] = "1" // Node's fetch ignores HTTPS_PROXY without it
 	for _, name := range o.Egress.SecretNames() {
 		if v := o.Secrets.Get(name); v != "" {
 			env[name] = v
@@ -406,4 +403,17 @@ func (o *Organism) RestartProcess(ctx context.Context) error {
 	}
 	defer o.deploy.Unlock()
 	return o.restart(ctx)
+}
+
+// ProxyEnv points a process in a private network at its way out (the egress
+// proxy, as a local port). Go and Node honor it.
+func ProxyEnv() map[string]string {
+	proxy := "http://127.0.0.1:" + strconv.Itoa(sandbox.EgressPort)
+	env := map[string]string{}
+	for _, k := range []string{"HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy"} {
+		env[k] = proxy
+	}
+	env["NO_PROXY"], env["no_proxy"] = "localhost,127.0.0.1", "localhost,127.0.0.1"
+	env["NODE_USE_ENV_PROXY"] = "1" // Node's fetch ignores HTTPS_PROXY without it
+	return env
 }

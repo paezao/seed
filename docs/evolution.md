@@ -103,14 +103,18 @@ Planning is where the owner and the Seed agree on what to build.
 With **Let me try changes before they go live** on (the default, on the Evolutions page), an
 evolution that passed its checks stops at **ready** and waits for its owner:
 
-- **Try it.** The new generation runs in its evolution's sandbox against a **copy of the live
-  data**: dumped and restored into a preview database, with the generation's migrations
+- **Try it.** The new generation runs under the same rules as the live app: in a private network
+  whose only way out is the egress proxy (your allowlist), without secrets (so trying it can't
+  send real email or charge cards), against a **copy of the live data**. The copy belongs to a
+  preview role whose fresh password only the preview process gets, so evolution sandboxes can't
+  reach it. The copy is: dumped and restored into a preview database, with the generation's migrations
   applied. A live database over 512 MB, or one that can't be copied, is previewed with fresh
   data instead. **Try it** gives only the owner's browser a preview ticket, bound to their session:
   in that browser the app's pages are the new generation, with a bar saying so ("Previewing: …",
   **Decide**, **Exit preview**). Everyone else keeps seeing the live app, and the preview cookie never
   reaches the app.
-- **Apply.** It goes live as usual.
+- **Apply.** It goes live as usual. (If you also require an apply approval, choosing Apply after
+  trying a version is that approval; a version you didn't try still asks for it.)
 - **Ask for changes.** The owner's words go back to the agent. It changes the work (the commit is
   reopened, so the result is still one generation), verifies it again, and previews it again.
 - **Discard.** Nothing goes live; the evolution ends as cancelled.
