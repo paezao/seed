@@ -79,6 +79,9 @@ export type Incident = {
   resolved_at: string | null;
 };
 
+/** The control plane version this page was loaded with (stamped by the kernel). */
+export const UI_VERSION = document.querySelector<HTMLMetaElement>('meta[name="seed-ui"]')?.content ?? '';
+
 export type OrganismState = 'stopped' | 'building' | 'starting' | 'running' | 'failed';
 
 export type Identity = {
@@ -98,6 +101,7 @@ export type Status = {
   active_evolution: Evolution | null;
   pending_approvals: number;
   open_incidents?: number;
+  ui_version?: string;
 };
 
 export type Message = {

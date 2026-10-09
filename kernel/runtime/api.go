@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"seed/control"
@@ -289,7 +290,7 @@ func (k *Kernel) controlUI() http.Handler {
 			http.Error(w, "control plane not built (run make control)", http.StatusInternalServerError)
 			return
 		}
-		meta := `<meta name="seed-token" content="` + token + `">`
+		meta := `<meta name="seed-token" content="` + token + `"><meta name="seed-ui" content="` + uiVersion() + `">`
 		page := strings.Replace(string(index), "<head>", "<head>"+meta, 1)
 		w.Header().Set("content-type", "text/html; charset=utf-8")
 		w.Header().Set("cache-control", "no-store")
@@ -331,6 +332,9 @@ type status struct {
 	ActiveEvolution  *memory.Evolution  `json:"active_evolution"`
 	PendingApprovals int                `json:"pending_approvals"`
 	OpenIncidents    int                `json:"open_incidents"`
+	// UIVersion identifies the control plane I serve; an open page with
+	// another one offers to reload.
+	UIVersion string `json:"ui_version,omitempty"`
 }
 
 // Status describes the Seed right now.
@@ -365,6 +369,7 @@ func (k *Kernel) Status(ctx context.Context) status {
 	if live, err := k.Store.IncidentsWithStatus(ctx, "open", "diagnosing", "diagnosed", "fixing"); err == nil {
 		s.OpenIncidents = len(live)
 	}
+	s.UIVersion = uiVersion()
 	return s
 }
 
@@ -1290,4 +1295,21 @@ func (k *Kernel) handleHealthSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"auto_fix": k.Doctor.autoFix(r.Context())})
+}
+
+var (
+	uiVersionOnce sync.Once
+	uiVersionHash string
+)
+
+// uiVersion is a hash of the control plane's page (its asset names change
+// with every build).
+func uiVersion() string {
+	uiVersionOnce.Do(func() {
+		if b, err := fs.ReadFile(control.FS(), "index.html"); err == nil {
+			sum := sha256.Sum256(b)
+			uiVersionHash = hex.EncodeToString(sum[:6])
+		}
+	})
+	return uiVersionHash
 }

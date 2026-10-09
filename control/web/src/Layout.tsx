@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import Welcome from './pages/Welcome';
-import { api, shortCommit, type Evolution, evolutionTitle } from './api';
+import { api, shortCommit, type Evolution, evolutionTitle, UI_VERSION } from './api';
 import { Logo } from './components/Logo';
 import { SeedMark } from './components/SeedMark';
 import { useApplyIdentity } from './identity';
@@ -164,6 +164,14 @@ export default function Layout() {
             <span><strong>Organism failed:</strong> <span className="mono small">{status.organism.error}</span></span>
             <span className="spacer" />
             <Link className="btn btn-sm" to="/logs">View logs</Link>
+          </div>
+        )}
+        {reachable && UI_VERSION && status?.ui_version && status.ui_version !== UI_VERSION && (
+          <div className="banner banner-info" role="status">
+            <span className="dot dot-ok" />
+            <span>A newer version of my control plane is ready.</span>
+            <span className="spacer" />
+            <button className="btn btn-sm btn-primary" onClick={() => window.location.reload()}>Reload</button>
           </div>
         )}
         {reachable && <KernelBanner />}

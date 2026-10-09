@@ -62,6 +62,9 @@ func TestControlUIFallsBackToIndex(t *testing.T) {
 		if strings.Contains(rec.Body.String(), k.Token) {
 			t.Fatal("the CLI token must never reach a browser")
 		}
+		if v := uiVersion(); v == "" || !strings.Contains(rec.Body.String(), `name="seed-ui" content="`+v+`"`) {
+			t.Fatal("the page carries the control plane's version, as the status reports it")
+		}
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/_seed/", nil)
