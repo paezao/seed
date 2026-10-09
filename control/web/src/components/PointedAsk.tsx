@@ -9,27 +9,21 @@ export function PointedAskCard({ ask, onSend, onCancel }: {
 }) {
   const [words, setWords] = useState(ask.words);
   const [busy, setBusy] = useState(false);
-  const [withShot, setWithShot] = useState(!!ask.shot);
-  const e = ask.element;
+  const [shot, setShot] = useState(ask.shot);
   const send = async () => {
     if (!words.trim() || busy) return;
     setBusy(true);
-    const shot = withShot && ask.shot ? [ask.shot] : [];
-    if (!(await onSend(askMessage(ask, words), shot))) setBusy(false);
+    if (!(await onSend(askMessage(ask, words, !!shot), shot ? [shot] : []))) setBusy(false);
   };
   return (
     <div className="pointed">
       <div className="pointed-head">
-        <span className="pointed-label">You pointed at</span>
-        <code className="pointed-what" title={e.selector}>{e.label || e.tag}</code>
-        <span className="muted small">on {ask.page.path || '/'}</span>
+        <span className="pointed-label">You selected an area</span>
+        <span className="muted small">on <code>{ask.path}</code></span>
       </div>
-      {ask.shot && withShot && (
-        <div className="pointed-shot">
-          <KernelImage path={`/ask-drafts/${ask.shot}`} alt="Screenshot of the page, with what you pointed at outlined" onMissing={() => setWithShot(false)} />
-          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setWithShot(false)} disabled={busy}>Don't send the picture</button>
-        </div>
-      )}
+      {shot
+        ? <div className="pointed-shot"><KernelImage path={`/ask-drafts/${shot}`} alt="The area of the page you selected" onMissing={() => setShot(undefined)} /></div>
+        : <div className="muted small pointed-noshot">I couldn't take a picture of it; describe it in words.</div>}
       <textarea
         className="pointed-words"
         value={words}
