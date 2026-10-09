@@ -15,20 +15,86 @@
     if (text) e.textContent = text;
     return e;
   };
-  const INK = '#e8ece6', MUTED = '#9aa49a', PANEL = '#10140f', GREEN = '#7cc495', LINE = 'rgba(124,196,149,.4)';
-  const FONT = '13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif';
+  // I wear my organism's colours and font, read from its page, so I look
+  // like part of the app. They are CSS variables on my host, read again
+  // whenever I open (the page may have switched between light and dark).
+  const INK = 'var(--sb-ink)', MUTED = 'var(--sb-muted)', PANEL = 'var(--sb-panel)', GREEN = 'var(--sb-accent)', LINE = 'var(--sb-line)';
+  const HOVER = 'var(--sb-hover)', SOFT = 'var(--sb-soft)', FIELD = 'var(--sb-field)', ON_ACCENT = 'var(--sb-on-accent)', SHADOW = 'var(--sb-shadow)';
+  const FONT = '13px/1.4 var(--sb-font)';
+  // Any CSS colour (rgb, hex, oklch, a variable's value\u2026) as [r, g, b, a].
+  const probe = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+  const rgbaOf = (c) => {
+    if (!c || !probe) return null;
+    probe.fillStyle = 'rgba(0,0,0,0)';
+    probe.fillStyle = c;
+    probe.clearRect(0, 0, 1, 1);
+    probe.fillRect(0, 0, 1, 1);
+    const d = probe.getImageData(0, 0, 1, 1).data;
+    return [d[0], d[1], d[2], d[3] / 255];
+  };
+  const solid = (c) => { const v = rgbaOf(c); return v && v[3] > 0.5 ? v : null; };
+  const rgb = (v, a) => 'rgba(' + v[0] + ',' + v[1] + ',' + v[2] + ',' + (a == null ? 1 : a) + ')';
+  const mix = (a, b, t) => [0, 1, 2].map((i) => Math.round(a[i] + (b[i] - a[i]) * t)).concat(1);
+  const lum = (v) => {
+    const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(v[0]) + 0.7152 * f(v[1]) + 0.0722 * f(v[2]);
+  };
+  const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+  const vivid = (v) => { const hi = Math.max(v[0], v[1], v[2]), lo = Math.min(v[0], v[1], v[2]); return hi > 0 && (hi - lo) / hi > 0.25; };
+  const bgOf = (n) => {
+    for (; n; n = n.parentElement) { const v = solid(getComputedStyle(n).backgroundColor); if (v) return v; }
+    return null;
+  };
+  // The app's accent: a variable it names as such, or its buttons, or its links.
+  const accentOf = (bg) => {
+    const rs = getComputedStyle(document.documentElement);
+    for (const name of ['--accent', '--primary', '--color-primary', '--accent-color', '--primary-color', '--color-accent', '--brand']) {
+      const v = solid(rs.getPropertyValue(name).trim());
+      if (v && contrast(v, bg) > 1.5) return v;
+    }
+    for (const b of [...document.querySelectorAll('button, [role=button], input[type=submit], .btn, .button')].slice(0, 40)) {
+      const v = solid(getComputedStyle(b).backgroundColor);
+      if (v && vivid(v) && contrast(v, bg) > 1.5) return v;
+    }
+    for (const a of [...document.querySelectorAll('a[href]')].slice(0, 40)) {
+      const v = solid(getComputedStyle(a).color);
+      if (v && vivid(v) && contrast(v, bg) > 2) return v;
+    }
+    return null;
+  };
+  let accentNow = '#5fbf85', panelNow = '#ffffff';
+  const theme = (host) => {
+    const body = document.body;
+    const bg = bgOf(body) || [255, 255, 255, 1];
+    const dark = lum(bg) < 0.4;
+    let ink = solid(getComputedStyle(body).color);
+    if (!ink || contrast(ink, bg) < 4) ink = dark ? [236, 236, 236, 1] : [24, 24, 24, 1];
+    const panel = dark ? mix(bg, ink, 0.08) : mix(bg, [255, 255, 255], 0.85);
+    const accent = accentOf(bg) || [95, 191, 133, 1];
+    const onAccent = contrast([255, 255, 255], accent) >= contrast([17, 17, 17], accent) ? [255, 255, 255, 1] : [17, 17, 17, 1];
+    accentNow = rgb(accent);
+    panelNow = rgb(panel);
+    const vars = {
+      ink: rgb(ink), muted: rgb(ink, 0.62), panel: rgb(panel), line: rgb(ink, 0.16), accent: accentNow,
+      soft: rgb(accent, 0.14), hover: rgb(mix(panel, accent, 0.16)), field: rgb(mix(bg, ink, dark ? 0.03 : 0)),
+      'on-accent': rgb(onAccent), shadow: dark ? 'rgba(0,0,0,.4)' : 'rgba(0,0,0,.14)',
+      font: getComputedStyle(body).fontFamily || 'system-ui, sans-serif',
+    };
+    for (const [k, v] of Object.entries(vars)) host.style.setProperty('--sb-' + k, v);
+  };
 
   fetch('/_seed/badge', { credentials: 'same-origin', cache: 'no-store' }).then((r) => (r.status === 200 ? r.json() : null)).then((me) => {
     if (!me || document.getElementById('seed-badge')) return;
     const host = el('div', { position: 'fixed', right: '16px', bottom: '16px', zIndex: '2147483647' });
     host.id = 'seed-badge';
+    theme(host);
     const root = host.attachShadow({ mode: 'closed' });
     const ours = (e) => e.composedPath().includes(host);
 
     // ---- the badge
     const btn = el('button', {
       display: 'block', width: '34px', height: '34px', padding: '0', border: '0', background: 'none', cursor: 'pointer',
-      color: '#5fbf85', borderRadius: '6px', outlineOffset: '4px', opacity: '.9', transition: 'opacity .2s',
+      color: GREEN, borderRadius: '6px', outlineOffset: '4px', opacity: '.9', transition: 'opacity .2s',
       filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,.45)) drop-shadow(0 0 6px rgba(0,0,0,.18))',
     });
     btn.type = 'button';
@@ -85,7 +151,7 @@
 
     // ---- the wheel: hovering the seed fans out what it can do, so one
     // click does it. Clicking the seed itself opens my control plane.
-    const panelStyle = { background: PANEL, color: INK, border: '1px solid ' + LINE, borderRadius: '12px', boxShadow: '0 10px 30px rgba(0,0,0,.35)', font: FONT };
+    const panelStyle = { background: PANEL, color: INK, border: '1px solid ' + LINE, borderRadius: '12px', boxShadow: '0 10px 30px ' + SHADOW, font: FONT };
     // A quarter disc behind the options, so the pointer can travel from the
     // seed to an option without the wheel closing.
     const menu = el('div', { position: 'absolute', right: '-10px', bottom: '-10px', width: '150px', height: '150px', borderTopLeftRadius: '100%', pointerEvents: 'none' });
@@ -111,7 +177,7 @@
       const b = el('button', {
         position: 'absolute', left: (x - 2) + 'px', top: (y - 2) + 'px', width: '38px', height: '38px', padding: '0',
         display: 'grid', placeItems: 'center', borderRadius: '50%', cursor: 'pointer', color: GREEN, background: PANEL,
-        border: '1px solid ' + LINE, boxShadow: '0 6px 18px rgba(0,0,0,.35)', outlineOffset: '3px',
+        border: '1px solid ' + LINE, boxShadow: '0 6px 18px ' + SHADOW, outlineOffset: '3px',
         opacity: '0', transform: 'translate(' + (-x) + 'px,' + (-y) + 'px) scale(.4)', pointerEvents: 'none',
         transition: 'transform .22s cubic-bezier(.2,.9,.3,1.3), opacity .15s, background .15s',
       });
@@ -123,12 +189,12 @@
       const tip = el('span', {
         position: 'absolute', right: '46px', top: '50%', transform: 'translateY(-50%)', whiteSpace: 'nowrap',
         padding: '4px 9px', borderRadius: '8px', background: PANEL, color: INK, border: '1px solid ' + LINE,
-        font: '12px/1.3 system-ui, -apple-system, Segoe UI, sans-serif', fontWeight: '600', pointerEvents: 'none',
-        boxShadow: '0 4px 14px rgba(0,0,0,.3)', opacity: '.85', transition: 'opacity .15s',
+        font: '12px/1.3 var(--sb-font)', fontWeight: '600', pointerEvents: 'none',
+        boxShadow: '0 4px 14px ' + SHADOW, opacity: '.85', transition: 'opacity .15s',
       }, name);
       tip.setAttribute('aria-hidden', 'true');
       b.appendChild(tip);
-      const lit = (on) => { b.style.background = on ? '#1c2a20' : PANEL; tip.style.opacity = on ? '1' : '.85'; };
+      const lit = (on) => { b.style.background = on ? HOVER : PANEL; tip.style.opacity = on ? '1' : '.85'; };
       b.addEventListener('mouseenter', () => lit(true));
       b.addEventListener('mouseleave', () => lit(false));
       b.addEventListener('focus', () => lit(true));
@@ -147,6 +213,7 @@
       clearTimeout(closing);
       if (open || pointing || ask.style.display !== 'none') return;
       open = true;
+      theme(host);
       menu.style.pointerEvents = 'auto';
       options.forEach((o, i) => {
         o.b.style.transitionDelay = (i * 40) + 'ms';
@@ -180,19 +247,21 @@
     });
 
     // ---- pointing
-    const box = el('div', { position: 'fixed', pointerEvents: 'none', border: '2px solid ' + GREEN, background: 'rgba(124,196,149,.12)', borderRadius: '4px', display: 'none', boxSizing: 'border-box' });
-    const label = el('div', { position: 'fixed', pointerEvents: 'none', display: 'none', padding: '3px 7px', borderRadius: '6px', background: PANEL, color: INK, font: '12px/1.3 ui-monospace, monospace', border: '1px solid ' + LINE, maxWidth: '320px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
-    const hint = el('div', Object.assign({ position: 'fixed', top: '14px', left: '50%', transform: 'translateX(-50%)', padding: '8px 14px', display: 'none' }, panelStyle), 'Click what you want to change · Esc to cancel');
+    const box = el('div', { position: 'fixed', pointerEvents: 'none', border: '2px solid ' + GREEN, background: SOFT, borderRadius: '6px', boxShadow: '0 0 0 2px ' + PANEL + ', 0 2px 10px ' + SHADOW, display: 'none', boxSizing: 'border-box' });
+    const label = el('div', { position: 'fixed', pointerEvents: 'none', display: 'none', padding: '3px 7px', borderRadius: '6px', background: PANEL, color: INK, font: '600 12px/1.3 var(--sb-font)', border: '1px solid ' + LINE, maxWidth: '320px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
+    const hint = el('div', Object.assign({ position: 'fixed', top: '14px', left: '50%', transform: 'translateX(-50%)', padding: '8px 14px', display: 'none' }, panelStyle), 'Click what you want to change \u00b7 Esc to cancel');
     const ask = el('form', Object.assign({ position: 'fixed', width: '320px', maxWidth: 'calc(100vw - 24px)', padding: '12px', display: 'none', boxSizing: 'border-box' }, panelStyle));
     const askTitle = el('div', { fontWeight: '600', marginBottom: '2px' }, 'What should change here?');
     const askWhat = el('div', { color: MUTED, fontSize: '12px', marginBottom: '8px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' });
-    const words = el('textarea', { width: '100%', boxSizing: 'border-box', minHeight: '72px', resize: 'vertical', padding: '8px', borderRadius: '8px', border: '1px solid ' + LINE, background: '#1a1e1a', color: INK, font: FONT });
+    const words = el('textarea', { width: '100%', boxSizing: 'border-box', minHeight: '72px', resize: 'vertical', padding: '8px', borderRadius: '8px', border: '1px solid ' + LINE, background: FIELD, color: INK, font: FONT });
+    words.addEventListener('focus', () => { words.style.outline = '2px solid ' + GREEN; words.style.outlineOffset = '-1px'; });
+    words.addEventListener('blur', () => { words.style.outline = ''; });
     words.placeholder = 'e.g. make this green, and a bit bigger';
     words.maxLength = 2000;
     const row = el('div', { display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' });
     const pill = (text, primary) => {
       const b = el('button', { padding: '6px 12px', borderRadius: '8px', font: FONT, fontWeight: '600', cursor: 'pointer',
-        border: '1px solid ' + (primary ? GREEN : 'rgba(232,236,230,.3)'), background: primary ? GREEN : 'none', color: primary ? '#0d140f' : INK }, text);
+        border: '1px solid ' + (primary ? GREEN : LINE), background: primary ? GREEN : 'none', color: primary ? ON_ACCENT : INK }, text);
       return b;
     };
     const cancel = pill('Cancel', false);
@@ -207,11 +276,13 @@
     const describeShort = (t) => {
       const tag = t.tagName.toLowerCase();
       const name = (t.getAttribute('aria-label') || t.getAttribute('alt') || t.getAttribute('placeholder') || t.innerText || t.textContent || '').trim().replace(/\s+/g, ' ');
-      return tag + (name ? ' · ' + name.slice(0, 60) : '');
+      return tag + (name ? ' \u00b7 ' + name.slice(0, 60) : '');
     };
     const place = (t) => {
       const r = t.getBoundingClientRect();
-      css(box, { display: 'block', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+      // A little outside the element, with a ring in the panel's colour, so
+      // it shows even on something the same colour as the outline.
+      css(box, { display: 'block', left: (r.left - 3) + 'px', top: (r.top - 3) + 'px', width: (r.width + 6) + 'px', height: (r.height + 6) + 'px' });
       label.textContent = describeShort(t);
       css(label, { display: 'block', left: Math.max(4, r.left) + 'px', top: (r.top > 28 ? r.top - 26 : r.bottom + 4) + 'px' });
     };
@@ -239,6 +310,7 @@
       else if (isOpen()) { closeMenu(); btn.focus(); }
     };
     const startPointing = () => {
+      theme(host);
       pointing = true;
       hint.style.display = 'block';
       document.documentElement.style.cursor = 'crosshair';
@@ -285,7 +357,7 @@
       if (!chosen || !words.value.trim()) { words.focus(); return; }
       sending = true;
       send.disabled = true;
-      send.textContent = 'Taking a picture…';
+      send.textContent = 'Taking a picture\u2026';
       const payload = { v: 1, words: words.value.trim().slice(0, 2000), page: { path: location.pathname, title: document.title.slice(0, 120) }, element: describe(chosen) };
       // A picture of the page helps my mind see what my owner sees. It is
       // left as a draft that does nothing until my owner sends it.
@@ -326,7 +398,7 @@
         backgroundColor: getComputedStyle(document.body).backgroundColor || getComputedStyle(root).backgroundColor || '#fff',
       });
       // What my owner saw around what they pointed at: a window-sized
-      // region (at most 1100×750) centred on it, so it isn't lost in a
+      // region (at most 1100\u00d7750) centred on it, so it isn't lost in a
       // wide, empty page.
       const cw = Math.min(vw, Math.max(1100, r.width + 80)), ch = Math.min(vh, Math.max(750, r.height + 80));
       const cx = Math.min(Math.max(0, r.left + r.width / 2 - cw / 2), vw - cw);
@@ -337,9 +409,13 @@
       out.height = Math.round(ch * k);
       const g = out.getContext('2d');
       g.drawImage(full, sx + cx, sy + cy, cw, ch, 0, 0, out.width, out.height);
-      g.strokeStyle = GREEN;
-      g.lineWidth = 3;
-      g.strokeRect((r.left - cx) * k - 3, (r.top - cy) * k - 3, r.width * k + 6, r.height * k + 6);
+      const ring = (color, w, pad) => {
+        g.strokeStyle = color;
+        g.lineWidth = w;
+        g.strokeRect((r.left - cx) * k - pad, (r.top - cy) * k - pad, r.width * k + 2 * pad, r.height * k + 2 * pad);
+      };
+      ring(panelNow, 7, 5);
+      ring(accentNow, 3, 5);
       const blob = await new Promise((resolve) => out.toBlob(resolve, 'image/jpeg', 0.82));
       if (!blob) throw new Error('no image');
       const res = await fetch('/_seed/ask-draft', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
