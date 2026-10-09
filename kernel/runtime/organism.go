@@ -50,6 +50,8 @@ type Organism struct {
 	AfterDeploy func()
 	// Badge reports whether my owner wants the badge on my pages (badge.go).
 	Badge func() bool
+	// Observe sees every response's status (my doctor counts server errors).
+	Observe func(method, path string, status int)
 
 	mu     sync.Mutex
 	sb     sandbox.Sandbox
@@ -267,12 +269,18 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			resp.Header.Set("Cross-Origin-Opener-Policy", "unsafe-none")
 			resp.Header.Del("Service-Worker-Allowed")
 			restrictFraming(resp.Header, resp.Request.Host)
+			if o.Observe != nil {
+				o.Observe(resp.Request.Method, resp.Request.URL.Path, resp.StatusCode)
+			}
 			if o.Badge != nil && !o.Badge() {
 				return nil
 			}
 			return injectBadge(resp)
 		}
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+			if o.Observe != nil {
+				o.Observe(r.Method, r.URL.Path, http.StatusBadGateway)
+			}
 			o.unavailable(w, "unreachable", err.Error())
 		}
 		o.mu.Lock()
@@ -369,5 +377,26 @@ func (o *Organism) Recreate(ctx context.Context) error {
 	o.deploy.Lock()
 	defer o.deploy.Unlock()
 	o.Stop(ctx)
+	return o.restart(ctx)
+}
+
+// Alive reports whether my organism's process is up. ok is false when it
+// isn't supposed to be (stopped, building, starting, failed to deploy).
+func (o *Organism) Alive(ctx context.Context) (alive, ok bool) {
+	o.mu.Lock()
+	sb, state := o.sb, o.state
+	o.mu.Unlock()
+	if state != "running" || sb == nil {
+		return false, false
+	}
+	return sb.Running(ctx, liveProcess), true
+}
+
+// RestartProcess starts my organism's process again (after a crash).
+func (o *Organism) RestartProcess(ctx context.Context) error {
+	if !o.deploy.TryLock() {
+		return nil // a deploy is restarting it anyway
+	}
+	defer o.deploy.Unlock()
 	return o.restart(ctx)
 }

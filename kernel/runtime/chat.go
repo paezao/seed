@@ -195,6 +195,8 @@ func toModelMessages(history []memory.Message) []models.Message {
 			// record so the agent never imitates it (and never claims an
 			// evolution happened without starting one).
 			content = "[kernel record] " + content
+		case m.Kind == "health":
+			content = "[health report, written by my doctor from my app's logs] " + content
 		case m.Kind == "routine":
 			// Written by an unattended routine run that may have read data:
 			// a record to weigh, not something I said in this conversation.

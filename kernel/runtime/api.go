@@ -61,6 +61,12 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/model/options", k.handleModelOptions)
 	mux.HandleFunc("POST "+api+"/model", k.handleSetModel)
 	mux.HandleFunc("POST "+api+"/model/forget-key", k.handleForgetKey)
+	mux.HandleFunc("GET "+api+"/incidents", k.handleIncidents)
+	mux.HandleFunc("POST "+api+"/incidents/{id}/fix", k.handleIncidentFix)
+	mux.HandleFunc("POST "+api+"/incidents/{id}/ignore", k.handleIncidentIgnore)
+	mux.HandleFunc("POST "+api+"/incidents/{id}/diagnose", k.handleIncidentDiagnose)
+	mux.HandleFunc("GET "+api+"/health/settings", k.handleHealthSettings)
+	mux.HandleFunc("POST "+api+"/health/settings", k.handleHealthSettings)
 	mux.HandleFunc("GET "+api+"/kernel", k.handleKernel)
 	mux.HandleFunc("POST "+api+"/kernel/check", k.handleKernelCheck)
 	mux.HandleFunc("POST "+api+"/kernel/update", k.handleKernelUpdate)
@@ -324,6 +330,7 @@ type status struct {
 	Model            any                `json:"model"`
 	ActiveEvolution  *memory.Evolution  `json:"active_evolution"`
 	PendingApprovals int                `json:"pending_approvals"`
+	OpenIncidents    int                `json:"open_incidents"`
 }
 
 // Status describes the Seed right now.
@@ -354,6 +361,9 @@ func (k *Kernel) Status(ctx context.Context) status {
 	s.ActiveEvolution = k.Orch.Active(ctx)
 	if aps, err := k.Store.PendingApprovals(ctx); err == nil {
 		s.PendingApprovals = len(aps)
+	}
+	if live, err := k.Store.IncidentsWithStatus(ctx, "open", "diagnosing", "diagnosed", "fixing"); err == nil {
+		s.OpenIncidents = len(live)
 	}
 	return s
 }
@@ -1219,4 +1229,65 @@ func (k *Kernel) handleKernelUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+// ---- health
+
+func (k *Kernel) handleIncidents(w http.ResponseWriter, r *http.Request) {
+	list, err := k.Store.Incidents(r.Context(), 100)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if list == nil {
+		list = []*memory.Incident{}
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (k *Kernel) handleIncidentFix(w http.ResponseWriter, r *http.Request) {
+	e, err := k.Doctor.Fix(r.Context(), r.PathValue("id"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, e)
+}
+
+func (k *Kernel) handleIncidentIgnore(w http.ResponseWriter, r *http.Request) {
+	if err := k.Doctor.Ignore(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, http.StatusNotFound, errors.New("no such incident"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (k *Kernel) handleIncidentDiagnose(w http.ResponseWriter, r *http.Request) {
+	if err := k.Doctor.Rediagnose(r.Context(), r.PathValue("id")); err != nil {
+		writeErr(w, http.StatusConflict, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// handleHealthSettings shows or sets whether I fix problems on my own.
+func (k *Kernel) handleHealthSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		var body struct {
+			AutoFix bool `json:"auto_fix"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, err)
+			return
+		}
+		v := "off"
+		if body.AutoFix {
+			v = "on"
+		}
+		if err := k.Store.SetSetting(r.Context(), settingAutoFix, v); err != nil {
+			writeErr(w, http.StatusInternalServerError, err)
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"auto_fix": k.Doctor.autoFix(r.Context())})
 }

@@ -61,6 +61,24 @@ export type KernelStatus = {
   last_event: { ok: boolean; message: string; log?: string; at: string } | null;
 };
 
+export type IncidentStatus = 'open' | 'diagnosing' | 'diagnosed' | 'fixing' | 'watching' | 'resolved' | 'ignored';
+export type Incident = {
+  id: string;
+  kind: 'http' | 'crash' | 'job';
+  title: string;
+  count: number;
+  first_seen: string;
+  last_seen: string;
+  evidence: string;
+  status: IncidentStatus;
+  diagnosis: string;
+  fix: string;
+  note: string;
+  evolution_id: string;
+  fixed_at: string | null;
+  resolved_at: string | null;
+};
+
 export type OrganismState = 'stopped' | 'building' | 'starting' | 'running' | 'failed';
 
 export type Identity = {
@@ -79,6 +97,7 @@ export type Status = {
   model: { provider: string; name: string; configured: boolean };
   active_evolution: Evolution | null;
   pending_approvals: number;
+  open_incidents?: number;
 };
 
 export type Message = {
@@ -247,10 +266,11 @@ export type LiveEventMap = {
   chat: { thinking: boolean };
   routine: { id?: string; run?: RoutineRun; deleted?: boolean; synced?: boolean };
   kernel: KernelStatus;
+  incident: Incident;
 };
 export type LiveEventName = keyof LiveEventMap;
 export type LiveEvent = { [K in LiveEventName]: { type: K; data: LiveEventMap[K] } }[LiveEventName];
-export const LIVE_EVENT_NAMES: LiveEventName[] = ['message', 'evolution', 'evolution_event', 'approval', 'status', 'chat', 'routine', 'kernel'];
+export const LIVE_EVENT_NAMES: LiveEventName[] = ['message', 'evolution', 'evolution_event', 'approval', 'status', 'chat', 'routine', 'kernel', 'incident'];
 
 // ---- errors ----
 
@@ -358,6 +378,12 @@ export const api = {
   modelOptions: (provider: string) => request<ModelOptions>('GET', `/model/options?provider=${enc(provider)}`),
   setModel: (body: SetModelBody) => request<ModelConfig>('POST', '/model', body),
   forgetKey: (provider: string) => request<ModelConfig>('POST', '/model/forget-key', { provider }),
+  incidents: () => request<Incident[]>('GET', '/incidents'),
+  fixIncident: (id: string) => request<Evolution>('POST', `/incidents/${enc(id)}/fix`),
+  ignoreIncident: (id: string) => request<{ ok: boolean }>('POST', `/incidents/${enc(id)}/ignore`),
+  diagnoseIncident: (id: string) => request<{ ok: boolean }>('POST', `/incidents/${enc(id)}/diagnose`),
+  healthSettings: () => request<{ auto_fix: boolean }>('GET', '/health/settings'),
+  setHealthSettings: (auto_fix: boolean) => request<{ auto_fix: boolean }>('POST', '/health/settings', { auto_fix }),
   kernel: () => request<KernelStatus>('GET', '/kernel'),
   checkKernel: () => request<KernelStatus>('POST', '/kernel/check'),
   updateKernel: (force = false) => request<{ to: string; generation: number }>('POST', '/kernel/update', { force }),

@@ -167,6 +167,11 @@ type Skill = { name: string; description: string; path: string; files: string[];
 | GET | `/logs?source=organism\|kernel&tail=500` | | `{lines: string[]}` |
 | GET | `/settings` | | redacted configuration object |
 | GET | `/extensions` | | `{id, title, path}[]` — control-plane pages contributed by the organism |
+| GET | `/incidents` | | `Incident[]`: live ones first (see [health](health.md)) |
+| POST | `/incidents/:id/fix` | | `Evolution`: the fix evolution |
+| POST | `/incidents/:id/diagnose` | | `{ok}`: investigate again |
+| POST | `/incidents/:id/ignore` | | `{ok}` |
+| GET/POST | `/health/settings` | `{auto_fix}` | `{auto_fix}`: whether the Seed fixes problems on its own |
 | GET | `/routines` | | `Routine[]` with `schedule_text` and `last_run` (see [routines](routines.md)) |
 | POST | `/routines` | `{name, kind: "agent"\|"job", schedule, timezone, prompt?, method?, path?}` | `Routine` |
 | POST | `/routines/:id/update` | `{enabled?, name?, schedule?, timezone?, prompt?, method?, path?}` | `Routine`. Only the owner's own routines can be edited; the organism's jobs can be paused. |

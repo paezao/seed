@@ -17,6 +17,7 @@ const ICONS: Record<string, string> = {
   knowledge: 'M3 3.5h4a1.5 1.5 0 0 1 1 .5 1.5 1.5 0 0 1 1-.5h4V12H9a1 1 0 0 0-1 1 1 1 0 0 0-1-1H3z',
   logs: 'M3 4h10M3 7h10M3 10h7M3 13h5',
   routines: 'M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 1 0 0-11M8 5v3l2 1.5',
+  health: 'M2 8.5h2.5l1.5-3 2.5 6 1.5-3H14',
   settings: 'M3 5h6M11 5h2M3 11h2M7 11h6M9 3.5v3M5 9.5v3',
   ext: 'M3 3h10v10H3zM3 6h10',
 };
@@ -34,6 +35,7 @@ const NAV = [
   { to: '/evolutions', label: 'Evolutions', icon: 'evolutions' },
   { to: '/generations', label: 'Generations', icon: 'generations' },
   { to: '/routines', label: 'Routines', icon: 'routines' },
+  { to: '/health', label: 'Health', icon: 'health' },
   { to: '/skills', label: 'Skills', icon: 'skills' },
   { to: '/knowledge', label: 'Knowledge', icon: 'knowledge' },
   { to: '/logs', label: 'Logs', icon: 'logs' },
@@ -89,6 +91,7 @@ export default function Layout() {
               <Icon name={n.icon} />
               <span>{n.label}</span>
               {n.to === '/' && approvals.length > 0 && <span className="nav-count">{approvals.length}</span>}
+              {n.to === '/health' && (status?.open_incidents ?? 0) > 0 && <span className="nav-count nav-count-warn">{status?.open_incidents}</span>}
             </NavLink>
           ))}
           {extensions.length > 0 && <div className="nav-section">Admin</div>}

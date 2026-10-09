@@ -742,3 +742,105 @@ func (s *Store) RoutineRuns(ctx context.Context, routineID string, limit int) ([
 func (s *Store) AddRoutineReport(ctx context.Context, conv, content string) (*Message, error) {
 	return s.addMessage(ctx, conv, "seed", "routine", content, "")
 }
+
+// ---- incidents
+
+// Incident is something going wrong in the live organism.
+type Incident struct {
+	ID          string     `json:"id"`
+	Signature   string     `json:"signature"`
+	Kind        string     `json:"kind"` // http, crash, job
+	Title       string     `json:"title"`
+	Count       int        `json:"count"`
+	FirstSeen   time.Time  `json:"first_seen"`
+	LastSeen    time.Time  `json:"last_seen"`
+	Evidence    string     `json:"evidence"`
+	Status      string     `json:"status"` // open, diagnosing, diagnosed, fixing, watching, resolved, ignored
+	Diagnosis   string     `json:"diagnosis"`
+	Fix         string     `json:"fix"`
+	Note        string     `json:"note"`
+	EvolutionID string     `json:"evolution_id"`
+	FixedAt     *time.Time `json:"fixed_at"`
+	ResolvedAt  *time.Time `json:"resolved_at"`
+}
+
+const incidentCols = `id, signature, kind, title, count, first_seen, last_seen, evidence, status, diagnosis, fix, note, evolution_id, fixed_at, resolved_at`
+
+func scanIncident(row pgx.Row) (*Incident, error) {
+	i := &Incident{}
+	err := row.Scan(&i.ID, &i.Signature, &i.Kind, &i.Title, &i.Count, &i.FirstSeen, &i.LastSeen, &i.Evidence, &i.Status,
+		&i.Diagnosis, &i.Fix, &i.Note, &i.EvolutionID, &i.FixedAt, &i.ResolvedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	return i, err
+}
+
+// LiveIncident is the unresolved, not-ignored incident with a signature.
+func (s *Store) LiveIncident(ctx context.Context, signature string) (*Incident, error) {
+	return scanIncident(s.Pool.QueryRow(ctx, `SELECT `+incidentCols+` FROM incidents WHERE signature=$1 AND status NOT IN ('resolved','ignored')`, signature))
+}
+
+// IgnoredIncident reports whether my owner muted a signature.
+func (s *Store) IgnoredIncident(ctx context.Context, signature string) bool {
+	var n int
+	_ = s.Pool.QueryRow(ctx, `SELECT count(*) FROM incidents WHERE signature=$1 AND status='ignored'`, signature).Scan(&n)
+	return n > 0
+}
+
+func (s *Store) Incident(ctx context.Context, id string) (*Incident, error) {
+	return scanIncident(s.Pool.QueryRow(ctx, `SELECT `+incidentCols+` FROM incidents WHERE id=$1`, id))
+}
+
+func (s *Store) Incidents(ctx context.Context, limit int) ([]*Incident, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT `+incidentCols+` FROM incidents ORDER BY (status IN ('resolved','ignored')), last_seen DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Incident
+	for rows.Next() {
+		i, err := scanIncident(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// SaveIncident inserts or updates an incident.
+func (s *Store) SaveIncident(ctx context.Context, i *Incident) error {
+	if i.ID == "" {
+		i.ID = ids.New("inc")
+	}
+	_, err := s.Pool.Exec(ctx, `INSERT INTO incidents (`+incidentCols+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, count=EXCLUDED.count, last_seen=EXCLUDED.last_seen, evidence=EXCLUDED.evidence,
+		status=EXCLUDED.status, diagnosis=EXCLUDED.diagnosis, fix=EXCLUDED.fix, note=EXCLUDED.note, evolution_id=EXCLUDED.evolution_id,
+		fixed_at=EXCLUDED.fixed_at, resolved_at=EXCLUDED.resolved_at`,
+		i.ID, i.Signature, i.Kind, i.Title, i.Count, i.FirstSeen, i.LastSeen, i.Evidence, i.Status, i.Diagnosis, i.Fix, i.Note, i.EvolutionID, i.FixedAt, i.ResolvedAt)
+	return err
+}
+
+// IncidentsWithStatus returns incidents in any of the statuses.
+func (s *Store) IncidentsWithStatus(ctx context.Context, statuses ...string) ([]*Incident, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT `+incidentCols+` FROM incidents WHERE status = ANY($1) ORDER BY last_seen`, statuses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Incident
+	for rows.Next() {
+		i, err := scanIncident(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
+}
+
+// AddHealthReport records what my doctor found (written from my app's logs).
+func (s *Store) AddHealthReport(ctx context.Context, conv, content string) (*Message, error) {
+	return s.addMessage(ctx, conv, "seed", "health", content, "")
+}

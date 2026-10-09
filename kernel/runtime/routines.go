@@ -34,6 +34,8 @@ type Scheduler struct {
 	Jobs interface {
 		CallJob(ctx context.Context, name, method, path string) (int, string, error)
 	}
+	// OnJob hears how each job run went (my doctor watches for failing jobs).
+	OnJob func(name string, ok bool, output string)
 
 	mu      sync.Mutex
 	running map[string]bool
@@ -185,6 +187,9 @@ func (s *Scheduler) run(ctx context.Context, r *memory.Routine, run *memory.Rout
 			run.Status, run.Output = "failed", fmt.Sprintf("HTTP %d\n%s", status, tools.Truncate(body, 4000))
 		default:
 			run.Status, run.Output = "ok", fmt.Sprintf("HTTP %d\n%s", status, tools.Truncate(body, 4000))
+		}
+		if s.OnJob != nil {
+			s.OnJob(r.Name, run.Status == "ok", run.Output)
 		}
 	default:
 		run.Status, run.Output = "failed", "unknown routine kind "+r.Kind

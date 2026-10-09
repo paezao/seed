@@ -75,6 +75,8 @@ type Kernel struct {
 	Routines *Scheduler
 	// Updates brings me new kernels from signed releases.
 	Updates *KernelUpdates
+	// Doctor keeps my live organism healthy.
+	Doctor *Doctor
 	// badgeOff: my owner turned off the badge on my organism's pages.
 	badgeOff atomic.Bool
 	// cookieName is unique per Seed: browsers share cookies across ports, so
@@ -298,7 +300,16 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		}
 		k.Updates.Client = &update.Client{Source: source, Keys: update.TrustedKeys}
 	}
-	k.Organism.AfterDeploy = func() { k.Routines.SyncJobs(context.Background()) }
+	k.Doctor = &Doctor{Store: k.Store, Bus: k.Bus, Body: k.Organism, Diagnose: k.Chat.DiagnoseIncident,
+		Evolve: func(ctx context.Context, intent string) (*memory.Evolution, error) {
+			return k.Orch.Request(ctx, memory.DefaultConversation, intent)
+		}}
+	k.Organism.Observe = k.Doctor.ObserveResponse
+	k.Routines.OnJob = k.Doctor.ObserveJob
+	k.Organism.AfterDeploy = func() {
+		k.Routines.SyncJobs(context.Background())
+		k.Doctor.ResetCrashes() // a new generation gets fresh restarts
+	}
 	return k, nil
 }
 
@@ -377,6 +388,7 @@ func (k *Kernel) Serve(ctx context.Context) error {
 	go k.Orch.Run(ctx)
 	go k.Routines.Start(ctx)
 	go k.Updates.Start(ctx)
+	go k.Doctor.Run(ctx)
 	go func() {
 		if err := k.Organism.EnsureRunning(ctx); err != nil {
 			slog.Error("starting organism", "err", err)
