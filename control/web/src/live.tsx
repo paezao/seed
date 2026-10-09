@@ -119,12 +119,18 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     wasReachable.current = reachable;
   }, [reachable]);
 
+  const refreshStatus = useCallback(async () => {
+    try { applyStatus(await api.status()); } catch { /* reported by the client */ }
+  }, [applyStatus]);
+
   const onEvent = useCallback((e: LiveEvent) => {
     switch (e.type) {
       case 'status': applyStatus(e.data); break;
       case 'evolution': upsertEvolution(e.data); break;
       case 'chat': setThinking(!!e.data.thinking); break;
       case 'message': if (e.data.role !== 'user') setThinking(false); break;
+      // An incident changed: the count in the sidebar comes from the status.
+      case 'incident': void refreshStatus(); break;
       case 'approval': {
         const a = e.data;
         setApprovals((prev) => {
@@ -135,7 +141,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       }
     }
     listeners.current.forEach((fn) => fn(e));
-  }, [applyStatus, upsertEvolution]);
+  }, [applyStatus, upsertEvolution, refreshStatus]);
 
   const onOpen = useCallback(() => {
     setReachable(true);
@@ -155,9 +161,6 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     setReconnectKey((k) => k + 1);
   }, [refresh]);
 
-  const refreshStatus = useCallback(async () => {
-    try { applyStatus(await api.status()); } catch { /* reported by the client */ }
-  }, [applyStatus]);
 
   const value = useMemo<Live>(() => ({
     status, reachable, streaming, thinking, approvals, extensions, evolutions, resync,
