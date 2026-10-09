@@ -1377,8 +1377,10 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 .toggle-feedback.saved { color: var(--accent); }
 
 /* ---------- preview before it goes live ---------- */
-.preview-panel { border: 1px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; }
-.preview-head { display: flex; align-items: baseline; gap: 8px; font-size: 14px; }
+.preview-panel { margin-top: 12px; padding: 10px 12px; display: grid; gap: 6px; background: var(--surface-2);
+  border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-sm); }
+.preview-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.preview-what { flex: 1; min-width: 180px; font-size: 13.5px; }
 .preview-panel p { margin: 0; }
 .preview-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .preview-ask { display: grid; gap: 8px; }

@@ -30,37 +30,33 @@ export function PreviewPanel({ evolution: e }: { evolution: Evolution }) {
   }
   return (
     <div className="preview-panel">
-      <div className="preview-head">
-        <strong>{p.state === 'starting' ? 'Getting the preview ready…' : 'Try it before it goes live'}</strong>
-        {(p.round ?? 0) > 0 && <span className="muted small">· round {(p.round ?? 0) + 1}</span>}
+      <div className="preview-row">
+        <div className="preview-what">
+          <strong>{p.state === 'starting' ? 'Getting it ready to try…' : 'Ready: try it before it goes live'}</strong>
+          {(p.round ?? 0) > 0 && <span className="muted small"> · round {(p.round ?? 0) + 1}</span>}
+        </div>
+        {!asking && (
+          <div className="preview-actions">
+            {p.state === 'ready' && <a className="btn btn-sm btn-primary" href={`/_seed/preview/${encodeURIComponent(e.id)}`}>Try it</a>}
+            <button className="btn btn-sm" disabled={p.state === 'starting'} onClick={() => decide('apply')}>Apply</button>
+            <button className="btn btn-sm" disabled={p.state === 'starting'} onClick={() => setAsking(true)}>Ask for changes</button>
+            {!confirmDiscard
+              ? <button className="btn btn-sm btn-ghost" disabled={p.state === 'starting'} onClick={() => setConfirmDiscard(true)}>Discard</button>
+              : (
+                <span className="inline-confirm">
+                  <button className="btn btn-sm btn-danger" onClick={() => decide('discard')}>Discard it</button>
+                  <button className="btn btn-sm btn-ghost" onClick={() => setConfirmDiscard(false)}>Keep</button>
+                </span>
+              )}
+          </div>
+        )}
       </div>
-      {p.state === 'ready' && (
-        <p className="small muted">
-          It runs on {p.data === 'copy' ? 'a copy of your data' : 'test data'}: anything you change while trying it is thrown away.
-          Your app's visitors keep seeing the live version.
+      {p.state === 'ready' && !asking && (
+        <p className="preview-note small muted">
+          On {p.data === 'copy' ? 'a copy of your data' : 'test data'}; changes you make while trying it are thrown away, and visitors keep seeing the live version.
         </p>
       )}
-      {p.state === 'failed' && <p className="small warn-text">{p.note || "I couldn't start the preview."} You can still apply or discard it.</p>}
-      {!asking && (
-        <div className="preview-actions">
-          {p.state === 'ready' && (
-            // Same tab: the preview's bar has Decide and Exit preview to come back here.
-            <a className="btn btn-sm btn-primary" href={`/_seed/preview/${encodeURIComponent(e.id)}`}>Try it</a>
-          )}
-          <button className="btn btn-sm" disabled={p.state === 'starting'} onClick={() => decide('apply')}>Apply</button>
-          <button className="btn btn-sm" disabled={p.state === 'starting'} onClick={() => setAsking(true)}>Ask for changes</button>
-          <span className="spacer" />
-          {!confirmDiscard
-            ? <button className="btn btn-sm btn-ghost" disabled={p.state === 'starting'} onClick={() => setConfirmDiscard(true)}>Discard</button>
-            : (
-              <span className="inline-confirm">
-                <span className="small">Discard it? Nothing goes live.</span>
-                <button className="btn btn-sm btn-danger" onClick={() => decide('discard')}>Discard</button>
-                <button className="btn btn-sm btn-ghost" onClick={() => setConfirmDiscard(false)}>Cancel</button>
-              </span>
-            )}
-        </div>
-      )}
+      {p.state === 'failed' && <p className="preview-note small warn-text">{p.note || "I couldn't start the preview."} You can still apply or discard it.</p>}
       {asking && (
         <form className="preview-ask" onSubmit={(ev) => { ev.preventDefault(); if (feedback.trim()) void decide('changes'); }}>
           <textarea className="input textarea" rows={3} autoFocus value={feedback} onChange={(x) => setFeedback(x.target.value)}

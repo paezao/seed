@@ -101,7 +101,8 @@ Planning is where the owner and the Seed agree on what to build.
 ## Trying it before it goes live
 
 With **Let me try changes before they go live** on (the default, on the Evolutions page), an
-evolution that passed its checks stops at **ready** and waits for its owner:
+evolution that passed its checks stops at **ready** and waits for its owner. A Seed's first
+evolution doesn't wait: there is nothing live yet to compare it with.
 
 - **Try it.** The new generation runs under the same rules as the live app: in a private network
   whose only way out is the egress proxy (your allowlist), without secrets (so trying it can't

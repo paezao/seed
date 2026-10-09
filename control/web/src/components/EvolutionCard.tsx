@@ -86,7 +86,6 @@ export function EvolutionCard({ id }: { id: string }) {
           <EvolutionBadge status={evo.status} />
         </div>
         {waiting && <QuestionPrompt key={JSON.stringify(evo.questions)} evolution={evo} />}
-        {awaitingPreview(evo) && <PreviewPanel evolution={evo} />}
         <PhaseBar evolution={evo} />
         {steps.length > 0 && evo.status !== 'complete' && (
           <div className="evo-plan-line small">
@@ -94,7 +93,9 @@ export function EvolutionCard({ id }: { id: string }) {
             {activeStep && <span className="truncate">· {activeStep.title}</span>}
           </div>
         )}
-        {working && <ActivityTicker events={events} status={evo.status} />}
+        {awaitingPreview(evo)
+          ? <PreviewPanel evolution={evo} />
+          : working && <ActivityTicker events={events} status={evo.status} />}
         {evo.status === 'complete' && evo.new_generation != null && (
           <div className="evo-done">
             <span className="leaf" aria-hidden>●</span>
@@ -131,7 +132,6 @@ export function EvolutionCard({ id }: { id: string }) {
       {evo.plan?.summary && <p className="evo-summary">{evo.plan.summary}</p>}
 
       {waiting && <QuestionPrompt key={JSON.stringify(evo.questions)} evolution={evo} />}
-      {awaitingPreview(evo) && <PreviewPanel evolution={evo} />}
 
       <Roadmap plan={evo.plan} currentDone={evo.status === 'complete'} />
 
@@ -158,7 +158,9 @@ export function EvolutionCard({ id }: { id: string }) {
         </div>
       </div>
 
-      {working && <ActivityTicker events={events} status={evo.status} />}
+      {awaitingPreview(evo)
+          ? <PreviewPanel evolution={evo} />
+          : working && <ActivityTicker events={events} status={evo.status} />}
 
       {evo.status === 'complete' && evo.new_generation != null && (
         <div className="evo-done">

@@ -46,10 +46,26 @@ type previewRun struct {
 
 // wantsPreview reports whether e waits for its owner at Ready.
 func (o *Orchestrator) wantsPreview(ctx context.Context, e *memory.Evolution) bool {
-	if e.Kind != "evolve" || (e.Preview != nil && e.Preview.Skip) || o.PreviewOn == nil {
+	if e.Kind != "evolve" || (e.Preview != nil && e.Preview.Skip) || o.PreviewOn == nil || !o.PreviewOn(ctx) {
 		return false
 	}
-	return o.PreviewOn(ctx)
+	// A Seed's first evolution goes live at once: there's nothing live yet
+	// to compare it with, and no data worth copying.
+	return o.hasEvolved(ctx)
+}
+
+// hasEvolved reports whether my organism has gone live from an evolution before.
+func (o *Orchestrator) hasEvolved(ctx context.Context) bool {
+	done, err := o.Store.EvolutionsByStatus(ctx, memory.Complete)
+	if err != nil {
+		return true // when unsure, let my owner try it
+	}
+	for _, d := range done {
+		if d.Kind == "evolve" {
+			return true
+		}
+	}
+	return false
 }
 
 // RequestWithoutPreview records an evolution that goes live without waiting

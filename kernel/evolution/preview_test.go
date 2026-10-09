@@ -18,7 +18,27 @@ import (
 func previewHarness(t *testing.T) *harness {
 	h := newHarness(t, func(cfg *config.Config) {})
 	h.o.PreviewOn = func(context.Context) bool { return true }
+	// It has evolved before (a first evolution goes live without a preview).
+	ctx := context.Background()
+	past := &memory.Evolution{Kind: "evolve", Intent: "an earlier change"}
+	if err := h.o.Store.CreateEvolution(ctx, past); err != nil {
+		t.Fatal(err)
+	}
+	past.Status = memory.Complete
+	if err := h.o.Store.SaveEvolution(ctx, past); err != nil {
+		t.Fatal(err)
+	}
 	return h
+}
+
+func TestFirstEvolutionGoesLiveAtOnce(t *testing.T) {
+	h := newHarness(t, nil)
+	h.o.PreviewOn = func(context.Context) bool { return true }
+	steps := []step{planStep(), models.Call("write_file", map[string]string{"path": "organism/app.txt", "content": "v1"}), finishStep()}
+	e := h.run("become a thing tracker", append(steps, reflectSteps()...)...)
+	if e.Status != memory.Complete || e.Preview != nil {
+		t.Fatalf("a Seed's first evolution doesn't wait to be tried: %s %+v", e.Status, e.Preview)
+	}
 }
 
 // owner waits for a preview, checks it, and decides.
