@@ -32,9 +32,7 @@
       filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,.45)) drop-shadow(0 0 6px rgba(0,0,0,.18))',
     });
     btn.type = 'button';
-    btn.setAttribute('aria-label', 'Seed: change something on this page, or open the control plane');
-    btn.setAttribute('aria-haspopup', 'menu');
-    btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('aria-label', 'Open my control plane');
     const NS = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(NS, 'svg');
     svg.setAttribute('width', '34'); svg.setAttribute('height', '34'); svg.setAttribute('viewBox', '0 0 24 24');
@@ -85,26 +83,101 @@
     btn.addEventListener('mouseleave', rest);
     btn.addEventListener('blur', rest);
 
-    // ---- the menu
+    // ---- the wheel: hovering the seed fans out what it can do, so one
+    // click does it. Clicking the seed itself opens my control plane.
     const panelStyle = { background: PANEL, color: INK, border: '1px solid ' + LINE, borderRadius: '12px', boxShadow: '0 10px 30px rgba(0,0,0,.35)', font: FONT };
-    const menu = el('div', Object.assign({ position: 'absolute', right: '0', bottom: '46px', minWidth: '240px', padding: '6px', display: 'none' }, panelStyle));
-    menu.setAttribute('role', 'menu');
-    const item = (title, sub, onPick) => {
-      const b = el('button', { display: 'block', width: '100%', textAlign: 'left', padding: '8px 10px', border: '0', borderRadius: '8px', background: 'none', color: INK, font: FONT, cursor: 'pointer' });
+    // A quarter disc behind the options, so the pointer can travel from the
+    // seed to an option without the wheel closing.
+    const menu = el('div', { position: 'absolute', right: '-10px', bottom: '-10px', width: '150px', height: '150px', borderTopLeftRadius: '100%', pointerEvents: 'none' });
+    const icon = (paths) => {
+      const g = document.createElementNS(NS, 'svg');
+      g.setAttribute('width', '18'); g.setAttribute('height', '18'); g.setAttribute('viewBox', '0 0 24 24');
+      g.setAttribute('aria-hidden', 'true');
+      g.setAttribute('fill', 'none'); g.setAttribute('stroke', 'currentColor'); g.setAttribute('stroke-width', '2');
+      g.setAttribute('stroke-linecap', 'round'); g.setAttribute('stroke-linejoin', 'round');
+      for (const d of paths) {
+        const p = document.createElementNS(NS, 'path');
+        p.setAttribute('d', d);
+        g.appendChild(p);
+      }
+      return g;
+    };
+    const options = [];
+    // Angles (degrees, counter-clockwise from the right): up-left of the
+    // seed, since it sits in the bottom-right corner.
+    const option = (name, paths, angle, onPick) => {
+      const a = (angle * Math.PI) / 180, R = 62;
+      const x = Math.round(Math.cos(a) * R), y = Math.round(-Math.sin(a) * R);
+      const b = el('button', {
+        position: 'absolute', left: (x - 2) + 'px', top: (y - 2) + 'px', width: '38px', height: '38px', padding: '0',
+        display: 'grid', placeItems: 'center', borderRadius: '50%', cursor: 'pointer', color: GREEN, background: PANEL,
+        border: '1px solid ' + LINE, boxShadow: '0 6px 18px rgba(0,0,0,.35)', outlineOffset: '3px',
+        opacity: '0', transform: 'translate(' + (-x) + 'px,' + (-y) + 'px) scale(.4)', pointerEvents: 'none',
+        transition: 'transform .22s cubic-bezier(.2,.9,.3,1.3), opacity .15s, background .15s',
+      });
       b.type = 'button';
-      b.setAttribute('role', 'menuitem');
-      b.appendChild(el('div', { fontWeight: '600' }, title));
-      b.appendChild(el('div', { color: MUTED, fontSize: '12px' }, sub));
-      b.addEventListener('mouseenter', () => { b.style.background = 'rgba(124,196,149,.12)'; });
-      b.addEventListener('mouseleave', () => { b.style.background = 'none'; });
-      b.addEventListener('click', onPick);
+      b.tabIndex = -1;
+      b.setAttribute('aria-label', name);
+      b.appendChild(icon(paths));
+      // Its name, to its left.
+      const tip = el('span', {
+        position: 'absolute', right: '46px', top: '50%', transform: 'translateY(-50%)', whiteSpace: 'nowrap',
+        padding: '4px 9px', borderRadius: '8px', background: PANEL, color: INK, border: '1px solid ' + LINE,
+        font: '12px/1.3 system-ui, -apple-system, Segoe UI, sans-serif', fontWeight: '600', pointerEvents: 'none',
+        boxShadow: '0 4px 14px rgba(0,0,0,.3)', opacity: '.85', transition: 'opacity .15s',
+      }, name);
+      tip.setAttribute('aria-hidden', 'true');
+      b.appendChild(tip);
+      const lit = (on) => { b.style.background = on ? '#1c2a20' : PANEL; tip.style.opacity = on ? '1' : '.85'; };
+      b.addEventListener('mouseenter', () => lit(true));
+      b.addEventListener('mouseleave', () => lit(false));
+      b.addEventListener('focus', () => lit(true));
+      b.addEventListener('blur', () => lit(false));
+      b.addEventListener('click', (e) => { e.stopPropagation(); closeMenu(); onPick(); });
+      options.push({ b, x, y });
       return b;
     };
-    const change = item('Change something here', 'Point at it and say what should change', () => { closeMenu(); startPointing(); });
-    menu.append(change, item('Open my control plane', 'Chat, evolutions, settings', () => { window.location.href = '/_seed/'; }));
-    const openMenu = () => { menu.style.display = 'block'; btn.setAttribute('aria-expanded', 'true'); change.focus(); };
-    const closeMenu = () => { menu.style.display = 'none'; btn.setAttribute('aria-expanded', 'false'); };
-    btn.addEventListener('click', () => (menu.style.display === 'none' ? openMenu() : closeMenu()));
+    const POINT = ['M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z', 'M13 13l6 6'];
+    const PANEL_ICON = ['M4 4h16v16H4z', 'M9 4v16', 'M13 9h4', 'M13 13h4'];
+    option('Change something here', POINT, 170, () => startPointing());
+    option('Open my control plane', PANEL_ICON, 100, () => { window.location.href = '/_seed/'; });
+    let open = false, closing = null;
+    const isOpen = () => open;
+    const openMenu = () => {
+      clearTimeout(closing);
+      if (open || pointing || ask.style.display !== 'none') return;
+      open = true;
+      menu.style.pointerEvents = 'auto';
+      options.forEach((o, i) => {
+        o.b.style.transitionDelay = (i * 40) + 'ms';
+        Object.assign(o.b.style, { opacity: '1', transform: 'translate(0,0) scale(1)', pointerEvents: 'auto' });
+        o.b.tabIndex = 0;
+      });
+    };
+    const closeMenu = () => {
+      clearTimeout(closing);
+      if (!open) return;
+      open = false;
+      menu.style.pointerEvents = 'none';
+      options.forEach((o) => {
+        o.b.style.transitionDelay = '0ms';
+        Object.assign(o.b.style, { opacity: '0', transform: 'translate(' + (-o.x) + 'px,' + (-o.y) + 'px) scale(.4)', pointerEvents: 'none' });
+        o.b.tabIndex = -1;
+      });
+    };
+    const closeSoon = () => { clearTimeout(closing); closing = setTimeout(closeMenu, 280); };
+    host.addEventListener('mouseenter', openMenu);
+    host.addEventListener('mouseleave', closeSoon);
+    host.addEventListener('focusin', openMenu);
+    host.addEventListener('focusout', (e) => { if (!host.contains(e.relatedTarget) && !root.contains(e.relatedTarget)) closeSoon(); });
+    // Touch has no hover: the first tap fans the wheel out, the next one on
+    // the seed opens my control plane.
+    let lastPointer = 'mouse';
+    btn.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType || 'mouse'; });
+    btn.addEventListener('click', () => {
+      if (lastPointer !== 'mouse' && !open) { openMenu(); return; }
+      window.location.href = '/_seed/';
+    });
 
     // ---- pointing
     const box = el('div', { position: 'fixed', pointerEvents: 'none', border: '2px solid ' + GREEN, background: 'rgba(124,196,149,.12)', borderRadius: '4px', display: 'none', boxSizing: 'border-box' });
@@ -128,7 +201,7 @@
     send.type = 'submit';
     row.append(cancel, send);
     ask.append(askTitle, askWhat, words, row);
-    root.append(box, label, hint, ask, menu, btn);
+    root.append(box, label, hint, ask, menu, ...options.map((o) => o.b), btn);
 
     let pointing = false, target = null;
     const describeShort = (t) => {
@@ -163,7 +236,7 @@
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
       if (pointing || ask.style.display !== 'none') stopAll();
-      else if (menu.style.display !== 'none') { closeMenu(); btn.focus(); }
+      else if (isOpen()) { closeMenu(); btn.focus(); }
     };
     const startPointing = () => {
       pointing = true;
@@ -275,7 +348,7 @@
       return typeof d.id === 'string' ? d.id : null;
     })());
     document.addEventListener('keydown', onKey, true);
-    document.addEventListener('pointerdown', (e) => { if (!ours(e) && menu.style.display !== 'none') closeMenu(); }, true);
+    document.addEventListener('pointerdown', (e) => { if (!ours(e) && isOpen()) closeMenu(); }, true);
 
     // What my owner pointed at, for me: enough to find it in my code.
     const describe = (t) => {

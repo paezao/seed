@@ -55,7 +55,7 @@ cd myapp && seed run -e OPENROUTER_API_KEY --open   # later: start it again
   checked against the running app and committed as a new **generation**. You try it on a copy of
   your data before it goes live, then apply it or ask for changes. You can roll back
   to any of them. It asks before guessing, and it breaks big goals into stages.
-- **Point at what to change.** On the app's own pages, click the seed, point at anything and
+- **Point at what to change.** On the app's own pages, hover the seed, pick **Change something here**, point at anything and
   say what should change; it lands in chat with what you pointed at and a screenshot, for
   you to send.
 - **Answer about itself and its data.** Its chat can query the app's data (read-only) and call

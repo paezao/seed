@@ -168,7 +168,7 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   showing something only to the owner on the organism's own page. The badge is on by default and
   can be switched off in Settings. Turned off, `/_seed/badge` answers no to everyone and nothing
   is injected.
-  The badge's menu also offers **point and ask**: the owner clicks something on the page and
+  Hovering the badge also offers **point and ask**: the owner clicks something on the page and
   says what should change. The badge never sends anything itself (it shares the page with the
   organism's scripts, which could drive it): it opens the control plane with the request in the
   URL fragment (`/_seed/#ask=…`, never sent to a server), and only the owner's **Send** there
