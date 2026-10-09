@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, errorMessage, type ModelConfig, type ProviderInfo } from '../api';
 import { KernelPanel } from '../components/KernelUpdate';
+import { Toggle } from '../components/Toggle';
 import { ModelForm } from '../components/ModelForm';
 import { CopyCommand, keyEnvOf, keySourceText, restartCommand } from '../components/Brain';
 import { Badge, ErrorNote, Loading, PageHeader, relTime, useLoad } from '../components/ui';
@@ -288,27 +289,16 @@ function SignInLink() {
 
 function BadgeSwitch() {
   const load = useLoad(() => api.badgeSetting(), []);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const on = load.data?.enabled ?? true;
-  const toggle = async () => {
-    setBusy(true);
-    setErr(null);
-    try { load.setData(await api.setBadge(!on)); } catch (e) { setErr(errorMessage(e)); } finally { setBusy(false); }
-  };
   return (
     <div className="badge-switch">
-      <label className="switch-row">
-        <input type="checkbox" role="switch" checked={on} disabled={busy || !load.data} onChange={toggle} />
-        <span>
-          <span className="switch-title">Show a seed on my app's pages</span>
-          <span className="small muted">
-            A small seed in the corner of my app takes you back here. Only you see it, but my app's own code can tell
-            when you're the one looking. Turn it off if you ever doubt my app.
-          </span>
-        </span>
-      </label>
-      {err && <p className="error-text small">{err}</p>}
+      <Toggle
+        checked={load.data?.enabled ?? true}
+        disabled={!load.data}
+        title="Show a seed on my app's pages"
+        on="A small seed in the corner of my app takes you back here. Only you see it, but my app's own code can tell when you're the one looking."
+        off="Nothing is added to my app's pages. Turn it on for a shortcut back here."
+        onChange={async (next) => { const r = await api.setBadge(next); load.setData(r); return r.enabled; }}
+      />
     </div>
   );
 }

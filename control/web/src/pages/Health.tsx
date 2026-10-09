@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, errorMessage, type Incident } from '../api';
 import { Markdown } from '../components/Markdown';
+import { Toggle } from '../components/Toggle';
 import { Badge, Empty, ErrorNote, Loading, PageHeader, relTime, useLoad, type Tone } from '../components/ui';
 import { useLiveEvent } from '../live';
 
@@ -71,23 +72,15 @@ function IncidentCard({ inc, onChange }: { inc: Incident; onChange: () => void }
 
 function AutoFix() {
   const load = useLoad(() => api.healthSettings(), []);
-  const [busy, setBusy] = useState(false);
-  const on = load.data?.auto_fix ?? false;
-  const toggle = async () => {
-    setBusy(true);
-    try { load.setData(await api.setHealthSettings(!on)); } finally { setBusy(false); }
-  };
   return (
-    <label className="switch-row health-autofix">
-      <input type="checkbox" role="switch" checked={on} disabled={busy || !load.data} onChange={toggle} />
-      <span>
-        <span className="switch-title">Fix problems on my own</span>
-        <span className="small muted">
-          When I've found the cause, I start the fix myself instead of waiting for you. Every fix is still an evolution: tested
-          before it goes live, and a generation you can roll back.
-        </span>
-      </span>
-    </label>
+    <Toggle
+      checked={load.data?.auto_fix ?? false}
+      disabled={!load.data}
+      title="Fix problems on my own"
+      on="When I've found the cause, I start the fix myself. Every fix is still tested before it goes live, and you can roll it back."
+      off="When I've found the cause, I tell you and wait for you to click Fix it."
+      onChange={async (next) => { const r = await api.setHealthSettings(next); load.setData(r); return r.auto_fix; }}
+    />
   );
 }
 
