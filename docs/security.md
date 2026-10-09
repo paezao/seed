@@ -171,6 +171,11 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   Pages are rewritten only when uncompressed and under 8 MB. Admin screens (the
   `organism.localhost` origin) and API responses are never touched.
 
+- **No shared cache for processes holding real data.** The build cache (Go modules, npm) is
+  shared by every sandbox, including evolutions with open network. Long-running processes in a
+  private network (the live organism, previews) don't get it, so it can't carry their data to
+  an evolution. Their builds still use it; their own caches go to their private /tmp.
+
 ## Outbound access
 
 The live organism runs in its own network namespace with no network. Its only way out is the

@@ -112,7 +112,11 @@ func (d *BwrapDriver) args(spec Spec, base, extra map[string]string, line, bridg
 			a = append(a, "--tmpfs", filepath.Join("/workspace", h))
 		}
 	}
-	if d.CacheDir != "" {
+	// The build cache is shared by every sandbox, including evolutions with
+	// open network. Long-running processes in a private network (the live
+	// organism, previews: they hold real data) never get it, or it would be
+	// a way to hand data to them. Their builds (separate commands) still do.
+	if d.CacheDir != "" && bridgeDir == "" {
 		a = append(a, "--bind", d.CacheDir, "/cache")
 	}
 	if d.SocketDir != "" {
@@ -138,6 +142,12 @@ func (d *BwrapDriver) args(spec Spec, base, extra map[string]string, line, bridg
 		"npm_config_cache":           "/cache/npm",
 		"npm_config_update_notifier": "false",
 		"CI":                         "true",
+	}
+	if bridgeDir != "" {
+		// No shared cache here (see above): tools that cache go to /tmp.
+		for _, k := range []string{"GOCACHE", "GOMODCACHE", "GOPATH", "npm_config_cache"} {
+			env[k] = "/tmp/cache/" + strings.ToLower(k)
+		}
 	}
 	for k, v := range base {
 		env[k] = v

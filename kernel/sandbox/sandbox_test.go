@@ -179,3 +179,16 @@ func TestBwrapPrivateNetwork(t *testing.T) {
 		t.Fatalf("the live process must be unreachable from other sandboxes: %q", res.Output)
 	}
 }
+
+func TestPrivateProcessesDontGetTheSharedCache(t *testing.T) {
+	d := &BwrapDriver{CacheDir: "/state/cache"}
+	spec := Spec{Root: "/w", PrivateNetwork: true}
+	build := strings.Join(d.args(spec, nil, nil, "go build", ""), " ")
+	if !strings.Contains(build, "--bind /state/cache /cache") {
+		t.Fatal("builds share the cache")
+	}
+	app := strings.Join(d.args(spec, nil, nil, "./server", "/tmp/bridge"), " ")
+	if strings.Contains(app, "/state/cache") {
+		t.Fatal("a private-network process (live organism, preview) must not get the shared cache")
+	}
+}
