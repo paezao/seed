@@ -9,7 +9,8 @@ if the owner allows it).
   app not answering) on the same route within 10 minutes become an incident, named by route:
   `GET /api/recipes/:id → 500`.
 - **Crashes.** A watchdog checks the app's process every few seconds. If it died, the kernel
-  restarts it at once and records a crash incident, named after the first error line in the log.
+  restarts it at once and records a crash incident ("My app crashed"). Crashes with the same
+  first error line count as one incident; that line appears only in the evidence.
   After 3 crashes in 10 minutes it stops restarting and says so. A new generation gets fresh
   restarts.
 - **Failing jobs.** A [scheduled job](routines.md) that fails twice in a row.
@@ -34,7 +35,10 @@ if the owner allows it).
 
 Request paths and log lines can be written by anyone using the app. Paths are normalized: ids
 become `:id`, odd segments become `:x`, and there is no query string. Log excerpts are bounded
-(the last 40 lines, 300 characters each, printable only). Every agent that sees the evidence
-(investigation, fix) gets it inside a fence marked as data never to follow. Chat sees health reports
+(the last 40 lines, 300 characters each, printable only). Every agent that sees an incident gets its name and evidence only inside a fence marked as
+data never to follow. The fix evolution gets the earlier diagnosis that way too, since it was
+written after reading that data: as leads to verify against the code. It also gets a narrow
+scope: fix only the cause, test first, and don't add or change endpoints, sign-in, permissions,
+outbound access, secrets or kernel files. Crash incidents are never named after log text. Chat sees health reports
 as records written from the app's logs, not as its own words. Investigations are read-only and
 can't change data.
