@@ -71,6 +71,14 @@ func (o *Orchestrator) previewAndWait(ctx context.Context, e *memory.Evolution, 
 	}
 	e.Preview.State, e.Preview.Note = "starting", ""
 	_ = o.save(ctx, e)
+	// Nothing of the evolution runs during a preview: closing its sandbox
+	// ends anything left running there (it has open network, and must never
+	// sit beside the preview of live data). A new one is made if my owner
+	// asks for changes.
+	if ws.sb != nil {
+		_ = ws.sb.Close(ctx)
+		ws.sb, ws.env.Sandbox = nil, nil
+	}
 	run := &previewRun{ch: make(chan Decision, 1)}
 	data, err := o.startPreview(ctx, e, ws, run)
 	e.Preview.Data = data
@@ -97,6 +105,14 @@ func (o *Orchestrator) previewAndWait(ctx context.Context, e *memory.Evolution, 
 	case d := <-run.ch:
 		e.Preview.State = "done"
 		_ = o.save(ctx, e)
+		if d.Action == "changes" {
+			o.stopPreview(context.WithoutCancel(ctx), e.ID) // before the evolution works again
+			sb, err := o.evolutionSandbox(ctx, ws)
+			if err != nil {
+				return d, fmt.Errorf("a new sandbox for the changes: %w", err)
+			}
+			ws.sb, ws.env.Sandbox = sb, sb
+		}
 		return d, nil
 	}
 }
@@ -140,7 +156,10 @@ func (o *Orchestrator) startPreview(ctx context.Context, e *memory.Evolution, ws
 	}
 	spec := sandbox.Spec{
 		Name: o.Cfg.ContainerName("preview-" + strings.ToLower(ids.Short(e.ID, 8))), Root: ws.dir,
-		Writable: []string{"organism"}, Hidden: []string{".seed"}, Port: o.Cfg.Organism.Port,
+		// Read-only: what the preview writes (from the live data's copy) must
+		// never land in the workspace the evolution works in. Its own /tmp
+		// is private and thrown away.
+		Writable: nil, Hidden: []string{".seed"}, Port: o.Cfg.Organism.Port,
 		PrivateNetwork: bwrap,
 		Env:            map[string]string{"SEED_ENV": "preview"},
 		Labels:         map[string]string{"seed.name": o.Cfg.Name, "seed.role": "preview"},

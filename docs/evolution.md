@@ -107,7 +107,10 @@ evolution that passed its checks stops at **ready** and waits for its owner:
   whose only way out is the egress proxy (your allowlist), without secrets (so trying it can't
   send real email or charge cards), against a **copy of the live data**. The copy belongs to a
   preview role whose fresh password only the preview process gets, so evolution sandboxes can't
-  reach it. The copy is: dumped and restored into a preview database, with the generation's migrations
+  reach it. The preview sees the code read-only: anything it writes stays in its own private,
+  throwaway /tmp, never in the workspace the evolution works in. Nothing of the evolution runs
+  beside it: the evolution's sandbox is closed during a preview and created afresh if you ask
+  for changes. The copy is: dumped and restored into a preview database, with the generation's migrations
   applied. A live database over 512 MB, or one that can't be copied, is previewed with fresh
   data instead. **Try it** gives only the owner's browser a preview ticket, bound to their session:
   in that browser the app's pages are the new generation, with a bar saying so ("Previewing: …",

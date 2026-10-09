@@ -19,14 +19,16 @@ import (
 // workspace is one evolution's isolated environment: a git worktree on its
 // own branch, a scratch database and a sandbox container.
 type workspace struct {
-	o        *Orchestrator
-	e        *memory.Evolution
-	dir      string
-	repo     *git.Repo
-	dbName   string
-	sb       sandbox.Sandbox
-	env      *tools.Env
-	approver *approvalRecorder
+	o      *Orchestrator
+	e      *memory.Evolution
+	dir    string
+	repo   *git.Repo
+	dbName string
+	// sandboxDB is the scratch database's URL as sandboxes see it.
+	sandboxDB string
+	sb        sandbox.Sandbox
+	env       *tools.Env
+	approver  *approvalRecorder
 }
 
 func (o *Orchestrator) prepareWorkspace(ctx context.Context, e *memory.Evolution) (*workspace, error) {
@@ -55,17 +57,8 @@ func (o *Orchestrator) prepareWorkspace(ctx context.Context, e *memory.Evolution
 	sandboxDB := o.Admin.DatabaseURL(ws.dbName, o.DB.Role, o.DB.Password, dbHost)
 	hostDB := o.Admin.DatabaseURL(ws.dbName, o.DB.Role, o.DB.Password, "")
 
-	var writable []string
-	for _, p := range o.Policy.Evolvable {
-		writable = append(writable, strings.Trim(p, "/"))
-	}
-	env := map[string]string{"DATABASE_URL": sandboxDB, "SEED_ENV": "evolution"}
-	sb, err := o.Driver.Create(ctx, sandbox.Spec{
-		Name: o.Cfg.ContainerName("evo-" + short), Root: ws.dir,
-		Writable: writable, Hidden: []string{".seed"},
-		Port: o.Cfg.Organism.Port, Env: env,
-		Labels: map[string]string{"seed.name": o.Cfg.Name, "seed.evolution": e.ID},
-	})
+	ws.sandboxDB = sandboxDB
+	sb, err := o.evolutionSandbox(ctx, ws)
 	if err != nil {
 		ws.close(ctx, false)
 		return nil, fmt.Errorf("sandbox: %w", err)
@@ -124,4 +117,21 @@ func (o *Orchestrator) cleanupScratch(ctx context.Context, e *memory.Evolution, 
 	if removeWorktree && e.Worktree != "" {
 		_ = o.Repo.RemoveWorktree(ctx, e.Worktree)
 	}
+}
+
+// evolutionSandbox creates the sandbox an evolution works in: its workspace,
+// writable only where the Seed may evolve, with its scratch database (and
+// network, for installing dependencies).
+func (o *Orchestrator) evolutionSandbox(ctx context.Context, ws *workspace) (sandbox.Sandbox, error) {
+	var writable []string
+	for _, p := range o.Policy.Evolvable {
+		writable = append(writable, strings.Trim(p, "/"))
+	}
+	short := strings.ToLower(ids.Short(ws.e.ID, 8))
+	return o.Driver.Create(ctx, sandbox.Spec{
+		Name: o.Cfg.ContainerName("evo-" + short), Root: ws.dir,
+		Writable: writable, Hidden: []string{".seed"},
+		Port: o.Cfg.Organism.Port, Env: map[string]string{"DATABASE_URL": ws.sandboxDB, "SEED_ENV": "evolution"},
+		Labels: map[string]string{"seed.name": o.Cfg.Name, "seed.evolution": ws.e.ID},
+	})
 }
