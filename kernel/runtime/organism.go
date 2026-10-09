@@ -279,7 +279,8 @@ func (o *Organism) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 			if o.Observe != nil {
-				o.Observe(r.Method, r.URL.Path, http.StatusBadGateway)
+				// What the client gets: my "unreachable" page.
+				o.Observe(r.Method, r.URL.Path, http.StatusServiceUnavailable)
 			}
 			o.unavailable(w, "unreachable", err.Error())
 		}

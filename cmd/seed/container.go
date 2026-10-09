@@ -15,6 +15,7 @@ import (
 	goruntime "runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"seed/kernel/config"
 	"seed/kernel/fsx"
@@ -87,6 +88,7 @@ func cmdRun(ctx context.Context, args []string) error {
 		return followContainer(ctx, name)
 	}
 	_, _ = engine(ctx, "rm", "-f", name)
+	waitGone(ctx, name)
 	kernelHint(cfg.Root)
 	if hint := keyHint(f.secretNames()); hint != "" {
 		fmt.Fprintln(os.Stderr, hint)
@@ -172,6 +174,7 @@ func cmdStop(ctx context.Context, args []string) error {
 	if _, err := engine(ctx, "stop", "-t", "30", name); err != nil {
 		return fmt.Errorf("I'm not running (%v)", err)
 	}
+	waitGone(ctx, name) // so `seed run` right after doesn't collide with it
 	fmt.Fprintln(os.Stderr, "resting.")
 	return nil
 }
@@ -414,4 +417,20 @@ func loopbackAddr(s string) (string, bool) {
 		return "", false
 	}
 	return net.JoinHostPort(ip.String(), port), true
+}
+
+// waitGone waits (briefly) until a container no longer exists. A container
+// that was just stopped may still be being removed (it runs with --rm), and
+// starting a new one with its name before then fails.
+func waitGone(ctx context.Context, name string) {
+	for i := 0; i < 60; i++ {
+		if _, err := engine(ctx, "inspect", "-f", "{{.Id}}", name); err != nil {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
 }
