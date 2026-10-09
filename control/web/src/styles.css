@@ -1385,3 +1385,28 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 .preview-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .preview-ask { display: grid; gap: 8px; }
 .preview-switch { margin-bottom: 14px; }
+
+/* Point and ask: what my owner pointed at on a page, waiting to be sent. */
+.pointed {
+  border: 1px solid var(--accent); background: var(--surface); border-radius: var(--radius);
+  padding: 12px 14px; margin-bottom: 10px; box-shadow: var(--shadow-lg);
+}
+.pointed-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; min-width: 0; }
+.pointed-label { font-weight: 600; font-size: 13px; }
+.pointed-what {
+  font: 12px/1.4 var(--mono); color: var(--fg); background: var(--surface-2); border-radius: 6px; padding: 1px 6px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pointed-words {
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 64px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit;
+}
+.pointed-words:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.pointed-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.pointed-actions { display: flex; gap: 6px; }
+.bubble-pointed { margin-top: 8px; font-size: 12px; }
+.bubble-pointed summary { cursor: pointer; opacity: 0.75; }
+.bubble-pointed pre {
+  margin: 6px 0 0; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word;
+  max-height: 220px; overflow: auto; opacity: 0.85;
+}

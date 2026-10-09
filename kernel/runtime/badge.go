@@ -3,6 +3,7 @@ package runtime
 import (
 	"bytes"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -122,83 +123,10 @@ func (k *Kernel) handleBadgeScript(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, badgeJS)
 }
 
-const badgeJS = `(() => {
-  if (window.top !== window || document.getElementById('seed-badge')) return;
-  fetch('/_seed/badge', { credentials: 'same-origin', cache: 'no-store' }).then((r) => r.status === 200 ? r.json() : null).then((me) => {
-    if (!me || document.getElementById('seed-badge')) return;
-    const host = document.createElement('div');
-    host.id = 'seed-badge';
-    Object.assign(host.style, { position: 'fixed', right: '16px', bottom: '16px', zIndex: '2147483647' });
-    const root = host.attachShadow({ mode: 'closed' });
-    const a = document.createElement('a');
-    a.href = '/_seed/';
-    a.title = 'Back to my control plane';
-    a.setAttribute('aria-label', 'Back to my control plane');
-    Object.assign(a.style, {
-      display: 'block', width: '34px', height: '34px', color: '#5fbf85', textDecoration: 'none',
-      // Just the seed: a soft shadow keeps it readable on light and dark pages.
-      filter: 'drop-shadow(0 1px 1.5px rgba(0,0,0,.45)) drop-shadow(0 0 6px rgba(0,0,0,.18))',
-      opacity: '.9', transition: 'opacity .2s', outlineOffset: '4px', borderRadius: '6px',
-    });
-    const still = window.matchMedia('(prefers-reduced-motion: reduce)');
-    let swaying = null;
-    const sway = () => {
-      a.style.opacity = '1';
-      if (still.matches || !face.animate || swaying) return;
-      // A sprout in a breeze: lean, sway back, settle.
-      swaying = face.animate([
-        { transform: 'rotate(0deg) scale(1)' },
-        { transform: 'rotate(-14deg) scale(1.12)', offset: 0.25 },
-        { transform: 'rotate(10deg) scale(1.12)', offset: 0.5 },
-        { transform: 'rotate(-5deg) scale(1.1)', offset: 0.75 },
-        { transform: 'rotate(0deg) scale(1.1)' },
-      ], { duration: 900, easing: 'ease-in-out', fill: 'forwards' });
-      swaying.onfinish = () => { swaying = null; };
-    };
-    const rest = () => {
-      a.style.opacity = '.9';
-      if (!still.matches && face.animate) face.animate([{ transform: 'scale(1.1)' }, { transform: 'scale(1)' }], { duration: 200, fill: 'forwards' });
-    };
-    a.addEventListener('mouseenter', sway);
-    a.addEventListener('focus', sway);
-    a.addEventListener('mouseleave', rest);
-    a.addEventListener('blur', rest);
-    const NS = 'http://www.w3.org/2000/svg';
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('width', '34'); svg.setAttribute('height', '34'); svg.setAttribute('viewBox', '0 0 24 24');
-    svg.style.display = 'block';
-    svg.style.transformOrigin = '50% 90%'; // sway from the stem's base
-    svg.setAttribute('aria-hidden', 'true');
-    for (const [d, attrs] of [
-      ['M12 21v-9', { stroke: 'currentColor', 'stroke-width': '1.8', 'stroke-linecap': 'round', fill: 'none' }],
-      ['M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z', { fill: 'currentColor' }],
-      ['M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z', { fill: 'currentColor', opacity: '.6' }],
-    ]) {
-      const p = document.createElementNS(NS, 'path');
-      p.setAttribute('d', d);
-      for (const [k, v] of Object.entries(attrs)) p.setAttribute(k, v);
-      svg.appendChild(p);
-    }
-    // Who I am now: my logo (an image can't run script), or the seed.
-    let face = svg;
-    if (typeof me.logo === 'string' && me.logo.startsWith('/_seed/api/identity/logo')) {
-      const img = document.createElement('img');
-      img.src = me.logo;
-      img.alt = '';
-      img.width = 34; img.height = 34;
-      Object.assign(img.style, { display: 'block', width: '34px', height: '34px', borderRadius: '8px', transformOrigin: '50% 90%' });
-      img.addEventListener('error', () => { img.replaceWith(svg); face = svg; });
-      face = img;
-    }
-    a.appendChild(face);
-    root.appendChild(a);
-    const media = window.matchMedia('print');
-    const print = () => { host.style.display = media.matches ? 'none' : ''; };
-    media.addEventListener && media.addEventListener('change', print);
-    document.body.appendChild(host);
-  }).catch(() => {});
-})();
-`
+// badgeJS is the badge itself (badge.js): the way back, and point and ask.
+//
+//go:embed badge.js
+var badgeJS string
 
 // handleBadgeSetting shows or sets whether the badge is on (Settings).
 func (k *Kernel) handleBadgeSetting(w http.ResponseWriter, r *http.Request) {
