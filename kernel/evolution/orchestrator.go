@@ -1296,6 +1296,8 @@ func (o *Orchestrator) newAgent(ctx context.Context, e *memory.Evolution, task s
 		e.Usage.CacheReadTokens += u.CacheReadTokens
 		e.Usage.CostUSD += u.CostUSD
 		e.Usage.ModelCalls++
+		// My owner watches the cost grow as I work.
+		_ = o.save(ctx, e)
 	}
 	return a
 }

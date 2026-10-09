@@ -309,8 +309,6 @@ button { font: inherit; color: inherit; }
 .tabs button:hover { color: var(--fg); }
 .tabs button.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 500; }
 .tabs .count { font: 11px var(--mono); color: var(--faint); margin-left: 4px; }
-.toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; user-select: none; }
-.toggle input { accent-color: var(--accent); margin: 0; }
 
 /* ---------- code ---------- */
 .code-block {
@@ -1448,3 +1446,26 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
   .spend-rows li { grid-template-columns: 1fr auto; }
   .spend-bar, .spend-row-calls { display: none; }
 }
+/* In tables, a one-line summary mustn't widen its column (and push the
+   row's actions out of view): clamp it instead of refusing to wrap. */
+.table .cell-main .truncate {
+  white-space: normal; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow-wrap: anywhere;
+}
+.phase-bar-cost {
+  margin-left: auto; padding-left: 8px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.phase-bar-cost.is-bumped { animation: cost-bump 0.9s ease-out; }
+@keyframes cost-bump { 0% { color: var(--accent); } 100% { color: var(--muted); } }
+@media (prefers-reduced-motion: reduce) { .phase-bar-cost.is-bumped { animation: none; } }
+.phase-bar-cost.is-inline { margin-left: 0; padding-left: 0; }
+/* A small on/off chip (e.g. showing tool events in a timeline). */
+.chip-toggle {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.chip-toggle:hover { color: var(--fg); border-color: var(--border-strong); }
+.chip-toggle.is-on { color: var(--fg); background: var(--surface-2); border-color: var(--border-strong); }
+.chip-toggle-dot { width: 7px; height: 7px; border-radius: 50%; border: 1px solid var(--muted); }
+.chip-toggle.is-on .chip-toggle-dot { background: var(--accent); border-color: var(--accent); }
+.chip-toggle .count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }

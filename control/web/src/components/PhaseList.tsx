@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import type { Evolution } from '../api';
+import { useEffect, useRef, useState } from 'react';
+import { usd, type Evolution } from '../api';
 import { derivePhases, type PhaseNote, type PhaseState, type PhaseView } from '../phases';
 
 const ICON: Record<PhaseState, string> = {
@@ -62,7 +62,27 @@ export function PhaseBar({ evolution }: { evolution: Evolution }) {
         {phases.map((p) => <li key={p.key} className={`seg seg-${p.state}`} title={`${p.label}: ${p.state}`} />)}
       </ol>
       <span className="phase-bar-label">{label}</span>
+      <EvolutionCost evolution={evolution} />
     </div>
+  );
+}
+
+/** What an evolution has cost so far; it ticks up live while it works. */
+export function EvolutionCost({ evolution, inline }: { evolution: Evolution; inline?: boolean }) {
+  const cost = evolution.usage?.cost_usd ?? 0;
+  const [bump, setBump] = useState(0);
+  const prev = useRef(cost);
+  useEffect(() => {
+    if (cost > prev.current) setBump((b) => b + 1);
+    prev.current = cost;
+  }, [cost]);
+  if (cost <= 0) return null;
+  const calls = evolution.usage?.model_calls ?? 0;
+  return (
+    <span key={bump} className={`phase-bar-cost${inline ? ' is-inline' : ''}${bump ? ' is-bumped' : ''}`}
+      title={`What this evolution has cost so far: ${calls} model ${calls === 1 ? 'call' : 'calls'}`}>
+      {usd(cost)}
+    </span>
   );
 }
 

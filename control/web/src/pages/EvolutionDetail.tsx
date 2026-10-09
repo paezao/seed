@@ -4,7 +4,7 @@ import { api, evolutionTitle, errorMessage, isActive, isWaitingOnOwner, shortCom
 import { ActivityTicker } from '../components/ActivityTicker';
 import { DiffView } from '../components/DiffView';
 import { EventList, isToolEvent, mergeEvents } from '../components/EventList';
-import { PhaseList } from '../components/PhaseList';
+import { EvolutionCost, PhaseList } from '../components/PhaseList';
 import { PreviewPanel, awaitingPreview } from '../components/PreviewPanel';
 import { Clarifications, QuestionPrompt } from '../components/Questions';
 import { Roadmap, StageBadge } from '../components/Roadmap';
@@ -72,6 +72,7 @@ export default function EvolutionDetail() {
             {evo.commit && <code className="commit">{shortCommit(evo.commit)}</code>}
             {evo.branch && <span className="mono muted">{evo.branch}</span>}
             <span className="muted">attempts {evo.attempts}</span>
+            <EvolutionCost evolution={evo} inline />
             <span className="muted" title={absTime(evo.created_at)}>started <Time iso={evo.created_at} /></span>
             {evo.completed_at && <span className="muted" title={absTime(evo.completed_at)}>finished <Time iso={evo.completed_at} /></span>}
           </span>
@@ -184,10 +185,11 @@ export default function EvolutionDetail() {
               <button className={tab === 'diff' ? 'active' : ''} onClick={() => setTab('diff')}>Diff</button>
               <span className="spacer" />
               {tab === 'timeline' && (
-                <label className="toggle small">
-                  <input type="checkbox" checked={showTools} onChange={(e) => setShowTools(e.target.checked)} />
-                  Show tool events{toolCount ? ` (${toolCount})` : ''}
-                </label>
+                <button type="button" className={`chip-toggle${showTools ? ' is-on' : ''}`} aria-pressed={showTools}
+                  onClick={() => setShowTools((v) => !v)} title={showTools ? 'Hide tool events' : 'Show tool events'}>
+                  <span className="chip-toggle-dot" aria-hidden />
+                  Tool events{toolCount ? <span className="count">{toolCount}</span> : null}
+                </button>
               )}
             </div>
             {tab === 'timeline' ? <EventList events={visible} /> : diffErr ? <ErrorNote error={diffErr} /> : diff ? <DiffView stat={diff.stat} diff={diff.diff} /> : <Loading label="Loading diff…" />}

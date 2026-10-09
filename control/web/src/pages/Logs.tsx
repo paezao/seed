@@ -41,10 +41,10 @@ export default function Logs() {
         title="Logs"
         actions={
           <>
-            <label className="toggle small">
-              <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
+            <button type="button" className={`chip-toggle${auto ? ' is-on' : ''}`} aria-pressed={auto} onClick={() => setAuto((v) => !v)}>
+              <span className="chip-toggle-dot" aria-hidden />
               Auto-refresh (3s)
-            </label>
+            </button>
             <button className="btn btn-sm" onClick={fetchLogs}>Refresh</button>
           </>
         }

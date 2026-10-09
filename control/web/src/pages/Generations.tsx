@@ -28,7 +28,7 @@ function RollbackControl({ gen }: { gen: Generation }) {
   };
 
   if (!confirming) {
-    return <button className="btn btn-sm" onClick={() => setConfirming(true)}>Roll back to this</button>;
+    return <button className="btn btn-sm" onClick={() => setConfirming(true)} title={`Roll back to generation ${gen.number}`}>Roll back</button>;
   }
   return (
     <span className="inline-confirm">
