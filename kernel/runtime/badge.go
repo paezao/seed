@@ -150,3 +150,16 @@ func (k *Kernel) handleBadgeSetting(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"enabled": !k.badgeOff.Load()})
 }
+
+// screenshotJS draws a page into an image for point and ask (modern-screenshot
+// 4.7.0, MIT: see vendor/modern-screenshot.LICENSE). The badge loads it only
+// when my owner points at something.
+//
+//go:embed vendor/modern-screenshot.js
+var screenshotJS string
+
+func (k *Kernel) handleScreenshotScript(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = io.WriteString(w, screenshotJS)
+}

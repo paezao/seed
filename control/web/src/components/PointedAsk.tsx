@@ -1,18 +1,21 @@
 import { useState } from 'react';
 import { askMessage, type PointedAsk } from '../pointedAsk';
+import { KernelImage } from './KernelImage';
 
 export function PointedAskCard({ ask, onSend, onCancel }: {
   ask: PointedAsk;
-  onSend: (content: string) => Promise<boolean>;
+  onSend: (content: string, drafts: string[]) => Promise<boolean>;
   onCancel: () => void;
 }) {
   const [words, setWords] = useState(ask.words);
   const [busy, setBusy] = useState(false);
+  const [withShot, setWithShot] = useState(!!ask.shot);
   const e = ask.element;
   const send = async () => {
     if (!words.trim() || busy) return;
     setBusy(true);
-    if (!(await onSend(askMessage(ask, words)))) setBusy(false);
+    const shot = withShot && ask.shot ? [ask.shot] : [];
+    if (!(await onSend(askMessage(ask, words), shot))) setBusy(false);
   };
   return (
     <div className="pointed">
@@ -21,6 +24,12 @@ export function PointedAskCard({ ask, onSend, onCancel }: {
         <code className="pointed-what" title={e.selector}>{e.label || e.tag}</code>
         <span className="muted small">on {ask.page.path || '/'}</span>
       </div>
+      {ask.shot && withShot && (
+        <div className="pointed-shot">
+          <KernelImage path={`/ask-drafts/${ask.shot}`} alt="Screenshot of the page, with what you pointed at outlined" onMissing={() => setWithShot(false)} />
+          <button type="button" className="btn btn-sm btn-ghost" onClick={() => setWithShot(false)} disabled={busy}>Don't send the picture</button>
+        </div>
+      )}
       <textarea
         className="pointed-words"
         value={words}

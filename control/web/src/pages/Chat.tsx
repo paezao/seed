@@ -8,6 +8,7 @@ import { ErrorNote, Loading, clockTime, useLoad } from '../components/ui';
 import { Logo } from '../components/Logo';
 import { MindSetup } from '../components/MindSetup';
 import { PointedAskCard } from '../components/PointedAsk';
+import { KernelImage } from '../components/KernelImage';
 import { parseAsk, splitAskMessage, type PointedAsk } from '../pointedAsk';
 import type { Identity } from '../api';
 import { useLive, useLiveEvent } from '../live';
@@ -20,11 +21,17 @@ function mergeMessages(prev: Message[], next: Message[]): Message[] {
   return [...map.values()].sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
 }
 
-function UserBubble({ content }: { content: string }) {
+function UserBubble({ content, images }: { content: string; images?: string[] }) {
   const ask = splitAskMessage(content);
-  if (!ask) return <div className="bubble">{content}</div>;
+  const pictures = images?.length ? (
+    <div className="bubble-images">
+      {images.map((id) => <KernelImage key={id} path={`/images/${id}`} alt="An image you attached" />)}
+    </div>
+  ) : null;
+  if (!ask) return <div className="bubble">{pictures}{content}</div>;
   return (
     <div className="bubble">
+      {pictures}
       {ask.words}
       <details className="bubble-pointed">
         <summary>What I pointed at</summary>
@@ -46,7 +53,7 @@ function MessageView({ m, showCard, identity }: { m: Message; showCard: boolean;
   if (m.role === 'user') {
     return (
       <div className="msg msg-user">
-        <UserBubble content={m.content} />
+        <UserBubble content={m.content} images={m.images} />
         <div className="msg-time">{clockTime(m.created_at)}</div>
       </div>
     );
@@ -99,10 +106,10 @@ export default function Chat() {
 
   useLiveEvent('message', (m) => setMessages((prev) => mergeMessages(prev, [m])));
 
-  const send = useCallback(async (content: string) => {
+  const send = useCallback(async (content: string, drafts?: string[]) => {
     setSendError(null);
     try {
-      const m = await api.sendMessage(content);
+      const m = await api.sendMessage(content, drafts);
       stick.current = true;
       setMessages((prev) => mergeMessages(prev, [m]));
       return true;
@@ -190,7 +197,7 @@ export default function Chat() {
                 <PointedAskCard
                   ask={pointed}
                   onCancel={() => setPointed(null)}
-                  onSend={async (content) => { const ok = await send(content); if (ok) setPointed(null); return ok; }}
+                  onSend={async (content, drafts) => { const ok = await send(content, drafts); if (ok) setPointed(null); return ok; }}
                 />
               )}
               {sendError && <div className="error-text small">{sendError}</div>}

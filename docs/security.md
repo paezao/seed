@@ -175,7 +175,12 @@ JavaScript is code the Seed wrote, so the kernel does not trust it:
   posts it to chat. What was pointed at (text, attributes, a selector, a slice of HTML) comes
   from the page, so it's length-limited and goes into the message fenced as data, never as
   instructions. A page could forge an ask, but the owner sees and edits every word before it
-  is sent.
+  is sent. The badge also draws a screenshot of the page (in the browser, with a vendored copy
+  of modern-screenshot served by the kernel) and leaves it at `/_seed/ask-draft`: only the
+  owner's browser, same-origin, with the badge on, and only a real PNG or JPEG up to 3 MB and
+  4096 px. A draft does nothing by itself; at most 8 are kept, for 30 minutes, and one becomes
+  part of a message only when the owner sends the ask with it (they can drop it first). The
+  screenshot is page data too: the model is told that text in it isn't instructions.
   Pages are rewritten only when uncompressed and under 8 MB. Admin screens (the
   `organism.localhost` origin) and API responses are never touched.
 

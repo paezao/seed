@@ -21,6 +21,8 @@ export type PointedElement = {
 
 export type PointedAsk = {
   words: string;
+  /** A screenshot the badge left as a draft (see kernel/runtime/ask.go). */
+  shot?: string;
   page: { path: string; title: string };
   element: PointedElement;
 };
@@ -46,6 +48,7 @@ export function parseAsk(hash: string): PointedAsk | null {
     }
     const ask: PointedAsk = {
       words: str(raw.words, 2000).trim(),
+      shot: typeof raw.shot === 'string' && /^[0-9a-f]{32}$/.test(raw.shot) ? raw.shot : undefined,
       page: { path: str(raw.page?.path, 300), title: str(raw.page?.title, 120) },
       element: {
         tag: str(e.tag, 30), label: str(e.label, 100), text: str(e.text, 300), attrs,

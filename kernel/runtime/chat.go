@@ -42,8 +42,12 @@ type Chat struct {
 	mu sync.Mutex
 }
 
-// Post records an owner message and responds asynchronously.
-func (c *Chat) Post(ctx context.Context, content string) (*memory.Message, error) {
+// maxChatImages is how many of the latest attached images the chat sees.
+const maxChatImages = 3
+
+// Post records an owner message (with any images they attached, already
+// stored) and responds asynchronously.
+func (c *Chat) Post(ctx context.Context, content string, images ...string) (*memory.Message, error) {
 	content = strings.TrimSpace(content)
 	if content == "" {
 		return nil, fmt.Errorf("empty message")
@@ -51,7 +55,7 @@ func (c *Chat) Post(ctx context.Context, content string) (*memory.Message, error
 	// An evolution waiting on questions takes the owner's next message as
 	// its answer, deterministically: no model decides where it goes.
 	if waiting := c.Orch.WaitingForAnswer(); waiting != "" {
-		m, err := c.Store.AddMessage(ctx, memory.DefaultConversation, "user", content, waiting)
+		m, err := c.Store.AddOwnerMessage(ctx, memory.DefaultConversation, content, waiting, images)
 		if err != nil {
 			return nil, err
 		}
@@ -61,7 +65,7 @@ func (c *Chat) Post(ctx context.Context, content string) (*memory.Message, error
 		}
 		return m, nil
 	}
-	m, err := c.Store.AddMessage(ctx, memory.DefaultConversation, "user", content, "")
+	m, err := c.Store.AddOwnerMessage(ctx, memory.DefaultConversation, content, "", images)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +104,8 @@ func (c *Chat) respond(ctx context.Context) {
 			if err := json.Unmarshal(in, &a); err != nil {
 				return "", err
 			}
-			e, err := c.Orch.Request(ctx, memory.DefaultConversation, withOwnerWords(a.Intent, lastOwnerMessage(history)))
+			// The images my owner attached to their latest message go with it.
+			e, err := c.Orch.RequestWithImages(ctx, memory.DefaultConversation, withOwnerWords(a.Intent, lastOwnerMessage(history)), lastOwnerImages(history))
 			if err != nil {
 				return "", err
 			}
@@ -161,7 +166,7 @@ func (c *Chat) respond(ctx context.Context) {
 		Model: c.Model, Tools: reg, MaxTurns: 15, MaxTokens: 4000,
 		System: agent.PromptFor("chat", knowledge.Name(c.Root)) + "\n\n" + c.Orch.SelfContext(ctx, c.Root),
 	}
-	out, err := a.Run(ctx, toModelMessages(history))
+	out, err := a.Run(ctx, toModelMessagesWith(history, c.loadImage(ctx)))
 	if err != nil {
 		slog.Warn("chat", "err", err)
 		c.reply(ctx, "I couldn't think just now: "+err.Error(), started)
@@ -183,10 +188,46 @@ func (c *Chat) reply(ctx context.Context, text, evolutionID string) {
 	c.Bus.Publish("message", m)
 }
 
+// loadImage loads a stored image for the model.
+func (c *Chat) loadImage(ctx context.Context) func(id string) (models.Image, bool) {
+	return func(id string) (models.Image, bool) {
+		mt, data, err := c.Store.Image(ctx, id)
+		if err != nil {
+			slog.Warn("chat image", "image", id, "err", err)
+			return models.Image{}, false
+		}
+		return models.Image{MediaType: mt, Data: data}, true
+	}
+}
+
 // toModelMessages converts stored chat to alternating model turns.
 func toModelMessages(history []memory.Message) []models.Message {
+	return toModelMessagesWith(history, nil)
+}
+
+// toModelMessagesWith also shows the model the latest images my owner
+// attached (older ones stay out: they cost a lot and are rarely still relevant).
+func toModelMessagesWith(history []memory.Message, load func(id string) (models.Image, bool)) []models.Message {
+	recent := map[string]bool{}
+	for i := len(history) - 1; i >= 0 && load != nil && len(recent) < maxChatImages; i-- {
+		if history[i].Role != "user" {
+			continue
+		}
+		for j := len(history[i].Images) - 1; j >= 0 && len(recent) < maxChatImages; j-- {
+			recent[history[i].Images[j]] = true
+		}
+	}
 	var out []models.Message
 	for _, m := range history {
+		var images []models.Image
+		for _, id := range m.Images {
+			if !recent[id] || m.Role != "user" {
+				continue
+			}
+			if im, ok := load(id); ok {
+				images = append(images, im)
+			}
+		}
 		role := models.User
 		content := m.Content
 		switch {
@@ -208,9 +249,10 @@ func toModelMessages(history []memory.Message) []models.Message {
 		}
 		if n := len(out); n > 0 && out[n-1].Role == role {
 			out[n-1].Content += "\n\n" + content
+			out[n-1].Images = append(out[n-1].Images, images...)
 			continue
 		}
-		out = append(out, models.Message{Role: role, Content: content})
+		out = append(out, models.Message{Role: role, Content: content, Images: images})
 	}
 	for len(out) > 0 && out[0].Role != models.User {
 		out = out[1:]
@@ -225,6 +267,23 @@ func firstNonEmpty(s ...string) string {
 		}
 	}
 	return ""
+}
+
+// lastOwnerImages returns the images my owner attached most recently, if
+// it was in one of their last few messages (so "go ahead" after a
+// screenshot still brings it along).
+func lastOwnerImages(history []memory.Message) []string {
+	seen := 0
+	for i := len(history) - 1; i >= 0 && seen < 3; i-- {
+		if history[i].Role != "user" {
+			continue
+		}
+		seen++
+		if len(history[i].Images) > 0 {
+			return history[i].Images
+		}
+	}
+	return nil
 }
 
 func lastOwnerMessage(history []memory.Message) string {

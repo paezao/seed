@@ -3,6 +3,7 @@ package models
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -29,8 +30,13 @@ func (o *OpenAI) Name() string { return o.Provider + "/" + o.Model }
 
 type oaPart struct {
 	Type         string        `json:"type"`
-	Text         string        `json:"text"`
+	Text         string        `json:"text,omitempty"`
+	ImageURL     *oaImageURL   `json:"image_url,omitempty"`
 	CacheControl *cacheControl `json:"cache_control,omitempty"`
+}
+
+type oaImageURL struct {
+	URL string `json:"url"`
 }
 
 type oaMessage struct {
@@ -141,7 +147,18 @@ func (o *OpenAI) Generate(ctx context.Context, req Request) (*Response, error) {
 				body.Messages = append(body.Messages, oaMessage{Role: "tool", ToolCallID: r.CallID, Content: content})
 				lastUser = len(body.Messages) - 1
 			}
-			if strings.TrimSpace(m.Content) != "" {
+			switch {
+			case len(m.Images) > 0:
+				parts := []oaPart{}
+				if strings.TrimSpace(m.Content) != "" {
+					parts = append(parts, oaPart{Type: "text", Text: m.Content})
+				}
+				for _, im := range m.Images {
+					parts = append(parts, oaPart{Type: "image_url", ImageURL: &oaImageURL{URL: "data:" + im.MediaType + ";base64," + base64.StdEncoding.EncodeToString(im.Data)}})
+				}
+				body.Messages = append(body.Messages, oaMessage{Role: "user", Content: parts})
+				lastUser = len(body.Messages) - 1
+			case strings.TrimSpace(m.Content) != "":
 				body.Messages = append(body.Messages, oaMessage{Role: "user", Content: m.Content})
 				lastUser = len(body.Messages) - 1
 			}

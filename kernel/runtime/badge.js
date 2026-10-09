@@ -1,9 +1,11 @@
 // The owner's badge on my organism's pages (see badge.go): a way back to my
 // control plane, and "point and ask": click anything on the page and say
-// what should change. It never sends anything itself: it opens my control
+// what should change. It never sends a message itself: it opens my control
 // plane with the request filled in (in the URL fragment, never sent to a
-// server), where my owner confirms it. Organism scripts share this page, so
-// anything they could do here must need my owner's click in the control plane.
+// server), where my owner confirms it. A screenshot goes ahead as a draft,
+// which does nothing until my owner sends it (see ask.go). Organism scripts
+// share this page, so anything they could do here must need my owner's
+// click in the control plane.
 (() => {
   if (window.top !== window || document.getElementById('seed-badge')) return;
   const css = (el, s) => Object.assign(el.style, s);
@@ -203,10 +205,23 @@
     words.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); ask.requestSubmit(); }
     });
-    ask.addEventListener('submit', (e) => {
+    let sending = false;
+    ask.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (sending) return;
       if (!chosen || !words.value.trim()) { words.focus(); return; }
+      sending = true;
+      send.disabled = true;
+      send.textContent = 'Taking a picture…';
       const payload = { v: 1, words: words.value.trim().slice(0, 2000), page: { path: location.pathname, title: document.title.slice(0, 120) }, element: describe(chosen) };
+      // A picture of the page helps my mind see what my owner sees. It is
+      // left as a draft that does nothing until my owner sends it.
+      const r = chosen.getBoundingClientRect();
+      css(ask, { display: 'none' });
+      css(box, { display: 'none' });
+      css(label, { display: 'none' });
+      const shot = await screenshot(r).catch(() => null);
+      if (shot) payload.shot = shot;
       const bytes = new TextEncoder().encode(JSON.stringify(payload));
       let bin = '';
       bytes.forEach((b) => { bin += String.fromCharCode(b); });
@@ -214,6 +229,51 @@
       // The fragment is never sent to a server; my control plane reads it.
       window.location.href = '/_seed/#ask=' + b64;
     });
+
+    // screenshot draws the visible page (without me), outlines what was
+    // pointed at, and leaves it as a draft; it resolves to the draft's id.
+    const loadDrawer = () => new Promise((resolve, reject) => {
+      if (window.modernScreenshot) { resolve(window.modernScreenshot); return; }
+      const s = document.createElement('script');
+      s.src = '/_seed/screenshot.js?v=4.7.0';
+      s.onload = () => (window.modernScreenshot ? resolve(window.modernScreenshot) : reject(new Error('no drawer')));
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    const within = (ms, p) => Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
+    const screenshot = (r) => within(10000, (async () => {
+      const ms = await loadDrawer();
+      const vw = window.innerWidth, vh = window.innerHeight, sx = window.scrollX, sy = window.scrollY;
+      const root = document.documentElement;
+      const full = await ms.domToCanvas(root, {
+        filter: (n) => n !== host,
+        width: Math.max(root.scrollWidth, vw),
+        height: Math.min(root.scrollHeight, sy + vh),
+        scale: 1,
+        backgroundColor: getComputedStyle(document.body).backgroundColor || getComputedStyle(root).backgroundColor || '#fff',
+      });
+      // What my owner saw around what they pointed at: a window-sized
+      // region (at most 1100×750) centred on it, so it isn't lost in a
+      // wide, empty page.
+      const cw = Math.min(vw, Math.max(1100, r.width + 80)), ch = Math.min(vh, Math.max(750, r.height + 80));
+      const cx = Math.min(Math.max(0, r.left + r.width / 2 - cw / 2), vw - cw);
+      const cy = Math.min(Math.max(0, r.top + r.height / 2 - ch / 2), vh - ch);
+      const k = Math.min(1, 1280 / cw);
+      const out = document.createElement('canvas');
+      out.width = Math.round(cw * k);
+      out.height = Math.round(ch * k);
+      const g = out.getContext('2d');
+      g.drawImage(full, sx + cx, sy + cy, cw, ch, 0, 0, out.width, out.height);
+      g.strokeStyle = GREEN;
+      g.lineWidth = 3;
+      g.strokeRect((r.left - cx) * k - 3, (r.top - cy) * k - 3, r.width * k + 6, r.height * k + 6);
+      const blob = await new Promise((resolve) => out.toBlob(resolve, 'image/jpeg', 0.82));
+      if (!blob) throw new Error('no image');
+      const res = await fetch('/_seed/ask-draft', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'image/jpeg' }, body: blob });
+      if (res.status !== 201) throw new Error('not kept');
+      const d = await res.json();
+      return typeof d.id === 'string' ? d.id : null;
+    })());
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('pointerdown', (e) => { if (!ours(e) && menu.style.display !== 'none') closeMenu(); }, true);
 

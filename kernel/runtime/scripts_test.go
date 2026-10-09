@@ -25,12 +25,16 @@ func TestInjectedScriptsParse(t *testing.T) {
 	}
 }
 
-// The badge never sends anything itself: it only opens my control plane.
+// The badge never sends a message itself: it asks whether to show itself,
+// leaves screenshots as drafts, and opens my control plane.
 func TestBadgeOnlyNavigates(t *testing.T) {
-	if n := strings.Count(badgeJS, "fetch("); n != 1 || !strings.Contains(badgeJS, "fetch('/_seed/badge'") {
-		t.Errorf("badge.js should fetch only /_seed/badge (%d fetches)", n)
+	if n := strings.Count(badgeJS, "fetch("); n != 2 || !strings.Contains(badgeJS, "fetch('/_seed/badge'") || !strings.Contains(badgeJS, "fetch('/_seed/ask-draft'") {
+		t.Errorf("badge.js should fetch only /_seed/badge and /_seed/ask-draft (%d fetches)", n)
 	}
-	for _, bad := range []string{"method:", "XMLHttpRequest", "sendBeacon", "WebSocket", "EventSource"} {
+	if strings.Count(badgeJS, "method:") != 1 {
+		t.Error("badge.js should send nothing but screenshot drafts")
+	}
+	for _, bad := range []string{"XMLHttpRequest", "sendBeacon", "WebSocket", "EventSource", "/_seed/api/messages", "/_seed/api/evolutions"} {
 		if strings.Contains(badgeJS, bad) {
 			t.Errorf("badge.js contains %q", bad)
 		}

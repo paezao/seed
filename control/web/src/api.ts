@@ -110,6 +110,8 @@ export type Message = {
   role: 'user' | 'seed' | 'system';
   content: string;
   evolution_id?: string;
+  /** Images my owner attached (ids; see imageBlobURL). */
+  images?: string[];
   kind?: 'chat' | 'report' | 'routine';
   created_at: string;
 };
@@ -306,6 +308,18 @@ function reportReachable(ok: boolean) {
   reachabilityListeners.forEach((fn) => fn(ok));
 }
 
+/**
+ * Loads an image from the kernel (which needs the token header, so no plain
+ * <img src>) as an object URL. Revoke it when done.
+ */
+export async function imageBlobURL(path: string): Promise<string> {
+  const res = await fetch(API_BASE + path, { headers: { 'X-Seed-Token': CONTROL_TOKEN } });
+  if (!res.ok) throw new Error(res.status === 404 ? 'gone' : `HTTP ${res.status}`);
+  const type = res.headers.get('content-type') || '';
+  if (type !== 'image/png' && type !== 'image/jpeg') throw new Error('not an image');
+  return URL.createObjectURL(await res.blob());
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
@@ -360,7 +374,7 @@ const enc = encodeURIComponent;
 export const api = {
   status: () => request<Status>('GET', '/status'),
   messages: (limit = 200) => request<Message[]>('GET', `/messages?limit=${limit}`),
-  sendMessage: (content: string) => request<Message>('POST', '/messages', { content }),
+  sendMessage: (content: string, drafts?: string[]) => request<Message>('POST', '/messages', drafts?.length ? { content, drafts } : { content }),
   evolutions: () => request<Evolution[]>('GET', '/evolutions'),
   createEvolution: (intent: string) => request<Evolution>('POST', '/evolutions', { intent }),
   evolution: (id: string) => request<{ evolution: Evolution; events: EvolutionEvent[] }>('GET', `/evolutions/${enc(id)}`),

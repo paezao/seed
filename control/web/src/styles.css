@@ -1410,3 +1410,13 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
   margin: 6px 0 0; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; word-break: break-word;
   max-height: 220px; overflow: auto; opacity: 0.85;
 }
+.pointed-shot { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 8px; }
+.bubble-images { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 6px; }
+.kimg {
+  display: block; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2);
+  overflow: hidden; cursor: zoom-in; max-width: 260px; line-height: 0;
+}
+.kimg img { display: block; width: 100%; height: auto; }
+.kimg-big { max-width: 100%; cursor: zoom-out; }
+.kimg-loading { width: 260px; height: 140px; cursor: default; }
+.kimg-missing { padding: 8px 10px; font-size: 12px; color: var(--muted); line-height: 1.4; cursor: default; }

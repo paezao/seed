@@ -3,6 +3,7 @@ package models
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,7 +32,14 @@ type antBlock struct {
 	ToolUseID    string          `json:"tool_use_id,omitempty"`
 	Content      string          `json:"content,omitempty"`
 	IsError      bool            `json:"is_error,omitempty"`
+	Source       *antImageSource `json:"source,omitempty"`
 	CacheControl *cacheControl   `json:"cache_control,omitempty"`
+}
+
+type antImageSource struct {
+	Type      string `json:"type"`
+	MediaType string `json:"media_type"`
+	Data      string `json:"data"`
 }
 
 type cacheControl struct {
@@ -93,6 +101,9 @@ func (a *Anthropic) Generate(ctx context.Context, req Request) (*Response, error
 				content = "(no output)"
 			}
 			blocks = append(blocks, antBlock{Type: "tool_result", ToolUseID: r.CallID, Content: content, IsError: r.IsError})
+		}
+		for _, im := range m.Images {
+			blocks = append(blocks, antBlock{Type: "image", Source: &antImageSource{Type: "base64", MediaType: im.MediaType, Data: base64.StdEncoding.EncodeToString(im.Data)}})
 		}
 		if strings.TrimSpace(m.Content) != "" {
 			blocks = append(blocks, antBlock{Type: "text", Text: m.Content})

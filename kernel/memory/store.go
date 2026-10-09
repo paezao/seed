@@ -31,6 +31,8 @@ type Message struct {
 	Role           string `json:"role"`
 	Content        string `json:"content"`
 	EvolutionID    string `json:"evolution_id,omitempty"`
+	// Images are ids of images my owner attached (see AddImage).
+	Images []string `json:"images,omitempty"`
 	// Kind is "chat" (a conversational turn) or "report" (written by the
 	// kernel about an evolution, in the Seed's voice).
 	Kind      string    `json:"kind"`
@@ -136,7 +138,9 @@ type Evolution struct {
 	Questions      []Question      `json:"questions,omitempty"`
 	Clarifications []Clarification `json:"clarifications,omitempty"`
 	// Preview: trying the new generation before it goes live.
-	Preview     *Preview   `json:"preview,omitempty"`
+	Preview *Preview `json:"preview,omitempty"`
+	// Images my owner attached to the request (see AddImage).
+	Images      []string   `json:"images,omitempty"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	CompletedAt *time.Time `json:"completed_at,omitempty"`
@@ -221,6 +225,37 @@ func (s *Store) AddMessage(ctx context.Context, conv, role, content, evolutionID
 	return s.addMessage(ctx, conv, role, "chat", content, evolutionID)
 }
 
+// AddOwnerMessage records a message from my owner, with any images they attached.
+func (s *Store) AddOwnerMessage(ctx context.Context, conv, content, evolutionID string, images []string) (*Message, error) {
+	m, err := s.addMessage(ctx, conv, "user", "chat", content, evolutionID)
+	if err != nil || len(images) == 0 {
+		return m, err
+	}
+	m.Images = images
+	_, err = s.Pool.Exec(ctx, `UPDATE messages SET images=$2 WHERE id=$1`, m.ID, images)
+	return m, err
+}
+
+// ---- images
+
+// AddImage stores an image my owner attached; it returns its id.
+func (s *Store) AddImage(ctx context.Context, mediaType string, data []byte) (string, error) {
+	id := ids.New("img")
+	_, err := s.Pool.Exec(ctx, `INSERT INTO images (id, media_type, data) VALUES ($1, $2, $3)`, id, mediaType, data)
+	return id, err
+}
+
+// Image returns a stored image and its media type.
+func (s *Store) Image(ctx context.Context, id string) (string, []byte, error) {
+	var mt string
+	var data []byte
+	err := s.Pool.QueryRow(ctx, `SELECT media_type, data FROM images WHERE id=$1`, id).Scan(&mt, &data)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil, ErrNotFound
+	}
+	return mt, data, err
+}
+
 // AddReport records a kernel-written report about an evolution.
 func (s *Store) AddReport(ctx context.Context, conv, content, evolutionID string) (*Message, error) {
 	return s.addMessage(ctx, conv, "seed", "report", content, evolutionID)
@@ -235,7 +270,7 @@ func (s *Store) addMessage(ctx context.Context, conv, role, kind, content, evolu
 
 // Messages returns the last limit messages, oldest first.
 func (s *Store) Messages(ctx context.Context, conv string, limit int) ([]Message, error) {
-	rows, err := s.Pool.Query(ctx, `SELECT id, conversation_id, role, kind, content, coalesce(evolution_id, ''), created_at FROM (
+	rows, err := s.Pool.Query(ctx, `SELECT id, conversation_id, role, kind, content, coalesce(evolution_id, ''), images, created_at FROM (
 		SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC, id DESC LIMIT $2) m
 		ORDER BY created_at, id`, conv, limit)
 	if err != nil {
@@ -243,7 +278,10 @@ func (s *Store) Messages(ctx context.Context, conv string, limit int) ([]Message
 	}
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Message, error) {
 		var m Message
-		err := r.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Kind, &m.Content, &m.EvolutionID, &m.CreatedAt)
+		err := r.Scan(&m.ID, &m.ConversationID, &m.Role, &m.Kind, &m.Content, &m.EvolutionID, &m.Images, &m.CreatedAt)
+		if len(m.Images) == 0 {
+			m.Images = nil
+		}
 		return m, err
 	})
 }
@@ -252,14 +290,14 @@ func (s *Store) Messages(ctx context.Context, conv string, limit int) ([]Message
 
 const evoCols = `id, coalesce(conversation_id, ''), kind, intent, title, status, plan, base_generation, new_generation,
 	target_generation, base_commit, branch, worktree, commit, attempts, checks, reflection, summary, error, usage,
-	created_at, updated_at, completed_at, questions, clarifications, preview`
+	created_at, updated_at, completed_at, questions, clarifications, preview, images`
 
 func scanEvolution(r pgx.Row) (*Evolution, error) {
 	var e Evolution
 	var plan, checks, refl, usage, questions, clar, preview []byte
 	err := r.Scan(&e.ID, &e.ConversationID, &e.Kind, &e.Intent, &e.Title, &e.Status, &plan, &e.BaseGeneration,
 		&e.NewGeneration, &e.TargetGeneration, &e.BaseCommit, &e.Branch, &e.Worktree, &e.Commit, &e.Attempts,
-		&checks, &refl, &e.Summary, &e.Error, &usage, &e.CreatedAt, &e.UpdatedAt, &e.CompletedAt, &questions, &clar, &preview)
+		&checks, &refl, &e.Summary, &e.Error, &usage, &e.CreatedAt, &e.UpdatedAt, &e.CompletedAt, &questions, &clar, &preview, &e.Images)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -287,6 +325,9 @@ func scanEvolution(r pgx.Row) (*Evolution, error) {
 		e.Preview = &Preview{}
 		_ = json.Unmarshal(preview, e.Preview)
 	}
+	if len(e.Images) == 0 {
+		e.Images = nil
+	}
 	return &e, nil
 }
 
@@ -303,9 +344,13 @@ func (s *Store) CreateEvolution(ctx context.Context, e *Evolution) error {
 	if e.Checks == nil {
 		e.Checks = []Check{}
 	}
-	return s.Pool.QueryRow(ctx, `INSERT INTO evolutions (id, conversation_id, kind, intent, title, status, base_generation, target_generation)
-		VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8) RETURNING created_at, updated_at`,
-		e.ID, e.ConversationID, e.Kind, e.Intent, e.Title, e.Status, e.BaseGeneration, e.TargetGeneration).Scan(&e.CreatedAt, &e.UpdatedAt)
+	images := e.Images
+	if images == nil {
+		images = []string{}
+	}
+	return s.Pool.QueryRow(ctx, `INSERT INTO evolutions (id, conversation_id, kind, intent, title, status, base_generation, target_generation, images)
+		VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7, $8, $9) RETURNING created_at, updated_at`,
+		e.ID, e.ConversationID, e.Kind, e.Intent, e.Title, e.Status, e.BaseGeneration, e.TargetGeneration, images).Scan(&e.CreatedAt, &e.UpdatedAt)
 }
 
 // SaveEvolution persists all mutable fields.

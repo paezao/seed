@@ -79,6 +79,8 @@ type Kernel struct {
 	Doctor *Doctor
 	// previews are browsers trying candidate generations.
 	previews previews
+	// asks are screenshots from the badge, waiting for my owner to send them.
+	asks askDrafts
 	// badgeOff: my owner turned off the badge on my organism's pages.
 	badgeOff atomic.Bool
 	// cookieName is unique per Seed: browsers share cookies across ports, so

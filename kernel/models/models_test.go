@@ -158,3 +158,40 @@ func TestBuildRequiresKeyAndModel(t *testing.T) {
 		t.Fatal("info not updated")
 	}
 }
+
+// An image my owner attached reaches the model in each provider's format.
+func TestImagesTranslated(t *testing.T) {
+	req := Request{Messages: []Message{{Role: User, Content: "make it green", Images: []Image{{MediaType: "image/jpeg", Data: []byte{1, 2, 3}}}}}}
+	capture := func(out *map[string]any, reply string) *httptest.Server {
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			b, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(b, out)
+			io.WriteString(w, reply)
+		}))
+	}
+
+	var ant map[string]any
+	srv := capture(&ant, `{"content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn"}`)
+	defer srv.Close()
+	if _, err := (&Anthropic{APIKey: "k", Model: "m", BaseURL: srv.URL}).Generate(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	blocks := ant["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	img := blocks[0].(map[string]any)
+	src, _ := img["source"].(map[string]any)
+	if img["type"] != "image" || src["media_type"] != "image/jpeg" || src["data"] != "AQID" || blocks[1].(map[string]any)["text"] != "make it green" {
+		t.Fatalf("anthropic image not translated: %v", blocks)
+	}
+
+	var oa map[string]any
+	srv2 := capture(&oa, `{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`)
+	defer srv2.Close()
+	if _, err := (&OpenAI{APIKey: "k", Model: "m", BaseURL: srv2.URL, Provider: "openrouter", PromptCaching: true}).Generate(context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	parts := oa["messages"].([]any)[0].(map[string]any)["content"].([]any)
+	u, _ := parts[1].(map[string]any)["image_url"].(map[string]any)
+	if parts[0].(map[string]any)["text"] != "make it green" || u["url"] != "data:image/jpeg;base64,AQID" {
+		t.Fatalf("openai image not translated: %v", parts)
+	}
+}

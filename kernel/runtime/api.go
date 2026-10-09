@@ -41,6 +41,8 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET "+api+"/events", k.handleEvents)
 	mux.HandleFunc("GET "+api+"/messages", k.handleMessages)
 	mux.HandleFunc("POST "+api+"/messages", k.handlePostMessage)
+	mux.HandleFunc("GET "+api+"/images/{id}", k.handleImage)
+	mux.HandleFunc("GET "+api+"/ask-drafts/{id}", k.handleAskDraftImage)
 	mux.HandleFunc("GET "+api+"/evolutions", k.handleEvolutions)
 	mux.HandleFunc("POST "+api+"/evolutions", k.handleCreateEvolution)
 	mux.HandleFunc("GET "+api+"/evolutions/{id}", k.handleEvolution)
@@ -103,6 +105,8 @@ func (k *Kernel) Handler() http.Handler {
 	mux.HandleFunc("GET /_seed/preview.js", k.handlePreviewScript)
 	mux.HandleFunc("GET /_seed/badge", k.handleBadge)
 	mux.HandleFunc("GET /_seed/badge.js", k.handleBadgeScript)
+	mux.HandleFunc("POST /_seed/ask-draft", k.handleAskDraft)
+	mux.HandleFunc("GET /_seed/screenshot.js", k.handleScreenshotScript)
 	mux.HandleFunc("GET /_seed/login", k.handleLogin)
 	mux.HandleFunc("POST /_seed/login", k.handlePasswordLogin)
 	mux.Handle("/_seed/", k.controlUI())
@@ -485,12 +489,25 @@ func decodeBody(r *http.Request, v any) error {
 }
 
 func (k *Kernel) handlePostMessage(w http.ResponseWriter, r *http.Request) {
-	var body struct{ Content string }
+	var body struct {
+		Content string
+		// Drafts are screenshots my owner chose to send (see ask.go).
+		Drafts []string
+	}
 	if err := decodeBody(r, &body); err != nil {
 		writeErr(w, 400, err)
 		return
 	}
-	m, err := k.Chat.Post(r.Context(), body.Content)
+	if strings.TrimSpace(body.Content) == "" {
+		writeErr(w, 400, errors.New("empty message"))
+		return
+	}
+	images, err := k.attachDrafts(r, body.Drafts)
+	if err != nil {
+		writeErr(w, 400, err)
+		return
+	}
+	m, err := k.Chat.Post(r.Context(), body.Content, images...)
 	if err != nil {
 		writeErr(w, 400, err)
 		return

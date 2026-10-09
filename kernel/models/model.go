@@ -25,6 +25,14 @@ type Message struct {
 	Content     string       `json:"content,omitempty"`
 	ToolCalls   []ToolCall   `json:"tool_calls,omitempty"`
 	ToolResults []ToolResult `json:"tool_results,omitempty"`
+	// Images go with a user turn (e.g. a screenshot my owner attached).
+	Images []Image `json:"-"`
+}
+
+// Image is a picture for the model to look at.
+type Image struct {
+	MediaType string // image/png or image/jpeg
+	Data      []byte
 }
 
 type ToolCall struct {
