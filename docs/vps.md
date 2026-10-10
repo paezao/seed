@@ -47,6 +47,11 @@ Paste [`deploy/vps/cloud-init.yaml`](../deploy/vps/cloud-init.yaml) with your
 key filled in, and the server comes up with the Seed on it. The output (with
 the password) is in `/var/log/seed-setup.log`, readable by root only.
 
+User data stays on the server, readable by root and through the cloud's
+metadata service. `setup.sh` blocks containers (and so the Seed's
+experiments) from that service, but use an OpenRouter key made just for this
+Seed, or run the command over SSH instead to keep the key out of user data.
+
 ## What's on the server
 
 `/opt/seed` holds the settings: `docker-compose.yml`, the `Caddyfile`, the
@@ -58,7 +63,9 @@ The Seed's container runs as it does with `seed run`: all capabilities
 dropped, no new privileges, a read-only root, with Seed's seccomp profile and
 an unmasked `/proc` so its sandboxes (bubblewrap) can create their
 namespaces. Caddy forwards `X-Forwarded-For`, and the Seed trusts exactly one
-proxy (`SEED_TRUSTED_PROXIES=1`) and only answers for `SEED_DOMAIN`.
+proxy (`SEED_TRUSTED_PROXIES=1`) and only answers for `SEED_DOMAIN`. Containers can't reach the cloud metadata service
+(`169.254.169.254`, a firewall rule kept by the `seed-block-metadata` systemd
+unit), which on many clouds serves the server's user data and credentials.
 
 ## Everyday things
 

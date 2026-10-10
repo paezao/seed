@@ -2,6 +2,10 @@
 # Paste as "user data" when creating an Ubuntu or Debian server (Hetzner,
 # DigitalOcean, AWS…): it puts a Seed on it, with HTTPS. Fill in the key
 # (and a domain, or leave it empty for <server IP>.sslip.io). See docs/vps.md.
+#
+# Note: user data stays readable on the server (by root, and through the cloud
+# metadata service, which setup.sh blocks for containers). Use a key just for
+# this Seed, or run setup.sh over SSH instead to keep the key out of it.
 runcmd:
   # The log holds your new password: keep it root-only.
   - >-

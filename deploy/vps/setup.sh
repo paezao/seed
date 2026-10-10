@@ -54,6 +54,27 @@ if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
   sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0
 fi
 
+# Containers mustn't reach the cloud's metadata service: it serves this
+# server's user data (which may hold your key, if cloud-init set this up) and,
+# on some clouds, its credentials. The Seed's experiments have open network.
+say "blocking containers from the cloud metadata service"
+cat > /etc/systemd/system/seed-block-metadata.service <<'UNIT'
+[Unit]
+Description=Keep containers away from the cloud metadata service (Seed)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'iptables -C DOCKER-USER -d 169.254.169.254/32 -j REJECT 2>/dev/null || iptables -I DOCKER-USER -d 169.254.169.254/32 -j REJECT; if command -v ip6tables >/dev/null && ip6tables -L DOCKER-USER >/dev/null 2>&1; then ip6tables -C DOCKER-USER -d fd00:ec2::254/128 -j REJECT 2>/dev/null || ip6tables -I DOCKER-USER -d fd00:ec2::254/128 -j REJECT; fi'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now seed-block-metadata.service >/dev/null 2>&1 || die "couldn't block the metadata service (is Docker using iptables?)"
+
 if [ -z "${SEED_DOMAIN:-}" ]; then
   ip="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
   case "$ip" in
