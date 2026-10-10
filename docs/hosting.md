@@ -6,9 +6,16 @@ image. Everything else is environment variables.
 
 ## The deploy image
 
-`Dockerfile.deploy` (generated from `Dockerfile` by `make deploy-dockerfile`)
-is the runtime image plus this repository as a template. Build it with the
-repository as the context:
+Each release publishes it as `ghcr.io/paezao/seed:<version>` (and `:latest`),
+for amd64 and arm64, signed with cosign ([releasing](releasing.md)):
+
+```bash
+docker pull ghcr.io/paezao/seed:latest
+```
+
+It is `Dockerfile.deploy` (generated from `Dockerfile` by `make
+deploy-dockerfile`): the runtime image plus this repository as a template. To
+build it yourself, use the repository as the context:
 
 ```bash
 docker build -f Dockerfile.deploy --build-arg SEED_VERSION=$(git describe --always) -t seed .

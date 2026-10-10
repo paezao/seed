@@ -53,6 +53,7 @@ var groups = []struct {
 	{"Running one", []doc{
 		{"hosting", "Hosting", "A volume and an external PostgreSQL"},
 		{"updates", "Kernel updates", "Signed releases and automatic rollback"},
+		{"releasing", "Releasing", "How a version reaches people"},
 		{"security", "Security", "Sandboxing, permissions, the kernel boundary"},
 		{"api", "Control plane API", "Every endpoint"},
 	}},

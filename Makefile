@@ -5,6 +5,7 @@
 #   make test    run kernel tests (needs `make up`; Docker tests need the image)
 #   make lint    vet + format check + typecheck
 #   make e2e     the canonical Seed -> todo -> priorities run (real model; costs money)
+#   make smoke   boot smoke test: plant a Seed with bin/seed, start it, check it, stop it
 #   make site    preview the website (site/, with the docs rendered) at http://localhost:8000
 #   make og      render the social preview image (site/og/og.html -> site/assets/og.png)
 
@@ -19,7 +20,7 @@ GID     := $(shell id -g)
 SECURITY := --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=cmd/seed/seccomp.json \
             --security-opt apparmor=unconfined --security-opt systempaths=unconfined
 
-.PHONY: up build control template install test lint e2e site site-docs og clean
+.PHONY: up build control template install test lint e2e smoke site site-docs og clean
 
 up: build
 	$(BIN) image
@@ -75,6 +76,9 @@ site-docs:
 og:
 	chromium --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 \
 	  --virtual-time-budget=5000 --screenshot=site/assets/og.png "file://$(CURDIR)/site/og/og.html"
+
+smoke: build
+	scripts/smoke.sh bin/seed
 
 e2e: build
 	SEED_E2E=1 $(GO) test -v -count=1 -timeout 120m ./e2e/...

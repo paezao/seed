@@ -1,0 +1,16 @@
+# Keeps the pinned GitHub Actions (and the Go and npm dependencies) current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+  - package-ecosystem: gomod
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /control/web
+    schedule: { interval: weekly }
+    groups:
+      web: { patterns: ["*"] }

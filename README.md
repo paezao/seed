@@ -120,6 +120,7 @@ seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # 
 - [Notifications](docs/notifications.md): Web Push to the owner's browsers when something needs them
 - [Security](docs/security.md): sandboxing, permissions, the kernel boundary
 - [Development](docs/development.md): running, testing, contributing
+- [Releasing](docs/releasing.md): how a version is checked, signed and published
 - [Control plane API](docs/api.md)
 
 ## Your app is yours

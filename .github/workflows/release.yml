@@ -1,9 +1,15 @@
-# Publishes a release: a signed kernel (for Seeds' updates) and the seed CLI
-# for Linux and macOS (for install.sh). Two ways:
-#   - Actions → release → Run workflow (version and notes optional), or
-#   - push a tag: git tag -a v2026.10.20 -m "notes" && git push origin v2026.10.20
-# Seeds check releases/latest and install only releases signed by a key they
-# carry (kernel/update/keys.go). The private key is the SEED_RELEASE_KEY secret.
+# Releases Seed: a signed kernel (for Seeds' updates), the seed CLI for Linux
+# and macOS (for install.sh), and, once published, the hosting image.
+#
+#   1. Actions → release → Run workflow (or push a tag v2026.10.20).
+#   2. The same checks as CI run, plus the boot smoke test.
+#   3. Signing waits for approval (the "release" environment), then a DRAFT
+#      release is made. Seeds don't see drafts.
+#   4. Review the notes (they're what Seeds show in their update banner) and
+#      press Publish. That makes it the latest release; Seeds pick it up,
+#      and the image workflow pushes ghcr.io/paezao/seed.
+#
+# See docs/releasing.md.
 name: release
 on:
   push:
@@ -17,18 +23,28 @@ on:
         description: "What's new, shown in Seeds' update banner (empty: the commits since the last release)"
         required: false
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: release
   cancel-in-progress: false
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
   release:
+    needs: checks
     runs-on: ubuntu-latest
+    # The signing key lives in this environment, which needs approval.
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
 
@@ -41,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           # Before anything is tagged: without the key there can be no release.
-          if [ "$HAS_KEY" != "true" ]; then echo "::error::Add the SEED_RELEASE_KEY secret first (see docs/updates.md)"; exit 1; fi
+          if [ "$HAS_KEY" != "true" ]; then echo "::error::Add the SEED_RELEASE_KEY secret to the release environment first (see docs/releasing.md)"; exit 1; fi
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             version="${GITHUB_REF_NAME#v}"
             git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.md
@@ -71,9 +87,6 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Releasing $version"; cat notes.md
-
-      - name: Check it builds
-        run: go vet ./... && go build ./...
 
       - name: Tag
         if: github.event_name == 'workflow_dispatch'
@@ -109,8 +122,20 @@ jobs:
           done
           (cd dist && sha256sum seed_*.tar.gz > checksums.txt)
 
-      - name: Publish
+      - name: Attest where the files came from
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      - name: Draft the release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.meta.outputs.version }}
-        run: gh release create "v$VERSION" dist/* --title "Kernel $VERSION" --notes-file notes.md --verify-tag
+        run: |
+          gh release create "v$VERSION" dist/* --draft --title "Seed $VERSION" --notes-file notes.md --verify-tag
+          {
+            echo "### v$VERSION is drafted"
+            echo
+            echo "Review the notes (Seeds show them in their update banner), then **Publish**:"
+            echo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases"
+          } >> "$GITHUB_STEP_SUMMARY"
