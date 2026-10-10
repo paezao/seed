@@ -29,7 +29,9 @@ Say *"Become a todo application. I need to create, complete and delete tasks."* 
 curl -fsSL https://raw.githubusercontent.com/paezao/seed/main/install.sh | sh
 ```
 
-That puts the `seed` CLI in `~/.local/bin` (Linux and macOS; on Windows, run it inside WSL2).
+That puts the `seed` CLI in `~/.local/bin` (Linux and macOS; on Windows, run it inside WSL2),
+after checking it against the release's checksums. `SEED_BIN_DIR` picks another folder, and
+`SEED_VERSION=2026.10.10` installs a specific release.
 You also need:
 
 - Docker (Docker Desktop on macOS and Windows), or Podman with `SEED_CONTAINER_ENGINE=podman`
