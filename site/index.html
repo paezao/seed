@@ -15,6 +15,8 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <div class="aurora" aria-hidden="true"><i class="a1"></i><i class="a2"></i><i class="a3"></i></div>
+
   <header class="nav">
     <div class="wrap nav-inner">
       <a class="brand" href="./" aria-label="Seed home">
@@ -23,24 +25,29 @@
       </a>
       <nav class="nav-links">
         <a href="#how">How it grows</a>
+        <a href="#point">Point and ask</a>
         <a href="#features">Features</a>
         <a href="https://github.com/paezao/seed/tree/main/docs">Docs</a>
-        <a class="btn btn-ghost btn-sm" href="https://github.com/paezao/seed">GitHub</a>
+        <a class="btn btn-ghost btn-sm" href="https://github.com/paezao/seed">
+          <svg viewBox="0 0 16 16" aria-hidden="true" class="gh"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          GitHub
+        </a>
       </nav>
     </div>
   </header>
 
   <main>
+    <!-- ============ hero ============ -->
     <section class="hero">
       <div class="wrap hero-grid">
         <div class="hero-copy">
-          <p class="kicker">Open source · MPL-2.0</p>
-          <h1>Software that<br><span class="grow">grows itself.</span></h1>
-          <p class="lead">
+          <p class="kicker reveal"><span class="kicker-dot"></span> Open source · MPL-2.0</p>
+          <h1 class="reveal">Software that<br><span class="grad">grows itself.</span></h1>
+          <p class="lead reveal">
             Plant a Seed and tell it what to become. It writes the code, tests it, lets you try it on a copy of
             your data, and only then goes live, as a new generation you can always roll back.
           </p>
-          <div class="install">
+          <div class="install reveal">
             <div class="code-line">
               <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/paezao/seed/main/install.sh | sh</code>
               <button class="copy" data-copy="install-cmd" aria-label="Copy the install command">Copy</button>
@@ -50,152 +57,261 @@
               <button class="copy" data-copy="new-cmd" aria-label="Copy the command">Copy</button>
             </div>
           </div>
-          <div class="cta">
-            <a class="btn btn-primary" href="https://github.com/paezao/seed#install">Get started</a>
-            <a class="btn btn-ghost" href="https://github.com/paezao/seed/tree/main/docs">Read the docs</a>
+          <div class="cta reveal">
+            <a class="btn btn-primary" href="https://github.com/paezao/seed#install">Get started <span aria-hidden="true">→</span></a>
+            <a class="btn btn-ghost" href="#how">See how it grows</a>
           </div>
         </div>
 
-        <div class="hero-demo" aria-label="A Seed growing: a request in chat becomes a new generation">
-          <div class="window">
-            <div class="window-bar"><i></i><i></i><i></i><span>Family Recipes · control plane</span></div>
-            <div class="window-body">
-              <div class="msg msg-user"><div class="bubble">Become a family recipe book: recipes with ingredients and steps, and search.</div></div>
-              <div class="msg msg-seed">
-                <div class="avatar"><svg viewBox="0 0 24 24"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg></div>
-                <div class="seed-body">
-                  <p>On it. Here's my plan: a recipes table, a page to add them, and search across everything.</p>
-                  <div class="evo">
-                    <div class="evo-head"><span class="evo-kicker">Evolution</span><span class="pill pill-active" id="demo-pill">evolving</span></div>
-                    <div class="evo-title">Become a family recipe book</div>
-                    <div class="phases" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
-                    <div class="evo-foot"><span class="phase-label" id="demo-phase">Planning · 1 of 8</span><span class="cost" id="demo-cost">$0.00</span></div>
-                  </div>
-                </div>
+        <div class="hero-stage" id="stage" aria-label="A Seed sprouting into an app">
+          <svg class="sprout" viewBox="0 0 400 420" aria-hidden="true">
+            <defs>
+              <linearGradient id="g-stem" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#15803d"/><stop offset="1" stop-color="#4ade80"/></linearGradient>
+              <linearGradient id="g-leaf" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#22c55e"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+              <linearGradient id="g-leaf2" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#16a34a"/><stop offset="1" stop-color="#a3e635"/></linearGradient>
+              <radialGradient id="g-soil" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#4ade80" stop-opacity=".35"/><stop offset="1" stop-color="#4ade80" stop-opacity="0"/></radialGradient>
+            </defs>
+            <ellipse cx="200" cy="380" rx="150" ry="22" fill="url(#g-soil)" class="soil-glow"/>
+            <path d="M70 380 Q200 360 330 380" stroke="currentColor" stroke-opacity=".25" stroke-width="2" fill="none"/>
+            <ellipse cx="200" cy="374" rx="16" ry="10" class="seed-shell"/>
+            <path class="stem draw" d="M200 372 C200 320 186 280 196 230 C204 190 214 160 206 110" stroke="url(#g-stem)" stroke-width="9" stroke-linecap="round" fill="none"/>
+            <path class="leaf-a unfold" d="M198 250 C150 250 110 220 98 176 C150 172 192 200 198 250Z" fill="url(#g-leaf2)"/>
+            <path class="leaf-b unfold" d="M202 196 C246 190 286 156 292 108 C240 108 204 146 202 196Z" fill="url(#g-leaf)"/>
+            <path class="leaf-c unfold" d="M206 112 C186 92 182 62 196 38 C218 58 220 88 206 112Z" fill="url(#g-leaf)"/>
+            <g class="sparks"><circle cx="120" cy="140" r="3"/><circle cx="300" cy="200" r="2.5"/><circle cx="260" cy="70" r="2"/><circle cx="140" cy="300" r="2"/><circle cx="320" cy="300" r="3"/></g>
+          </svg>
+
+          <div class="float f-chat" data-depth="18">
+            <div class="mini-bubble">Become a family recipe book, with search.</div>
+          </div>
+          <div class="float f-evo" data-depth="30">
+            <div class="mini-evo">
+              <div class="mini-head"><span>Evolution</span><span class="pill pill-active" id="demo-pill">evolving</span></div>
+              <div class="mini-title">Become a family recipe book</div>
+              <div class="phases" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="mini-foot"><span id="demo-phase">Planning · 1 of 8</span><span id="demo-cost">$0.00</span></div>
+            </div>
+          </div>
+          <div class="float f-live" data-depth="12">
+            <div class="mini-toast"><span class="dot"></span> Generation 2 is live</div>
+          </div>
+          <div class="float f-test" data-depth="24">
+            <div class="mini-chip">✓ 12 tests pass</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ how it grows ============ -->
+    <section id="how" class="section">
+      <div class="wrap">
+        <p class="eyebrow reveal">How it grows</p>
+        <h2 class="reveal">From a seed to your app,<br>one generation at a time.</h2>
+        <div class="growth" id="growth">
+          <svg class="vine" viewBox="0 0 1000 40" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M20 20 C150 0 250 40 375 20 S600 0 625 20 S850 40 980 20" class="vine-path"/>
+          </svg>
+          <ol class="stages">
+            <li class="reveal">
+              <svg viewBox="0 0 80 80" class="stage-art" aria-hidden="true"><ellipse cx="40" cy="64" rx="26" ry="5" class="ground"/><ellipse cx="40" cy="58" rx="9" ry="6" class="seed-shell"/></svg>
+              <h3>Plant</h3>
+              <p><code>seed new recipes</code> gives you a folder with a kernel, a database and an empty app, in its own container.</p>
+            </li>
+            <li class="reveal">
+              <svg viewBox="0 0 80 80" class="stage-art" aria-hidden="true"><ellipse cx="40" cy="64" rx="26" ry="5" class="ground"/><path d="M40 62 V40" class="st"/><path d="M40 46 C30 46 24 40 22 32 C32 32 39 37 40 46Z" class="lf"/><path d="M40 42 C48 41 55 35 56 27 C47 27 41 33 40 42Z" class="lf2"/></svg>
+              <h3>Ask</h3>
+              <p>Tell it what to become in chat, or point at part of the app. It plans first, and asks before guessing.</p>
+            </li>
+            <li class="reveal">
+              <svg viewBox="0 0 80 80" class="stage-art" aria-hidden="true"><ellipse cx="40" cy="64" rx="26" ry="5" class="ground"/><path d="M40 62 V22" class="st"/><path d="M40 50 C28 50 20 42 18 32 C30 32 39 40 40 50Z" class="lf"/><path d="M40 40 C52 39 60 31 62 21 C50 21 41 29 40 40Z" class="lf2"/><path d="M40 26 C34 22 33 14 37 8 C43 13 43 20 40 26Z" class="lf"/></svg>
+              <h3>Try</h3>
+              <p>It builds and tests the change in a sandbox, then lets you try it on a copy of your real data.</p>
+            </li>
+            <li class="reveal">
+              <svg viewBox="0 0 80 80" class="stage-art" aria-hidden="true"><ellipse cx="40" cy="66" rx="26" ry="5" class="ground"/><path d="M40 64 V30" class="st st-thick"/><path d="M40 46 L28 36 M40 40 L52 30" class="st"/><circle cx="40" cy="24" r="16" class="crown"/><circle cx="26" cy="32" r="10" class="crown crown-2"/><circle cx="54" cy="30" r="11" class="crown crown-2"/><circle cx="34" cy="18" r="3" class="fruit"/><circle cx="50" cy="22" r="2.5" class="fruit"/><circle cx="24" cy="30" r="2.5" class="fruit"/></svg>
+              <h3>Live</h3>
+              <p>Apply it: a new generation, a git commit, with your data backed up first. Roll back any time.</p>
+            </li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ point and ask ============ -->
+    <section id="point" class="section section-split">
+      <div class="wrap split">
+        <div class="split-copy">
+          <p class="eyebrow eyebrow-teal reveal">Point and ask</p>
+          <h2 class="reveal">Show it what to change.</h2>
+          <p class="reveal">
+            A little seed lives in the corner of your app. Hover it, drag a box around anything, and say what
+            should change. Your Seed gets a picture of exactly that area, and your words. Nothing is sent until you
+            confirm it.
+          </p>
+          <ul class="ticks reveal">
+            <li>Wears your app's colours and font</li>
+            <li>Only you see it; visitors never do</li>
+            <li>The picture is drawn in your browser</li>
+          </ul>
+        </div>
+        <div class="demo-frame reveal" aria-label="Demo: an area of an app is selected and a change is described">
+          <div class="browser">
+            <div class="browser-bar"><i></i><i></i><i></i><span>recipes.example.com</span></div>
+            <div class="mock-app" id="mock-point">
+              <div class="m-header"><span class="m-logo"></span><span class="m-title">Our Family Recipes</span></div>
+              <div class="m-chart"><span class="m-label">Recipes over time</span><svg viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 45 L30 40 L60 42 L90 30 L120 32 L150 18 L200 8" class="m-line"/></svg></div>
+              <div class="m-row"><span class="m-search"></span><span class="m-btn"></span></div>
+              <div class="m-cards">
+                <div class="m-card"><span class="m-img i1"></span><span class="m-t"></span><span class="m-s"></span></div>
+                <div class="m-card"><span class="m-img i2"></span><span class="m-t"></span><span class="m-s"></span></div>
+                <div class="m-card"><span class="m-img i3"></span><span class="m-t"></span><span class="m-s"></span></div>
               </div>
-              <div class="msg msg-seed msg-live">
-                <div class="avatar"><svg viewBox="0 0 24 24"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg></div>
-                <div class="seed-body"><p><span class="dot"></span> I am now <strong>generation 2</strong>: <em>Family Recipes</em>. 12 tests pass.</p></div>
+              <div class="sel" aria-hidden="true"></div>
+              <div class="ask" aria-hidden="true">
+                <b>What should change here?</b>
+                <div class="ask-input"><span class="typed" data-text="Make the cards bigger, with rounder photos"></span><span class="caret"></span></div>
+                <div class="ask-go">Continue in my control plane</div>
               </div>
+              <svg class="cursor" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3l7 17 2.4-7 7-2.4z"/></svg>
+              <div class="seed-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg></div>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <section id="how" class="section">
-      <div class="wrap">
-        <h2>How it grows</h2>
-        <p class="section-lead">Every change is a generation: planned, built in a sandbox, tested, tried by you, then live. Nothing is ever overwritten.</p>
-        <ol class="steps">
-          <li>
-            <span class="step-n">1</span>
-            <h3>Plant</h3>
-            <p><code>seed new recipes</code> gives you a folder with a kernel, a database and an empty app. It starts in its own container.</p>
-          </li>
-          <li>
-            <span class="step-n">2</span>
-            <h3>Ask</h3>
-            <p>Tell it what to become in chat, or point at part of the app and say what should change. It asks before guessing.</p>
-          </li>
-          <li>
-            <span class="step-n">3</span>
-            <h3>Try</h3>
-            <p>It builds and tests the change on a scratch database, then lets you try it on a copy of your real data.</p>
-          </li>
-          <li>
-            <span class="step-n">4</span>
-            <h3>Live</h3>
-            <p>Apply it and it's a new generation: a git commit, with a backup of your data taken first. Roll back any time.</p>
-          </li>
-        </ol>
+    <!-- ============ try before live ============ -->
+    <section class="section section-split section-alt">
+      <div class="wrap split split-rev">
+        <div class="split-copy">
+          <p class="eyebrow eyebrow-violet reveal">Try before it's live</p>
+          <h2 class="reveal">See it on your real data. Then decide.</h2>
+          <p class="reveal">
+            Every change runs beside the live app, on a copy of your data. Click around, then apply it, ask for
+            changes, or throw it away. Everyone else keeps seeing the live version until you say so.
+          </p>
+          <ul class="ticks ticks-violet reveal">
+            <li>Its own database, no secrets, private network</li>
+            <li>Ask for changes in your own words</li>
+            <li>Get a notification when it's ready</li>
+          </ul>
+        </div>
+        <div class="demo-frame reveal" aria-label="Demo: a new version of an app is previewed before it goes live">
+          <div class="browser">
+            <div class="browser-bar"><i></i><i></i><i></i><span>recipes.example.com</span></div>
+            <div class="mock-app mock-preview" id="mock-preview">
+              <div class="m-header"><span class="m-logo"></span><span class="m-title">Our Family Recipes</span></div>
+              <div class="m-row"><span class="m-search"></span><span class="m-btn"></span></div>
+              <div class="m-cards m-cards-old">
+                <div class="m-line-card"><span class="m-img i1"></span><span class="m-t"></span></div>
+                <div class="m-line-card"><span class="m-img i2"></span><span class="m-t"></span></div>
+              </div>
+              <div class="m-cards m-cards-new">
+                <div class="m-card"><span class="m-img i1"></span><span class="m-t"></span><span class="m-s"></span></div>
+                <div class="m-card"><span class="m-img i2"></span><span class="m-t"></span><span class="m-s"></span></div>
+                <div class="m-card"><span class="m-img i3"></span><span class="m-t"></span><span class="m-s"></span></div>
+              </div>
+              <div class="pbar"><b>Previewing:</b> Photo cards in a grid <span class="pbar-note">a copy of your data</span><span class="pbar-btn">Apply</span></div>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
+    <!-- ============ generations ============ -->
+    <section class="section">
+      <div class="wrap">
+        <p class="eyebrow eyebrow-amber reveal">Generations</p>
+        <h2 class="reveal">Every version is kept. Go back any time, data too.</h2>
+        <p class="section-lead reveal">Each change is a commit and a generation. Your data is copied before every one goes live, so a rollback can bring back the data of then as well.</p>
+        <div class="gens reveal" id="gens" aria-label="A history of generations, with a rollback">
+          <div class="gens-line"></div>
+          <div class="gen" style="--i:0"><span class="gen-dot"></span><b>1</b><span>Initial seed</span></div>
+          <div class="gen" style="--i:1"><span class="gen-dot"></span><b>2</b><span>Recipe book</span></div>
+          <div class="gen" style="--i:2"><span class="gen-dot"></span><b>3</b><span>Search</span></div>
+          <div class="gen" style="--i:3"><span class="gen-dot"></span><b>4</b><span>Photo cards</span></div>
+          <div class="gen gen-bad" style="--i:4"><span class="gen-dot"></span><b>5</b><span>Meal planner</span></div>
+          <div class="gen gen-back" style="--i:5"><span class="gen-dot"></span><b>6</b><span>Back to 4, with its data</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ features ============ -->
     <section id="features" class="section section-alt">
       <div class="wrap">
-        <h2>Everything a living app needs</h2>
-        <p class="section-lead">The kernel does the boring, careful parts, so every app a Seed becomes gets them for free.</p>
+        <p class="eyebrow reveal">Everything a living app needs</p>
+        <h2 class="reveal">The careful parts come built in.</h2>
+        <p class="section-lead reveal">The kernel does the boring, careful work, so every app a Seed becomes gets it for free.</p>
         <div class="features">
-          <article>
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l6.5 15.5 2.3-6.7 6.7-2.3L4 4z"/></svg></div>
-            <h3>Point and ask</h3>
-            <p>Hover the little seed on your app, drag a box around anything and say what should change. It gets a picture of exactly that.</p>
-          </article>
-          <article>
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>
-            <h3>Try before it's live</h3>
-            <p>Each change runs beside the live app on a copy of your data. Apply it, ask for changes, or throw it away.</p>
-          </article>
-          <article>
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v5h5"/></svg></div>
-            <h3>Roll back, with data</h3>
-            <p>Your data is copied before every change goes live, and daily. Go back to any generation, and to its data too.</p>
-          </article>
-          <article>
+          <article class="reveal c-rose">
             <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg></div>
             <h3>Looks after itself</h3>
-            <p>It notices errors and crashes, restarts what fell over, finds the cause and fixes it with a test that proves it.</p>
+            <p>Notices errors and crashes, restarts what fell over, finds the cause and fixes it, with a test that proves it.</p>
           </article>
-          <article>
+          <article class="reveal c-sky">
             <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
             <h3>Routines</h3>
             <p>Tasks it runs on a schedule and reports on, and jobs your app runs, like a weekly digest or a nightly cleanup.</p>
           </article>
-          <article>
+          <article class="reveal c-amber">
             <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-.9-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.6 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.6-3-1.5M12 6.5v1.5M12 16v1.5"/></svg></div>
             <h3>Knows what it costs</h3>
-            <p>Every model call is counted. Watch an evolution's cost tick up live, and set a monthly budget for what it does alone.</p>
+            <p>Every model call is counted. Watch a change's cost tick up live, and set a monthly budget for what it does alone.</p>
           </article>
-          <article>
+          <article class="reveal c-violet">
             <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6.5 2.5 8 2.5 8h-17S6 15.5 6 9"/><path d="M10.3 20.5a2 2 0 0 0 3.4 0"/></svg></div>
             <h3>Tells you when it needs you</h3>
             <p>Notifications on your laptop and phone when a change is ready to try, it has a question, or it found a problem.</p>
           </article>
-          <article>
+          <article class="reveal c-teal">
             <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
             <h3>Locked down by default</h3>
-            <p>Your app has no network except HTTPS to hosts you approve, with only the secrets you grant. Risky actions wait for you.</p>
+            <p>No network except HTTPS to hosts you approve, with only the secrets you grant. Risky actions wait for you.</p>
           </article>
-          <article>
+          <article class="reveal c-green">
             <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg></div>
             <h3>Updates itself</h3>
-            <p>New kernels arrive as signed releases you install from the control plane. If one fails to start, it rolls back on its own.</p>
+            <p>New kernels arrive as signed releases you install from its control plane. If one fails to start, it rolls back.</p>
           </article>
         </div>
       </div>
     </section>
 
-    <section class="section">
+    <!-- ============ screenshots ============ -->
+    <section class="section shots-section">
       <div class="wrap">
-        <h2>See it</h2>
-        <div class="gallery">
-          <figure><img src="assets/chat.jpg" alt="The control plane: a chat with Seed, and an evolution card showing its progress" loading="lazy"><figcaption>Chat, plans and progress, live</figcaption></figure>
-          <figure><img src="assets/point.jpg" alt="Point and ask: an area of the app selected, with a box asking what should change" loading="lazy"><figcaption>Point and ask, right on your app</figcaption></figure>
-          <figure><img src="assets/spending.jpg" alt="The Spending page: this month's model costs by day and by kind" loading="lazy"><figcaption>What every change cost</figcaption></figure>
-          <figure><img src="assets/backups.jpg" alt="The Backups page: copies of the app's data, ready to download or restore" loading="lazy"><figcaption>Backups before every change</figcaption></figure>
+        <p class="eyebrow reveal">The control plane</p>
+        <h2 class="reveal">Its own admin, built in.</h2>
+        <p class="section-lead reveal">Chat, plans and progress, generations, health, spending and backups: everything about your Seed, in one place only you can open.</p>
+        <div class="shots">
+          <figure class="shot shot-left reveal"><div class="shot-frame"><div class="browser-bar"><i></i><i></i><i></i><span>/_seed/spending</span></div><img src="assets/spending.jpg" alt="The Spending page: this month's model costs by day, by kind, and the most expensive changes" loading="lazy"></div></figure>
+          <figure class="shot shot-right reveal"><div class="shot-frame"><div class="browser-bar"><i></i><i></i><i></i><span>/_seed/backups</span></div><img src="assets/backups.jpg" alt="The Backups page: daily copies and copies before every change, ready to download or restore" loading="lazy"></div></figure>
+          <figure class="shot shot-main reveal"><div class="shot-frame"><div class="browser-bar"><i></i><i></i><i></i><span>/_seed · Chat</span></div><img src="assets/chat.jpg" alt="Chat with Seed: it explains its plan, and an evolution card shows the change is done" loading="lazy"></div></figure>
         </div>
       </div>
     </section>
 
+    <!-- ============ under the hood ============ -->
     <section class="section section-alt">
       <div class="wrap two">
-        <div>
-          <h2>Under the hood</h2>
+        <div class="reveal">
+          <p class="eyebrow">Under the hood</p>
+          <h2>Careful by construction.</h2>
           <ul class="checks">
             <li>One container per Seed, with its own PostgreSQL, or an external one with <code>DATABASE_URL</code>.</li>
-            <li>Every change built and tested in a sandbox (bubblewrap) with a scratch database. Your live data is out of reach.</li>
+            <li>Every change built and tested in a sandbox with a scratch database. Your live data is out of reach.</li>
             <li>A kernel boundary: the app it becomes can't change the parts that keep it safe.</li>
             <li>Git is the source of truth. Every generation is a commit; history is never rewritten.</li>
             <li>Any model through OpenRouter, with your own key. Keys are passed at start, never stored.</li>
           </ul>
           <p><a href="https://github.com/paezao/seed/blob/main/docs/architecture.md">Architecture →</a> · <a href="https://github.com/paezao/seed/blob/main/docs/security.md">Security →</a></p>
         </div>
-        <div>
-          <h2>Your app is yours</h2>
+        <div class="reveal">
+          <p class="eyebrow eyebrow-amber">Yours</p>
+          <h2>Your app is yours.</h2>
           <p>
-            Seed is open source under the MPL-2.0. The app your Seed becomes is yours, under the MIT license:
-            take it anywhere. A Seed runs anywhere Docker does: your laptop, a VPS, or Kubernetes, with a volume
+            Seed is open source under the MPL-2.0. The app your Seed becomes is yours, under the MIT license: take
+            it anywhere. A Seed runs anywhere Docker does, from your laptop to a VPS or Kubernetes, with a volume
             and optionally an external database.
           </p>
           <p><a href="https://github.com/paezao/seed/blob/main/docs/hosting.md">Hosting a Seed →</a></p>
@@ -203,16 +319,18 @@
       </div>
     </section>
 
+    <!-- ============ final ============ -->
     <section class="section final">
       <div class="wrap">
-        <h2>Plant one</h2>
-        <div class="install install-center">
+        <svg class="final-sprout" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg>
+        <h2 class="reveal">Plant one.</h2>
+        <div class="install install-center reveal">
           <div class="code-line">
             <code id="install-cmd-2">curl -fsSL https://raw.githubusercontent.com/paezao/seed/main/install.sh | sh</code>
             <button class="copy" data-copy="install-cmd-2" aria-label="Copy the install command">Copy</button>
           </div>
         </div>
-        <p class="muted small">Needs Docker. Or build it yourself: <code>git clone https://github.com/paezao/seed &amp;&amp; cd seed &amp;&amp; make install</code></p>
+        <p class="muted small reveal">Needs Docker. Or build it yourself: <code>git clone https://github.com/paezao/seed &amp;&amp; cd seed &amp;&amp; make install</code></p>
       </div>
     </section>
   </main>
@@ -227,37 +345,6 @@
     </div>
   </footer>
 
-  <script>
-    // The demo evolution: its label, cost and badge follow the bars.
-    (() => {
-      const phases = ['Planning', 'Evolving', 'Building', 'Testing', 'Launching', 'Checking health', 'Reflecting', 'Applying'];
-      const label = document.getElementById('demo-phase'), cost = document.getElementById('demo-cost'), pill = document.getElementById('demo-pill');
-      const done = () => {
-        label.textContent = 'Done';
-        cost.textContent = '$0.61';
-        pill.textContent = 'complete';
-        pill.className = 'pill pill-done';
-      };
-      if (matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
-      phases.forEach((p, i) => setTimeout(() => {
-        label.textContent = p + ' \u00b7 ' + (i + 1) + ' of 8';
-        cost.textContent = '$' + (0.07 * (i + 1)).toFixed(2);
-      }, 600 + i * 400));
-      setTimeout(done, 3900);
-    })();
-
-    for (const b of document.querySelectorAll('[data-copy]')) {
-      b.addEventListener('click', async () => {
-        const text = document.getElementById(b.dataset.copy).textContent;
-        try {
-          await navigator.clipboard.writeText(text);
-          b.textContent = 'Copied';
-        } catch {
-          b.textContent = 'Select it';
-        }
-        setTimeout(() => { b.textContent = 'Copy'; }, 1600);
-      });
-    }
-  </script>
+  <script src="site.js" defer></script>
 </body>
 </html>
