@@ -26,7 +26,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"regexp"
-	goruntime "runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -149,6 +148,9 @@ func cmdNew(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := checkSeedHome(dir); err != nil {
+		return err
+	}
 	if err := template.Create(ctx, dir, filepath.Base(name)); err != nil {
 		return err
 	}
@@ -228,17 +230,7 @@ func loginLink(ctx context.Context, addr, root string) (string, error) {
 }
 
 func openBrowser(link string) {
-	opener := "xdg-open"
-	switch goruntime.GOOS {
-	case "darwin":
-		opener = "open"
-	case "windows":
-		opener = "rundll32"
-	}
-	args := []string{link}
-	if goruntime.GOOS == "windows" {
-		args = []string{"url.dll,FileProtocolHandler", link}
-	}
+	opener, args := browserCommand(link)
 	if err := exec.Command(opener, args...).Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "  Couldn't open a browser (%v). Open this sign-in link (one use, 15 minutes):\n  %s\n", err, link)
 	}

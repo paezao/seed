@@ -51,6 +51,7 @@ var groups = []struct {
 		{"notifications", "Notifications", "Web Push when it needs you"},
 	}},
 	{"Running one", []doc{
+		{"windows", "Windows (WSL2)", "Running Seed on Windows"},
 		{"hosting", "Hosting", "A volume and an external PostgreSQL"},
 		{"updates", "Kernel updates", "Signed releases and automatic rollback"},
 		{"releasing", "Releasing", "How a version reaches people"},

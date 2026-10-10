@@ -29,7 +29,8 @@ Say *"Become a todo application. I need to create, complete and delete tasks."* 
 curl -fsSL https://raw.githubusercontent.com/paezao/seed/main/install.sh | sh
 ```
 
-That puts the `seed` CLI in `~/.local/bin` (Linux and macOS; on Windows, run it inside WSL2),
+That puts the `seed` CLI in `~/.local/bin` (Linux and macOS; on Windows, run it inside WSL2:
+see [Windows](docs/windows.md)),
 after checking it against the release's checksums. `SEED_BIN_DIR` picks another folder, and
 `SEED_VERSION=2026.10.10` installs a specific release.
 You also need:
@@ -114,6 +115,7 @@ seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # 
 - [Skills](docs/skills.md): how a Seed acquires reusable capabilities
 - [Knowledge](docs/knowledge.md): how a Seed keeps continuity of identity
 - [Kernel updates](docs/updates.md): signed releases, updating from the control plane, automatic rollback
+- [Windows (WSL2)](docs/windows.md): running Seed on Windows
 - [Hosting](docs/hosting.md): deploying a Seed with a volume and an external PostgreSQL
 - [Health](docs/health.md): noticing, diagnosing and fixing what goes wrong in the app
 - [Routines](docs/routines.md): what a Seed does on a schedule (agent routines and jobs)

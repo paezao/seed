@@ -15,8 +15,16 @@ done
 os="$(uname -s | tr '[:upper:]' '[:lower:]')"
 case "$os" in
   linux|darwin) ;;
-  *) echo "seed runs on Linux and macOS (on Windows, install it inside WSL2)" >&2; exit 1 ;;
+  mingw*|msys*|cygwin*)
+    echo "On Windows, seed runs inside WSL2. In PowerShell: wsl --install, then run this installer in the Ubuntu terminal." >&2
+    echo "Details: https://paezao.github.io/seed/docs/windows.html" >&2
+    exit 1 ;;
+  *) echo "seed runs on Linux and macOS (on Windows, inside WSL2)" >&2; exit 1 ;;
 esac
+wsl=false
+if [ "$os" = linux ] && { [ -n "${WSL_DISTRO_NAME:-}" ] || grep -qi microsoft /proc/sys/kernel/osrelease 2>/dev/null; }; then
+  wsl=true
+fi
 arch="$(uname -m)"
 case "$arch" in
   x86_64|amd64) arch=amd64 ;;
@@ -76,7 +84,15 @@ case ":$PATH:" in
     ;;
 esac
 if ! command -v docker >/dev/null 2>&1 && ! command -v podman >/dev/null 2>&1; then
-  echo "note: seed runs each Seed in a container: install Docker (or Podman) first"
+  if [ "$wsl" = true ]; then
+    echo "note: install Docker Desktop on Windows and turn on its WSL integration for this distro"
+    echo "      (Settings → Resources → WSL integration)"
+  else
+    echo "note: seed runs each Seed in a container: install Docker (or Podman) first"
+  fi
+fi
+if [ "$wsl" = true ]; then
+  echo "note: in WSL, keep Seeds in your Linux home (cd ~), not on /mnt/c"
 fi
 echo
 echo "Seed needs Docker running (or Podman, with SEED_CONTAINER_ENGINE=podman) and an OpenRouter key. Then:"

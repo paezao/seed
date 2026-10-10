@@ -68,8 +68,11 @@ func cmdRun(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := checkSeedHome(cfg.Root); err != nil {
+		return err
+	}
 	if _, err := engine(ctx, "info", "--format", "{{.ServerVersion}}"); err != nil {
-		return fmt.Errorf("I run in a container: install Docker (or Podman, with SEED_CONTAINER_ENGINE=podman) and make sure it is running (%v)", err)
+		return fmt.Errorf("I run in a container: install Docker (or Podman, with SEED_CONTAINER_ENGINE=podman) and make sure it is running (%v)%s", err, engineHint())
 	}
 	name := containerName(ctx, cfg)
 
