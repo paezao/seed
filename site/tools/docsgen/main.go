@@ -194,8 +194,18 @@ const mermaidScript = `  <dialog class="diagram-dialog" id="diagram-dialog"><but
     const big = dialog.querySelector('.diagram-big');
     for (const fig of document.querySelectorAll('figure.diagram')) {
       fig.querySelector('.diagram-expand').addEventListener('click', () => {
-        big.replaceChildren(fig.querySelector('svg').cloneNode(true));
+        // Fit the whole diagram on the screen, centred (at most twice its size).
+        const svg = fig.querySelector('svg').cloneNode(true);
+        const vb = svg.viewBox.baseVal;
+        svg.removeAttribute('width');
+        svg.removeAttribute('height');
+        svg.removeAttribute('style');
+        big.replaceChildren(svg);
         dialog.showModal();
+        const room = big.getBoundingClientRect();
+        const k = Math.min((room.width - 56) / vb.width, (window.innerHeight * 0.92 - 90) / vb.height, 2);
+        svg.style.width = Math.round(vb.width * k) + 'px';
+        svg.style.height = Math.round(vb.height * k) + 'px';
       });
     }
     dialog.querySelector('.diagram-close').addEventListener('click', () => dialog.close());
