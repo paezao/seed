@@ -5,6 +5,7 @@
 #   make test    run kernel tests (needs `make up`; Docker tests need the image)
 #   make lint    vet + format check + typecheck
 #   make e2e     the canonical Seed -> todo -> priorities run (real model; costs money)
+#   make site    preview the website (site/) at http://localhost:8000
 
 GO      ?= go
 # Kernel version stamped into the template (what `seed upgrade` installs).
@@ -17,7 +18,7 @@ GID     := $(shell id -g)
 SECURITY := --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=cmd/seed/seccomp.json \
             --security-opt apparmor=unconfined --security-opt systempaths=unconfined
 
-.PHONY: up build control template install test lint e2e clean
+.PHONY: up build control template install test lint e2e site clean
 
 up: build
 	$(BIN) image
@@ -63,6 +64,9 @@ lint:
 	@test -z "$$(gofmt -l kernel cmd control)" || (gofmt -l kernel cmd control; exit 1)
 	cd control/web && npx tsc --noEmit
 	cd organism && $(GO) vet ./...
+
+site:
+	python3 -m http.server -d site 8000
 
 e2e: build
 	SEED_E2E=1 $(GO) test -v -count=1 -timeout 120m ./e2e/...
