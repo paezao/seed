@@ -621,3 +621,15 @@ h1 { font-size: clamp(44px, 6.4vw, 74px); font-weight: 780; letter-spacing: -0.0
   .docs-group { width: 100%; }
   .prose h1 { font-size: 32px; }
 }
+/* diagrams in the docs */
+.prose figure.diagram { position: relative; margin: 0 0 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
+.diagram-scroll { overflow-x: auto; padding: 22px 18px 16px; }
+.diagram-scroll pre.mermaid { margin: 0; padding: 0; border: 0; background: none; text-align: center; }
+.diagram-scroll svg { display: block; margin: 0 auto; min-width: 620px; height: auto; }
+.diagram-expand { position: absolute; top: 10px; right: 10px; height: 28px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface-2); color: var(--fg-2); font: 600 12px var(--sans); cursor: pointer; }
+.diagram-expand:hover { color: var(--fg); border-color: var(--accent); }
+.diagram-dialog { width: min(96vw, 1600px); max-height: 92vh; padding: 0; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--fg); box-shadow: var(--shadow-lg); }
+.diagram-dialog::backdrop { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(4px); }
+.diagram-big { padding: 40px 28px 28px; overflow: auto; max-height: 92vh; }
+.diagram-big svg { display: block; width: 100%; height: auto; max-width: none; }
+.diagram-close { position: absolute; top: 10px; right: 12px; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--fg); font-size: 18px; cursor: pointer; z-index: 1; }

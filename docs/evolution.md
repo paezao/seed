@@ -21,15 +21,16 @@ stateDiagram-v2
     running --> mutating: repair
     observing --> mutating: repair
     reflecting --> ready
-    ready --> applying
+    ready --> mutating: you ask for changes
+    ready --> applying: you apply it
+    ready --> cancelled: you discard it
     applying --> complete
-    applying --> rolled_back: new generation unhealthy
+    applying --> rolled_back: unhealthy
     complete --> [*]
-    note right of mutating
-        any active state → failed | cancelled | needs_input
-        needs_input → back to the interrupted state
-    end note
 ```
+
+Any active state can also end as **failed** or **cancelled**, or pause at
+**needs_input** (a question for you) and resume where it was.
 
 ## Phases
 

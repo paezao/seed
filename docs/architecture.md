@@ -13,32 +13,38 @@ SEED
 
 ```mermaid
 flowchart TB
-    owner([Owner]) -- "browser: / and /_seed" --> port
+    owner(["You, in a browser"])
+    visitors(["Your app's visitors"])
 
-    subgraph container["One container = one Seed's body (seed-runtime image)"]
-        port["port 8080"] --> kernel
-        subgraph kernel["Kernel process"]
-            cp["Control plane /_seed"]
-            orch["Evolution orchestrator"]
-            agent["Agent loop + tools"]
-            proxy["Reverse proxy /"]
-        end
-        pg[("Private PostgreSQL<br/>Unix socket only")]
-        subgraph bw1["bubblewrap"]
-            evo["Evolution workspace<br/>(git worktree)"]
-        end
-        subgraph bw2["bubblewrap"]
-            live["Live organism<br/>organism/bin/server"]
-        end
-        kernel --> pg
-        orch --> evo
-        proxy --> live
-        evo -. socket .-> pg
-        live -. socket .-> pg
+    subgraph kernel["Kernel · one container per Seed"]
+        cp["Control plane · /_seed"]
+        proxy["Reverse proxy · /"]
+        orch["Evolution orchestrator<br/>agent + tools"]
+        egress["Egress proxy<br/>approved HTTPS hosts"]
     end
 
-    folder[("The Seed's folder (mounted at /seed)<br/>code · git history · knowledge · skills<br/>.seed/postgres · .seed/secrets")]
-    container --- folder
+    subgraph sandboxes["bubblewrap sandboxes"]
+        live["Live app"]
+        preview["Preview<br/>on a copy of the data"]
+        evo["Evolution workspace<br/>git worktree"]
+    end
+
+    model(["Model provider · OpenRouter"])
+    pg[("PostgreSQL<br/>private, or DATABASE_URL")]
+    folder[("The Seed's folder or volume<br/>code · git history · knowledge · backups")]
+
+    owner --> cp
+    visitors --> proxy
+    cp --> orch
+    proxy --> live
+    orch --> preview
+    orch --> evo
+    orch --> model
+    live -. "network only via" .-> egress
+    live --> pg
+    preview --> pg
+    evo --> pg
+    pg --- folder
 ```
 
 ## Kernel (`kernel/`)

@@ -24,9 +24,24 @@ jobs:
       TAG: ${{ github.event.release.tag_name || inputs.tag }}
       IMAGE: ghcr.io/${{ github.repository }}
     steps:
+      # Only published releases become images: a manual run can't push (and
+      # sign) an arbitrary ref, and :latest moves only for the latest release.
+      - name: Check the release
+        id: rel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$'; then
+            echo "::error::$TAG isn't a release tag"; exit 1
+          fi
+          draft="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)"
+          if [ "$draft" != "false" ]; then echo "::error::$TAG isn't a published release"; exit 1; fi
+          latest="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          echo "latest=$([ "$latest" = "$TAG" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ env.TAG }}
+          ref: refs/tags/${{ env.TAG }}
       - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -36,9 +51,13 @@ jobs:
           password: ${{ github.token }}
       - name: Tags
         id: tags
+        env:
+          LATEST: ${{ steps.rel.outputs.latest }}
         run: |
           v="${TAG#v}"
-          echo "list=$IMAGE:$v,$IMAGE:latest" >> "$GITHUB_OUTPUT"
+          list="$IMAGE:$v"
+          if [ "$LATEST" = true ]; then list="$list,$IMAGE:latest"; fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0

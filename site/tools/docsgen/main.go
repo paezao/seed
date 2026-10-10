@@ -138,6 +138,71 @@ func render(md goldmark.Markdown, d doc, all []doc, src []byte) ([]byte, error) 
 	return page(title, d, all, toc, content, hasMermaid), nil
 }
 
+// mermaidScript draws the diagrams in the site's colours (light or dark), at
+// a readable size (wide ones scroll), each with a full-screen view.
+const mermaidScript = `  <dialog class="diagram-dialog" id="diagram-dialog"><button class="diagram-close" aria-label="Close">×</button><div class="diagram-big"></div></dialog>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    const css = getComputedStyle(document.documentElement);
+    const v = (n) => css.getPropertyValue(n).trim();
+    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis', padding: 12, nodeSpacing: 28, rankSpacing: 46 },
+      state: { useMaxWidth: true },
+      themeVariables: {
+        fontSize: '15px',
+        background: v('--surface'),
+        primaryColor: v('--surface-2'),
+        primaryTextColor: v('--fg'),
+        primaryBorderColor: v('--accent'),
+        secondaryColor: v('--surface'),
+        tertiaryColor: v('--bg-sub'),
+        lineColor: v('--muted'),
+        textColor: v('--fg'),
+        clusterBkg: dark ? 'rgba(74,222,128,0.05)' : 'rgba(21,128,61,0.04)',
+        clusterBorder: v('--border-strong'),
+        edgeLabelBackground: v('--surface'),
+        nodeTextColor: v('--fg'),
+        labelBackgroundColor: v('--surface'),
+        stateLabelColor: v('--fg'),
+        transitionColor: v('--muted'),
+        transitionLabelColor: v('--fg-2'),
+        noteBkgColor: v('--surface-2'),
+        noteTextColor: v('--fg'),
+        noteBorderColor: v('--border-strong'),
+      },
+    });
+    const blocks = [...document.querySelectorAll('pre.mermaid')];
+    for (const pre of blocks) {
+      const fig = document.createElement('figure');
+      fig.className = 'diagram';
+      pre.replaceWith(fig);
+      const scroll = document.createElement('div');
+      scroll.className = 'diagram-scroll';
+      scroll.appendChild(pre);
+      const expand = document.createElement('button');
+      expand.className = 'diagram-expand';
+      expand.type = 'button';
+      expand.textContent = 'Expand';
+      fig.append(scroll, expand);
+    }
+    await mermaid.run({ nodes: blocks });
+    const dialog = document.getElementById('diagram-dialog');
+    const big = dialog.querySelector('.diagram-big');
+    for (const fig of document.querySelectorAll('figure.diagram')) {
+      fig.querySelector('.diagram-expand').addEventListener('click', () => {
+        big.replaceChildren(fig.querySelector('svg').cloneNode(true));
+        dialog.showModal();
+      });
+    }
+    dialog.querySelector('.diagram-close').addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+  </script>
+`
+
 var mermaidRe = regexp.MustCompile(`(?s)<pre><code class="language-mermaid">(.*?)</code></pre>`)
 
 func plain(n ast.Node, src []byte) string {
@@ -294,12 +359,7 @@ func foot(mermaid bool) string {
   </footer>
 `
 	if mermaid {
-		s += `  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    const dark = matchMedia('(prefers-color-scheme: dark)').matches;
-    mermaid.initialize({ startOnLoad: true, theme: dark ? 'dark' : 'neutral', fontFamily: 'Inter, system-ui, sans-serif' });
-  </script>
-`
+		s += mermaidScript
 	}
 	return s + "</body>\n</html>\n"
 }
