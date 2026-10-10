@@ -1,0 +1,80 @@
+<!doctype html>
+<!-- The social preview image (1200x630). Render it with `make og`. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@600&display=block">
+<style>
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    position: relative; background: #0a0b0b; color: #ececea; font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .glow { position: absolute; border-radius: 50%; filter: blur(70px); }
+  .g1 { width: 700px; height: 700px; right: -160px; top: -220px; background: radial-gradient(closest-side, rgba(74, 222, 128, 0.32), transparent); }
+  .g2 { width: 620px; height: 620px; left: -260px; bottom: -300px; background: radial-gradient(closest-side, rgba(45, 212, 191, 0.22), transparent); }
+  .g3 { width: 480px; height: 480px; right: 180px; bottom: -280px; background: radial-gradient(closest-side, rgba(251, 191, 36, 0.14), transparent); }
+  .grid { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px); background-size: 48px 48px; -webkit-mask-image: radial-gradient(ellipse at 70% 40%, black, transparent 75%); }
+
+  .copy { position: absolute; left: 80px; top: 92px; width: 640px; }
+  .brand { display: flex; align-items: center; gap: 14px; font-size: 30px; font-weight: 600; letter-spacing: -0.01em; }
+  .brand svg { width: 44px; height: 44px; }
+  h1 { margin: 44px 0 0; font-size: 92px; line-height: 0.98; font-weight: 800; letter-spacing: -0.045em; }
+  .grad { background: linear-gradient(100deg, #4ade80 10%, #2dd4bf 55%, #38bdf8 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  p { margin: 30px 0 0; font-size: 26px; line-height: 1.4; color: #c9cbc8; width: 500px; }
+  .url { position: absolute; left: 80px; bottom: 62px; display: flex; align-items: center; gap: 12px; font: 600 21px 'JetBrains Mono', monospace; color: #8b908c; }
+  .pill { padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(74, 222, 128, 0.3); background: rgba(74, 222, 128, 0.08); color: #4ade80; font: 600 17px 'Inter', sans-serif; }
+
+  .plant { position: absolute; right: 70px; top: 40px; width: 430px; height: 560px; }
+  .card { position: absolute; background: rgba(18, 20, 19, 0.88); border: 1px solid #2a2e2b; border-radius: 18px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55); }
+  .evo { right: 282px; bottom: 44px; width: 300px; padding: 16px 18px; }
+  .evo-head { display: flex; justify-content: space-between; align-items: center; font-size: 13px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: #8b908c; }
+  .done { font: 600 14px 'JetBrains Mono', monospace; color: #4ade80; background: rgba(74, 222, 128, 0.1); padding: 3px 10px; border-radius: 999px; text-transform: none; letter-spacing: 0; }
+  .evo-title { margin: 8px 0 14px; font-size: 21px; font-weight: 600; }
+  .bars { display: flex; gap: 5px; }
+  .bars i { flex: 1; height: 7px; border-radius: 4px; background: linear-gradient(90deg, #4ade80, #2dd4bf); }
+  .evo-foot { display: flex; justify-content: space-between; margin-top: 12px; font-size: 16px; color: #8b908c; }
+  .toast { right: 60px; top: 150px; padding: 13px 20px; display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 600; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 0 6px rgba(74, 222, 128, 0.15); }
+</style>
+</head>
+<body>
+  <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
+  <div class="grid"></div>
+
+  <div class="copy">
+    <div class="brand">
+      <svg viewBox="0 0 24 24"><path d="M12 21v-9" stroke="#4ade80" stroke-width="1.9" stroke-linecap="round" fill="none"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" fill="#4ade80"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" fill="#4ade80" opacity=".6"/></svg>
+      Seed
+    </div>
+    <h1>Software that<br><span class="grad">grows itself.</span></h1>
+    <p>Tell it what to become. It writes, tests and ships every change to itself, and you can always roll back.</p>
+  </div>
+  <div class="url"><span class="pill">Open source</span> paezao.github.io/seed</div>
+
+  <svg class="plant" viewBox="0 0 400 520">
+    <defs>
+      <linearGradient id="s" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#15803d"/><stop offset="1" stop-color="#4ade80"/></linearGradient>
+      <linearGradient id="l1" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#22c55e"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+      <linearGradient id="l2" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#16a34a"/><stop offset="1" stop-color="#a3e635"/></linearGradient>
+      <radialGradient id="soil" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#4ade80" stop-opacity=".45"/><stop offset="1" stop-color="#4ade80" stop-opacity="0"/></radialGradient>
+    </defs>
+    <ellipse cx="220" cy="480" rx="170" ry="26" fill="url(#soil)"/>
+    <path d="M70 480 Q220 458 370 480" stroke="#ececea" stroke-opacity=".2" stroke-width="2" fill="none"/>
+    <ellipse cx="220" cy="473" rx="19" ry="12" fill="#ca8a04"/>
+    <path d="M220 470 C220 410 202 360 214 300 C224 250 236 210 226 140" stroke="url(#s)" stroke-width="11" stroke-linecap="round" fill="none"/>
+    <path d="M217 330 C160 330 110 294 96 240 C160 236 210 270 217 330Z" fill="url(#l2)"/>
+    <path d="M222 262 C276 255 324 213 332 154 C268 154 225 200 222 262Z" fill="url(#l1)"/>
+    <path d="M226 144 C202 120 197 82 214 52 C241 76 244 113 226 144Z" fill="url(#l1)"/>
+    <g fill="#4ade80"><circle cx="110" cy="170" r="4" opacity=".7"/><circle cx="350" cy="250" r="3" opacity=".5"/><circle cx="300" cy="80" r="3" opacity=".6"/><circle cx="130" cy="400" r="3" opacity=".4"/></g>
+  </svg>
+
+  <div class="card toast"><span class="dot"></span> Generation 2 is live</div>
+  <div class="card evo">
+    <div class="evo-head"><span>Evolution</span><span class="done">complete</span></div>
+    <div class="evo-title">Become a family recipe book</div>
+    <div class="bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <div class="evo-foot"><span>Done · 12 tests pass</span><span>$0.61</span></div>
+  </div>
+</body>
+</html>

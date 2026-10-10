@@ -6,6 +6,7 @@
 #   make lint    vet + format check + typecheck
 #   make e2e     the canonical Seed -> todo -> priorities run (real model; costs money)
 #   make site    preview the website (site/) at http://localhost:8000
+#   make og      render the social preview image (site/og/og.html -> site/assets/og.png)
 
 GO      ?= go
 # Kernel version stamped into the template (what `seed upgrade` installs).
@@ -18,7 +19,7 @@ GID     := $(shell id -g)
 SECURITY := --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=cmd/seed/seccomp.json \
             --security-opt apparmor=unconfined --security-opt systempaths=unconfined
 
-.PHONY: up build control template install test lint e2e site clean
+.PHONY: up build control template install test lint e2e site og clean
 
 up: build
 	$(BIN) image
@@ -67,6 +68,10 @@ lint:
 
 site:
 	python3 -m http.server -d site 8000
+
+og:
+	chromium --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 \
+	  --virtual-time-budget=5000 --screenshot=site/assets/og.png "file://$(CURDIR)/site/og/og.html"
 
 e2e: build
 	SEED_E2E=1 $(GO) test -v -count=1 -timeout 120m ./e2e/...
