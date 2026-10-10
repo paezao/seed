@@ -137,7 +137,7 @@ h1 { font-size: clamp(44px, 6.4vw, 74px); font-weight: 780; letter-spacing: -0.0
 .cta { display: flex; gap: 10px; margin-top: 24px; flex-wrap: wrap; }
 
 /* hero stage: the sprout and its floating cards */
-.hero-stage { position: relative; height: 480px; }
+.hero-stage { position: relative; height: 480px; min-width: 0; }
 .sprout { position: absolute; left: 50%; top: 50%; width: 420px; max-width: 100%; transform: translate(-50%, -50%); color: var(--fg); overflow: visible; }
 .seed-shell { fill: #a16207; }
 @media (prefers-color-scheme: dark) { .seed-shell { fill: #ca8a04; } }
@@ -172,10 +172,10 @@ h1 { font-size: clamp(44px, 6.4vw, 74px); font-weight: 780; letter-spacing: -0.0
 @keyframes glow { to { opacity: 0.55; } }
 
 .float { position: absolute; transition: transform 0.25s ease-out; will-change: transform; }
-.f-chat { top: 8%; left: -2%; }
-.f-evo { bottom: 6%; left: -12%; width: 270px; }
-.f-live { top: 18%; right: 0; }
-.f-test { bottom: 30%; right: -4%; }
+.f-chat { top: 6%; left: 0; }
+.f-evo { bottom: 2%; right: 0; width: 260px; }
+.f-live { top: 20%; right: 0; }
+.f-test { bottom: 34%; left: 2%; }
 .mini-bubble, .mini-evo, .mini-toast, .mini-chip {
   background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(10px);
   border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg); font-size: 13.5px;
@@ -441,7 +441,6 @@ h1 { font-size: clamp(44px, 6.4vw, 74px); font-weight: 780; letter-spacing: -0.0
   .gens-line { display: none; }
   .section { padding: 72px 0; }
   .lead { font-size: 17px; }
-  .f-evo { left: 0; width: 240px; }
-  .f-chat { left: 0; }
+  .f-evo { width: 230px; }
   .mock-app { height: 320px; }
 }
