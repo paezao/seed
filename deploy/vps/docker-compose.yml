@@ -1,0 +1,55 @@
+# A Seed on a server: the Seed, and Caddy in front of it for HTTPS.
+# setup.sh writes this to /opt/seed with a .env next to it; see docs/vps.md.
+name: seed
+
+services:
+  seed:
+    image: ${SEED_IMAGE:-ghcr.io/paezao/seed:latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SEED_ALLOWED_HOSTS: ${SEED_DOMAIN}
+      SEED_TRUSTED_PROXIES: "1" # Caddy is in front
+    volumes:
+      - seed:/seed
+    # What `seed run` does locally: the Seed sandboxes its experiments and its
+    # app with bubblewrap, which needs this seccomp profile (Docker's default
+    # plus the calls bubblewrap needs) and an unmasked /proc. Nothing else.
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=./seccomp.json
+      - apparmor=unconfined
+      - systempaths=unconfined
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,exec,nosuid,nodev,size=2g
+    pids_limit: 4096
+    mem_limit: ${SEED_MEMORY:-3g}
+    expose: ["8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/_seed/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15m # the first boot plants the Seed and builds its kernel
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    environment:
+      SEED_DOMAIN: ${SEED_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [seed]
+
+volumes:
+  seed: # everything the Seed is: its code, history, knowledge, database, backups
+  caddy-data: # HTTPS certificates
+  caddy-config:

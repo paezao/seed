@@ -1,0 +1,8 @@
+# HTTPS for the Seed (certificates from Let's Encrypt, renewed automatically).
+{$SEED_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy seed:8080 {
+		# The control plane streams live events: pass them on at once.
+		flush_interval -1
+	}
+}

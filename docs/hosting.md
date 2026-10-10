@@ -1,5 +1,8 @@
 # Hosting a Seed
 
+The quickest way: [host on a server](vps.md), one command on any VPS. This
+page covers the image itself, for other platforms.
+
 A Seed is a folder: its code, its git history, its knowledge and (by default)
 its database. To host one, put that folder on a volume and run the deploy
 image. Everything else is environment variables.

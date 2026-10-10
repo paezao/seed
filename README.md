@@ -82,8 +82,9 @@ cd myapp && seed run -e OPENROUTER_API_KEY --open   # later: start it again
   app's pages that takes you back to it.
 - **Update itself.** New kernels arrive as signed releases you install from its control
   plane, and it rolls back on its own if one fails to start ([updates](docs/updates.md)).
-- **Move out.** The same image runs anywhere Docker does, with a volume and optionally an
-  external PostgreSQL ([hosting](docs/hosting.md)).
+- **Move out.** Put it online on any server with HTTPS in one command ([host on a server](docs/vps.md)).
+  The same image runs anywhere Docker does, with a volume and optionally an external PostgreSQL
+  ([hosting](docs/hosting.md)).
 
 CLI:
 
@@ -116,6 +117,7 @@ seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # 
 - [Knowledge](docs/knowledge.md): how a Seed keeps continuity of identity
 - [Kernel updates](docs/updates.md): signed releases, updating from the control plane, automatic rollback
 - [Windows (WSL2)](docs/windows.md): running Seed on Windows
+- [Host on a server](docs/vps.md): a VPS with HTTPS in one command
 - [Hosting](docs/hosting.md): deploying a Seed with a volume and an external PostgreSQL
 - [Health](docs/health.md): noticing, diagnosing and fixing what goes wrong in the app
 - [Routines](docs/routines.md): what a Seed does on a schedule (agent routines and jobs)

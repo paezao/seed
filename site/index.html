@@ -364,6 +364,29 @@
       </div>
     </section>
 
+    <!-- ============ host it ============ -->
+    <section class="section host">
+      <div class="wrap two">
+        <div class="reveal">
+          <p class="eyebrow eyebrow-teal">Put it online</p>
+          <h2>Your own server, one command.</h2>
+          <p>Any Linux server with Docker: a VPS from Hetzner, DigitalOcean or AWS, or a box at home. One command installs what's missing, starts your Seed with HTTPS, and prints where to sign in. No domain yet? It gets one from sslip.io.</p>
+          <p><a href="docs/vps.html">Host on a server →</a></p>
+        </div>
+        <div class="reveal host-steps">
+          <div class="code-line host-cmd">
+            <code id="vps-cmd">curl -fsSL https://raw.githubusercontent.com/paezao/seed/main/deploy/vps/setup.sh | sudo OPENROUTER_API_KEY=sk-or-… sh</code>
+            <button class="copy" data-copy="vps-cmd" aria-label="Copy the server setup command">Copy</button>
+          </div>
+          <ul class="ticks">
+            <li>HTTPS from Let's Encrypt, renewed by Caddy</li>
+            <li>Its sandboxes work as on your laptop</li>
+            <li>Your server, your data, your model key</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
     <!-- ============ final ============ -->
     <section class="section final">
       <div class="wrap">
