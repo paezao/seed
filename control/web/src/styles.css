@@ -1482,3 +1482,7 @@ fieldset:disabled .provider-card { cursor: default; opacity: 0.7; }
 .rollback-data { display: inline-flex; align-items: center; gap: 5px; color: var(--fg-2); cursor: pointer; white-space: nowrap; }
 .rollback-data input { accent-color: var(--accent); margin: 0; }
 @media (max-width: 640px) { .backup { flex-direction: column; } }
+
+/* Notifications */
+.notify-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 4px 0 8px; }
+.notify-kinds { display: grid; gap: 12px; }

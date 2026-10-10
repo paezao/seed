@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api, errorMessage, type ModelConfig, type ProviderInfo } from '../api';
 import { KernelPanel } from '../components/KernelUpdate';
+import { NotificationsPanel } from '../components/Notifications';
 import { Toggle } from '../components/Toggle';
 import { ModelForm } from '../components/ModelForm';
 import { CopyCommand, keyEnvOf, keySourceText, restartCommand } from '../components/Brain';
@@ -366,6 +367,7 @@ export default function Settings() {
       <MindPanel />
       <KernelPanel />
       <OutboundPanel />
+      <NotificationsPanel />
       <OwnerPanel />
       <section className="panel" aria-labelledby="config-h">
         <h2 id="config-h">Configuration <span className="muted small" style={{ fontWeight: 400 }}>Read-only. Lives in <code>seed.yaml</code>; secrets are redacted.</span></h2>

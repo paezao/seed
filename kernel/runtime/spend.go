@@ -99,6 +99,7 @@ func (k *Kernel) noteBudget(ctx context.Context) {
 		k.Bus.Publish("message", m)
 	}
 	k.Bus.Publish("organism", nil) // a status broadcast: the control plane shows it
+	k.Bus.Publish("budget", budgetSpent{Month: monthStart(time.Now()).Format("2006-01"), Budget: b})
 }
 
 type spendStatus struct {

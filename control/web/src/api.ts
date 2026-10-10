@@ -106,6 +106,14 @@ export type Status = {
   ui_version?: string;
 };
 
+export type PushDevice = { id: string; user_agent: string; created_at: string; last_sent_at?: string; last_error?: string };
+export type NotificationsInfo = {
+  public_key: string;
+  subscriptions: PushDevice[];
+  kinds: Record<string, boolean>;
+  about: { key: string; label: string; about: string; default: boolean }[];
+};
+
 export type Backup = {
   id: string;
   kind: 'before_generation' | 'daily' | 'manual' | 'before_restore';
@@ -449,6 +457,11 @@ export const api = {
   decide: (id: string, approved: boolean) => request<Approval>('POST', `/approvals/${enc(id)}`, { approved }),
   generations: () => request<Generation[]>('GET', '/generations'),
   rollback: (n: number, withData = false) => request<Evolution>('POST', `/generations/${n}/rollback`, withData ? { with_data: true } : undefined),
+  notifications: () => request<NotificationsInfo>('GET', '/notifications'),
+  subscribe: (s: { endpoint: string; p256dh: string; auth: string }) => request<PushDevice>('POST', '/notifications/subscriptions', s),
+  unsubscribe: (id: string) => request<NotificationsInfo>('POST', `/notifications/subscriptions/${enc(id)}/remove`),
+  setNotifyKinds: (kinds: Record<string, boolean>) => request<NotificationsInfo>('POST', '/notifications/kinds', { kinds }),
+  testNotification: () => request<{ delivered: number }>('POST', '/notifications/test'),
   backups: () => request<BackupsInfo>('GET', '/backups'),
   takeBackup: () => request<Backup>('POST', '/backups'),
   restoreBackup: (id: string) => request<{ state: string }>('POST', `/backups/${enc(id)}/restore`),

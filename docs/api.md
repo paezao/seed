@@ -175,6 +175,11 @@ type Skill = { name: string; description: string; path: string; files: string[];
 | POST | `/incidents/:id/ignore` | | `{ok}` |
 | GET | `/spending` | | `{month, budget_usd, paused}`: this month's spending by kind, day and item (see [spending](spending.md)) |
 | POST | `/spending/budget` | `{budget_usd}` | same as `GET /spending`; `0` removes the budget |
+| GET | `/notifications` | | `{public_key, subscriptions, kinds, about}` (see [notifications](notifications.md)) |
+| POST | `/notifications/subscriptions` | `{endpoint, p256dh, auth}` | `PushSubscription` |
+| POST | `/notifications/subscriptions/:id/remove` | | same as `GET /notifications` |
+| POST | `/notifications/kinds` | `{kinds}` | same as `GET /notifications` |
+| POST | `/notifications/test` | | `{delivered}` |
 | GET | `/backups` | | `{backups, daily, unavailable, keep}` (see [backups](backups.md)) |
 | POST | `/backups` | | `Backup`: a copy of the live data now |
 | POST | `/backups/settings` | `{daily}` | same as `GET /backups` |

@@ -71,6 +71,8 @@ cd myapp && seed run -e OPENROUTER_API_KEY --open   # later: start it again
   reports on, and jobs its app runs on a schedule.
 - **Reach the outside world, when you allow it.** Its app has no network except HTTPS to hosts
   you approve, with the secrets you grant ([outbound access](docs/security.md#outbound-access)).
+- **Tell you when it needs you.** Notifications in your browsers and phone when a change is
+  ready to try, it has a question, or it found a problem ([notifications](docs/notifications.md)).
 - **Stay yours.** Owner sign-in, a control plane only you can open, and a little seed on the
   app's pages that takes you back to it.
 - **Update itself.** New kernels arrive as signed releases you install from its control
@@ -113,6 +115,7 @@ seed run -e OPENROUTER_API_KEY -e SEED_OWNER_USER=me -e SEED_OWNER_PASSWORD   # 
 - [Routines](docs/routines.md): what a Seed does on a schedule (agent routines and jobs)
 - [Spending](docs/spending.md): what its model calls cost, and a monthly budget
 - [Backups](docs/backups.md): copies of the app's data, restoring them, rolling back with data
+- [Notifications](docs/notifications.md): Web Push to the owner's browsers when something needs them
 - [Security](docs/security.md): sandboxing, permissions, the kernel boundary
 - [Development](docs/development.md): running, testing, contributing
 - [Control plane API](docs/api.md)

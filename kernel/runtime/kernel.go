@@ -31,6 +31,7 @@ import (
 	"seed/kernel/knowledge"
 	"seed/kernel/memory"
 	"seed/kernel/models"
+	"seed/kernel/notify"
 	"seed/kernel/permissions"
 	"seed/kernel/pg"
 	"seed/kernel/sandbox"
@@ -79,6 +80,8 @@ type Kernel struct {
 	Doctor *Doctor
 	// Backups keeps copies of my live data and brings them back.
 	Backups *Backups
+	// Notifier tells my owner's browsers when something needs them.
+	Notifier *Notifier
 	// previews are browsers trying candidate generations.
 	previews previews
 	// asks are screenshots from the badge, waiting for my owner to send them.
@@ -279,6 +282,12 @@ func Boot(ctx context.Context, root string, logs *LogBuffer) (*Kernel, error) {
 		}()
 	}
 	k.Approvals = &evolution.Approvals{Store: k.Store, Bus: k.Bus}
+	vapid, err := loadVAPID(ctx, k.Store)
+	if err != nil {
+		return nil, fmt.Errorf("notification key: %w", err)
+	}
+	k.Notifier = &Notifier{Store: k.Store, Bus: k.Bus, Root: cfg.Root,
+		Sender: &notify.Sender{VAPID: vapid, Subject: "mailto:notifications@seed.invalid"}}
 	k.Backups = &Backups{Dir: filepath.Join(stateDir, "backups"), Store: k.Store, Bus: k.Bus, Admin: k.Admin, Organism: k.Organism,
 		Grants: func(ctx context.Context) error {
 			return k.Admin.EnsureReader(ctx, readRole, readPass, cfg.DBName("app"), role)
@@ -416,6 +425,7 @@ func (k *Kernel) Serve(ctx context.Context) error {
 	go k.Orch.Run(ctx)
 	go k.Routines.Start(ctx)
 	go k.Backups.Run(ctx)
+	go k.Notifier.Run(ctx)
 	go k.Updates.Start(ctx)
 	go k.Doctor.Run(ctx)
 	go func() {
