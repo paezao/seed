@@ -1,5 +1,12 @@
 # Seed
 
+[![Release](https://img.shields.io/github/v/release/paezao/seed?sort=date&label=release&color=4ade80)](https://github.com/paezao/seed/releases/latest)
+[![CI](https://github.com/paezao/seed/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/paezao/seed/actions/workflows/ci.yml)
+[![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-blue)](LICENSE)
+[![Docs](https://img.shields.io/badge/docs-paezao.github.io%2Fseed-2dd4bf)](https://paezao.github.io/seed/docs/)
+[![Image](https://img.shields.io/badge/image-ghcr.io%2Fpaezao%2Fseed-a78bfa?logo=docker&logoColor=white)](https://github.com/paezao/seed/pkgs/container/seed)
+[![Go](https://img.shields.io/github/go-mod/go-version/paezao/seed?logo=go&logoColor=white)](go.mod)
+
 > **A Seed is a minimal, self-modifying software system containing an agent and runtime capable of growing itself into an application through conversation.**
 
 **Website:** [paezao.github.io/seed](https://paezao.github.io/seed/)
