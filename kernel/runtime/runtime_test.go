@@ -343,4 +343,17 @@ func TestRejectInternal(t *testing.T) {
 			t.Errorf("%s: %d, want %d", addr, rec.Code, want)
 		}
 	}
+	// The engine's health check runs inside: only it gets through.
+	for req, want := range map[[2]string]int{
+		{"GET", "/_seed/healthz"}: 204, {"HEAD", "/_seed/healthz"}: 204,
+		{"POST", "/_seed/healthz"}: 403, {"GET", "/_seed/healthz/x"}: 403, {"GET", "/_seed/api/status"}: 403,
+	} {
+		r := httptest.NewRequest(req[0], req[1], nil)
+		r.RemoteAddr = "127.0.0.1:5555"
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, r)
+		if rec.Code != want {
+			t.Errorf("%s %s from inside: %d, want %d", req[0], req[1], rec.Code, want)
+		}
+	}
 }

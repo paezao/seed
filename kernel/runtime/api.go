@@ -140,6 +140,12 @@ func (k *Kernel) Handler() http.Handler {
 // container engine's published port, i.e. from outside.
 func rejectInternal(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The container engine's own health check runs inside me; the answer
+		// is only "ok", so it is no way around anything.
+		if (r.Method == http.MethodGet || r.Method == http.MethodHead) && r.URL.Path == "/_seed/healthz" {
+			next.ServeHTTP(w, r)
+			return
+		}
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil || isOwnAddress(net.ParseIP(host)) {
 			http.Error(w, "not from inside my body", http.StatusForbidden)
