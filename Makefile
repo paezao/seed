@@ -5,7 +5,7 @@
 #   make test    run kernel tests (needs `make up`; Docker tests need the image)
 #   make lint    vet + format check + typecheck
 #   make e2e     the canonical Seed -> todo -> priorities run (real model; costs money)
-#   make site    preview the website (site/) at http://localhost:8000
+#   make site    preview the website (site/, with the docs rendered) at http://localhost:8000
 #   make og      render the social preview image (site/og/og.html -> site/assets/og.png)
 
 GO      ?= go
@@ -19,7 +19,7 @@ GID     := $(shell id -g)
 SECURITY := --cap-drop ALL --security-opt no-new-privileges --security-opt seccomp=cmd/seed/seccomp.json \
             --security-opt apparmor=unconfined --security-opt systempaths=unconfined
 
-.PHONY: up build control template install test lint e2e site og clean
+.PHONY: up build control template install test lint e2e site site-docs og clean
 
 up: build
 	$(BIN) image
@@ -66,8 +66,11 @@ lint:
 	cd control/web && npx tsc --noEmit
 	cd organism && $(GO) vet ./...
 
-site:
+site: site-docs
 	python3 -m http.server -d site 8000
+
+site-docs:
+	cd site/tools/docsgen && $(GO) run . -docs ../../../docs -out ../../docs
 
 og:
 	chromium --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 --window-size=1200,630 \

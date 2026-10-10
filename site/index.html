@@ -36,7 +36,7 @@
         <a href="#how">How it grows</a>
         <a href="#point">Point and ask</a>
         <a href="#features">Features</a>
-        <a href="https://github.com/paezao/seed/tree/main/docs">Docs</a>
+        <a href="docs/">Docs</a>
         <a class="btn btn-ghost btn-sm" href="https://github.com/paezao/seed">
           <svg viewBox="0 0 16 16" aria-hidden="true" class="gh"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
           GitHub
@@ -62,7 +62,7 @@
               <button class="copy" data-copy="install-cmd" aria-label="Copy the install command">Copy</button>
             </div>
             <div class="code-line">
-              <code id="new-cmd">seed new recipes -e OPENROUTER_API_KEY</code>
+              <code id="new-cmd">seed new acme-ops -e OPENROUTER_API_KEY</code>
               <button class="copy" data-copy="new-cmd" aria-label="Copy the command">Copy</button>
             </div>
           </div>
@@ -91,12 +91,12 @@
           </svg>
 
           <div class="float f-chat" data-depth="18">
-            <div class="mini-bubble">Become a family recipe book, with search.</div>
+            <div class="mini-bubble">Become our team's release calendar, with on-call and uptime.</div>
           </div>
           <div class="float f-evo" data-depth="30">
             <div class="mini-evo">
               <div class="mini-head"><span>Evolution</span><span class="pill pill-active" id="demo-pill">evolving</span></div>
-              <div class="mini-title">Become a family recipe book</div>
+              <div class="mini-title">Team release calendar</div>
               <div class="phases" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
               <div class="mini-foot"><span id="demo-phase">Planning · 1 of 8</span><span id="demo-cost">$0.00</span></div>
             </div>
@@ -105,7 +105,7 @@
             <div class="mini-toast"><span class="dot"></span> Generation 2 is live</div>
           </div>
           <div class="float f-test" data-depth="24">
-            <div class="mini-chip">✓ 12 tests pass</div>
+            <div class="mini-chip">✓ 18 tests pass</div>
           </div>
         </div>
       </div>
@@ -124,7 +124,7 @@
             <li class="reveal">
               <svg viewBox="0 0 80 80" class="stage-art" aria-hidden="true"><ellipse cx="40" cy="64" rx="26" ry="5" class="ground"/><ellipse cx="40" cy="58" rx="9" ry="6" class="seed-shell"/></svg>
               <h3>Plant</h3>
-              <p><code>seed new recipes</code> gives you a folder with a kernel, a database and an empty app, in its own container.</p>
+              <p><code>seed new acme-ops</code> gives you a folder with a kernel, a database and an empty app, in its own container.</p>
             </li>
             <li class="reveal">
               <svg viewBox="0 0 80 80" class="stage-art" aria-hidden="true"><ellipse cx="40" cy="64" rx="26" ry="5" class="ground"/><path d="M40 62 V40" class="st"/><path d="M40 46 C30 46 24 40 22 32 C32 32 39 37 40 46Z" class="lf"/><path d="M40 42 C48 41 55 35 56 27 C47 27 41 33 40 42Z" class="lf2"/></svg>
@@ -163,26 +163,28 @@
             <li>The picture is drawn in your browser</li>
           </ul>
         </div>
-        <div class="demo-frame reveal" aria-label="Demo: an area of an app is selected and a change is described">
+        <div class="demo-frame reveal" aria-label="Demo: on a company tool, the seed's wheel opens, an area is selected and a change is described">
           <div class="browser">
-            <div class="browser-bar"><i></i><i></i><i></i><span>recipes.example.com</span></div>
-            <div class="mock-app" id="mock-point">
-              <div class="m-header"><span class="m-logo"></span><span class="m-title">Our Family Recipes</span></div>
-              <div class="m-chart"><span class="m-label">Recipes over time</span><svg viewBox="0 0 200 50" preserveAspectRatio="none"><path d="M0 45 L30 40 L60 42 L90 30 L120 32 L150 18 L200 8" class="m-line"/></svg></div>
-              <div class="m-row"><span class="m-search"></span><span class="m-btn"></span></div>
-              <div class="m-cards">
-                <div class="m-card"><span class="m-img i1"></span><span class="m-t"></span><span class="m-s"></span></div>
-                <div class="m-card"><span class="m-img i2"></span><span class="m-t"></span><span class="m-s"></span></div>
-                <div class="m-card"><span class="m-img i3"></span><span class="m-t"></span><span class="m-s"></span></div>
-              </div>
+            <div class="browser-bar"><i></i><i></i><i></i><span>ops.acme.dev</span></div>
+            <div class="mock-app gym" id="mock-point">
+              <div class="g-nav"><span class="g-logo"></span><b>Acme Ops</b><span class="g-links"><i></i><i></i><i></i></span><span class="g-cta">New release</span></div>
+              <div class="g-hero"><b>This week</b><span>5 releases · 1 freeze · on-call: Sam, then Priya</span></div>
+              <div class="g-week"><div class="g-day"><em>Mon</em><span class="g-c g-b" style="height:30px">Release 4.2</span><span class="g-c g-y" style="height:24px">On-call</span></div><div class="g-day"><em>Tue</em><span class="g-c g-l" style="height:30px">Design review</span><span class="g-c g-k" style="height:22px">Freeze</span></div><div class="g-day"><em>Wed</em><span class="g-c g-b" style="height:40px">Release 4.3</span></div><div class="g-day"><em>Thu</em><span class="g-c g-y" style="height:22px">On-call</span><span class="g-c g-l" style="height:30px">Retro</span></div><div class="g-day"><em>Fri</em><span class="g-c g-b" style="height:22px">Hotfix</span><span class="g-c g-n" style="height:40px">Launch: Atlas</span></div></div>
+              <div class="g-passes"><span class="g-pass"><b>Deploys</b><i>24</i></span><span class="g-pass g-pass-hot"><b>Uptime</b><i>99.98%</i></span><span class="g-pass"><b>Incidents</b><i>2</i></span></div>
+              <div class="p-hint" aria-hidden="true">Drag a box around what you want to change · Esc to cancel</div>
               <div class="sel" aria-hidden="true"></div>
               <div class="ask" aria-hidden="true">
                 <b>What should change here?</b>
-                <div class="ask-input"><span class="typed" data-text="Make the cards bigger, with rounder photos"></span><span class="caret"></span></div>
-                <div class="ask-go">Continue in my control plane</div>
+                <div class="ask-input"><span class="typed" data-text="Make Friday's launch stand out, it's the big one"></span><span class="caret"></span></div>
+                <div class="ask-row"><span class="ask-cancel">Cancel</span><span class="ask-go">Continue in my control plane</span></div>
               </div>
-              <svg class="cursor" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3l7 17 2.4-7 7-2.4z"/></svg>
+              <div class="wheel" aria-hidden="true">
+                <span class="w-opt w-cp"><em>Open my control plane</em><i><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z"/><path d="M9 4v16"/><path d="M13 9h4"/><path d="M13 13h4"/></svg></i></span>
+                <span class="w-opt w-change"><em>Change something here</em><i><svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg></i></span>
+              </div>
               <div class="seed-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg></div>
+              <div class="p-toast" aria-hidden="true"><span class="dot"></span> Sent to your control plane</div>
+              <svg class="cursor" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 3l7 17 2.4-7 7-2.4z"/></svg>
             </div>
           </div>
         </div>
@@ -207,20 +209,13 @@
         </div>
         <div class="demo-frame reveal" aria-label="Demo: a new version of an app is previewed before it goes live">
           <div class="browser">
-            <div class="browser-bar"><i></i><i></i><i></i><span>recipes.example.com</span></div>
-            <div class="mock-app mock-preview" id="mock-preview">
-              <div class="m-header"><span class="m-logo"></span><span class="m-title">Our Family Recipes</span></div>
-              <div class="m-row"><span class="m-search"></span><span class="m-btn"></span></div>
-              <div class="m-cards m-cards-old">
-                <div class="m-line-card"><span class="m-img i1"></span><span class="m-t"></span></div>
-                <div class="m-line-card"><span class="m-img i2"></span><span class="m-t"></span></div>
-              </div>
-              <div class="m-cards m-cards-new">
-                <div class="m-card"><span class="m-img i1"></span><span class="m-t"></span><span class="m-s"></span></div>
-                <div class="m-card"><span class="m-img i2"></span><span class="m-t"></span><span class="m-s"></span></div>
-                <div class="m-card"><span class="m-img i3"></span><span class="m-t"></span><span class="m-s"></span></div>
-              </div>
-              <div class="pbar"><b>Previewing:</b> Photo cards in a grid <span class="pbar-note">a copy of your data</span><span class="pbar-btn">Apply</span></div>
+            <div class="browser-bar"><i></i><i></i><i></i><span>ops.acme.dev</span></div>
+            <div class="mock-app gym mock-preview" id="mock-preview">
+              <div class="g-nav"><span class="g-logo"></span><b>Acme Ops</b><span class="g-links"><i></i><i></i><i></i></span><span class="g-cta">New release</span></div>
+              <div class="g-hero"><b>This week</b><span>5 releases · 1 freeze · on-call: Sam, then Priya</span></div>
+              <div class="m-cards-old"><div class="g-list"><div class="g-row"><span class="g-dot g-b"></span><b>Mon</b><span>Release 4.2 · On-call</span></div><div class="g-row"><span class="g-dot g-l"></span><b>Tue</b><span>Design review · Freeze</span></div><div class="g-row"><span class="g-dot g-b"></span><b>Wed</b><span>Release 4.3</span></div><div class="g-row"><span class="g-dot g-y"></span><b>Thu</b><span>On-call · Retro</span></div><div class="g-row"><span class="g-dot g-n"></span><b>Fri</b><span>Hotfix · Launch: Atlas</span></div></div></div>
+              <div class="m-cards-new"><div class="g-week g-week-new"><div class="g-day"><em>Mon</em><span class="g-c g-b" style="height:30px">Release 4.2</span><span class="g-c g-y" style="height:24px">On-call</span></div><div class="g-day"><em>Tue</em><span class="g-c g-l" style="height:30px">Design review</span><span class="g-c g-k" style="height:22px">Freeze</span></div><div class="g-day"><em>Wed</em><span class="g-c g-b" style="height:40px">Release 4.3</span></div><div class="g-day"><em>Thu</em><span class="g-c g-y" style="height:22px">On-call</span><span class="g-c g-l" style="height:30px">Retro</span></div><div class="g-day"><em>Fri</em><span class="g-c g-b" style="height:22px">Hotfix</span><span class="g-c g-n" style="height:40px">Launch: Atlas</span></div></div></div>
+              <div class="pbar"><b>Previewing:</b> Release calendar as a week <span class="pbar-note">a copy of your data</span><span class="pbar-btn">Apply</span></div>
             </div>
           </div>
         </div>
@@ -236,10 +231,10 @@
         <div class="gens reveal" id="gens" aria-label="A history of generations, with a rollback">
           <div class="gens-line"></div>
           <div class="gen" style="--i:0"><span class="gen-dot"></span><b>1</b><span>Initial seed</span></div>
-          <div class="gen" style="--i:1"><span class="gen-dot"></span><b>2</b><span>Recipe book</span></div>
-          <div class="gen" style="--i:2"><span class="gen-dot"></span><b>3</b><span>Search</span></div>
-          <div class="gen" style="--i:3"><span class="gen-dot"></span><b>4</b><span>Photo cards</span></div>
-          <div class="gen gen-bad" style="--i:4"><span class="gen-dot"></span><b>5</b><span>Meal planner</span></div>
+          <div class="gen" style="--i:1"><span class="gen-dot"></span><b>2</b><span>Release calendar</span></div>
+          <div class="gen" style="--i:2"><span class="gen-dot"></span><b>3</b><span>On-call rota</span></div>
+          <div class="gen" style="--i:3"><span class="gen-dot"></span><b>4</b><span>Uptime cards</span></div>
+          <div class="gen gen-bad" style="--i:4"><span class="gen-dot"></span><b>5</b><span>Auto-deploy</span></div>
           <div class="gen gen-back" style="--i:5"><span class="gen-dot"></span><b>6</b><span>Back to 4, with its data</span></div>
         </div>
       </div>
@@ -251,36 +246,52 @@
         <p class="eyebrow reveal">Everything a living app needs</p>
         <h2 class="reveal">The careful parts come built in.</h2>
         <p class="section-lead reveal">The kernel does the boring, careful work, so every app a Seed becomes gets it for free.</p>
-        <div class="features">
-          <article class="reveal c-rose">
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg></div>
-            <h3>Looks after itself</h3>
-            <p>Notices errors and crashes, restarts what fell over, finds the cause and fixes it, with a test that proves it.</p>
-          </article>
-          <article class="reveal c-sky">
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
-            <h3>Routines</h3>
-            <p>Tasks it runs on a schedule and reports on, and jobs your app runs, like a weekly digest or a nightly cleanup.</p>
+        <div class="bento">
+          <article class="reveal c-rose b-wide">
+            <div class="b-head"><div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg></div><div><h3>Looks after itself</h3><p>Notices errors and crashes, restarts what fell over, finds the cause and fixes it, with a test that proves it.</p></div></div>
+            <div class="b-viz v-health" aria-hidden="true">
+              <span class="v-log"><em class="bad">500</em><code>GET /api/releases/42</code><i>×3 in 10 min</i></span>
+              <span class="v-log"><em class="info">diag</em>A release without a date crashes the week view</span>
+              <span class="v-log"><em class="ok">fixed</em>Generation 8 · regression test added<i class="v-check">✓</i></span>
+            </div>
           </article>
           <article class="reveal c-amber">
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-.9-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.6 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.6-3-1.5M12 6.5v1.5M12 16v1.5"/></svg></div>
-            <h3>Knows what it costs</h3>
-            <p>Every model call is counted. Watch a change's cost tick up live, and set a monthly budget for what it does alone.</p>
+            <div class="b-head"><div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-.9-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.6 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.6-3-1.5M12 6.5v1.5M12 16v1.5"/></svg></div><div><h3>Knows what it costs</h3><p>Every model call counted. Watch a change's cost tick up live; set a monthly budget.</p></div></div>
+            <div class="b-viz v-cost" aria-hidden="true">
+              <div class="v-cost-top"><b>$4.82</b><span>of $20 this month</span></div>
+              <div class="v-meter"><i></i></div>
+              <svg viewBox="0 0 200 40" preserveAspectRatio="none" class="v-spark"><path d="M0 34 L20 30 L40 32 L60 22 L80 26 L100 14 L120 18 L140 10 L160 16 L180 6 L200 9"/></svg>
+            </div>
           </article>
           <article class="reveal c-violet">
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6.5 2.5 8 2.5 8h-17S6 15.5 6 9"/><path d="M10.3 20.5a2 2 0 0 0 3.4 0"/></svg></div>
-            <h3>Tells you when it needs you</h3>
-            <p>Notifications on your laptop and phone when a change is ready to try, it has a question, or it found a problem.</p>
+            <div class="b-head"><div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6.5 2.5 8 2.5 8h-17S6 15.5 6 9"/><path d="M10.3 20.5a2 2 0 0 0 3.4 0"/></svg></div><div><h3>Tells you when it needs you</h3><p>On your laptop and phone, when a change is ready to try or it has a question.</p></div></div>
+            <div class="b-viz v-notify" aria-hidden="true">
+              <div class="v-toast"><span class="v-app"></span><div><b>Acme Ops: ready to try</b><span>Highlight launch days</span></div><em>now</em></div>
+              <div class="v-toast v-toast-2"><span class="v-app"></span><div><b>Acme Ops has a question</b><span>Should freezes block hotfixes?</span></div><em>2m</em></div>
+            </div>
           </article>
-          <article class="reveal c-teal">
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
-            <h3>Locked down by default</h3>
-            <p>No network except HTTPS to hosts you approve, with only the secrets you grant. Risky actions wait for you.</p>
+          <article class="reveal c-teal b-wide">
+            <div class="b-head"><div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div><div><h3>Locked down by default</h3><p>Your app has no network except HTTPS to hosts you approve, with only the secrets you grant. Risky actions wait for you.</p></div></div>
+            <div class="b-viz v-lock" aria-hidden="true">
+              <span class="v-host ok"><i>✓</i><code>api.github.com</code><small>allowed by you · token: GITHUB_TOKEN</small></span>
+              <span class="v-host ok"><i>✓</i><code>hooks.slack.com</code><small>allowed by you</small></span>
+              <span class="v-host no"><i>✕</i><code>203.0.113.7</code><small>blocked: not on your list</small></span>
+            </div>
+          </article>
+          <article class="reveal c-sky">
+            <div class="b-head"><div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><h3>Routines</h3><p>Tasks it runs on a schedule and reports on, and jobs your app runs.</p></div></div>
+            <div class="b-viz v-routines" aria-hidden="true">
+              <span class="v-chip"><b>Mon 09:00</b>Weekly release digest</span>
+              <span class="v-chip"><b>Every night</b>Archive old incidents</span>
+              <span class="v-chip"><b>Every hour</b>Check the status page</span>
+            </div>
           </article>
           <article class="reveal c-green">
-            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg></div>
-            <h3>Updates itself</h3>
-            <p>New kernels arrive as signed releases you install from its control plane. If one fails to start, it rolls back.</p>
+            <div class="b-head"><div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg></div><div><h3>Updates itself</h3><p>Signed kernel releases, installed from its control plane. If one fails to start, it rolls back.</p></div></div>
+            <div class="b-viz v-update" aria-hidden="true">
+              <span class="v-ver">2026.10.10</span><span class="v-arrow">→</span><span class="v-ver v-new">2026.11.01</span>
+              <span class="v-signed">✓ signed</span>
+            </div>
           </article>
         </div>
       </div>
@@ -292,10 +303,35 @@
         <p class="eyebrow reveal">The control plane</p>
         <h2 class="reveal">Its own admin, built in.</h2>
         <p class="section-lead reveal">Chat, plans and progress, generations, health, spending and backups: everything about your Seed, in one place only you can open.</p>
-        <div class="shots">
-          <figure class="shot shot-left reveal"><div class="shot-frame"><div class="browser-bar"><i></i><i></i><i></i><span>/_seed/spending</span></div><img src="assets/spending.jpg" alt="The Spending page: this month's model costs by day, by kind, and the most expensive changes" loading="lazy"></div></figure>
-          <figure class="shot shot-right reveal"><div class="shot-frame"><div class="browser-bar"><i></i><i></i><i></i><span>/_seed/backups</span></div><img src="assets/backups.jpg" alt="The Backups page: daily copies and copies before every change, ready to download or restore" loading="lazy"></div></figure>
-          <figure class="shot shot-main reveal"><div class="shot-frame"><div class="browser-bar"><i></i><i></i><i></i><span>/_seed · Chat</span></div><img src="assets/chat.jpg" alt="Chat with Seed: it explains its plan, and an evolution card shows the change is done" loading="lazy"></div></figure>
+        <div class="cp-stage">
+          <div class="cp cp-spend reveal" aria-hidden="true"><div class="browser-bar"><i></i><i></i><i></i><span>/_seed/spending</span></div>
+            <div class="cp-body"><div class="cp-nav"><b><span class="cp-logo"></span>Acme Ops</b><span class="cp-item">Chat</span><span class="cp-item">Evolutions</span><span class="cp-item">Generations</span><span class="cp-item">Backups</span><span class="cp-item">Routines</span><span class="cp-item">Health</span><span class="cp-item on">Spending</span><span class="cp-item">Settings</span></div><div class="cp-main">
+              <div class="cp-h">Spending</div>
+              <div class="cp-panel"><div class="cp-k">October</div><div class="cp-big">$4.82</div>
+                <div class="cp-bars"><i style="height:21px"></i><i style="height:2px"></i><i style="height:35px"></i><i style="height:14px"></i><i style="height:63px"></i><i style="height:28px"></i><i style="height:7px"></i><i style="height:42px"></i><i style="height:84px"></i><i style="height:21px"></i><i style="height:49px"></i><i style="height:14px"></i><i style="height:2px"></i><i style="height:28px"></i><i style="height:56px"></i><i style="height:21px"></i></div></div>
+              <div class="cp-panel cp-rows"><span><b>Evolutions</b><i style="--w:80%"></i>$3.90</span><span><b>Chat</b><i style="--w:14%"></i>$0.62</span><span><b>Routines</b><i style="--w:7%"></i>$0.30</span></div>
+            </div></div></div>
+          <div class="cp cp-backups reveal" aria-hidden="true"><div class="browser-bar"><i></i><i></i><i></i><span>/_seed/backups</span></div>
+            <div class="cp-body"><div class="cp-nav"><b><span class="cp-logo"></span>Acme Ops</b><span class="cp-item">Chat</span><span class="cp-item">Evolutions</span><span class="cp-item">Generations</span><span class="cp-item on">Backups</span><span class="cp-item">Routines</span><span class="cp-item">Health</span><span class="cp-item">Spending</span><span class="cp-item">Settings</span></div><div class="cp-main">
+              <div class="cp-h">Backups <span class="cp-btn">Back up now</span></div>
+              <div class="cp-panel cp-list">
+                <span><em class="t-gen">Before a new generation</em>Highlight launch days<small>2m ago · gen 6</small></span>
+                <span><em class="t-day">Daily</em>Daily copy<small>9h ago · gen 6</small></span>
+                <span><em class="t-gen">Before a new generation</em>On-call rota<small>yesterday · gen 5</small></span>
+                <span><em class="t-you">Made by you</em>Copy you asked for<small>2d ago · gen 4</small></span>
+              </div>
+            </div></div></div>
+          <div class="cp cp-chat reveal" role="img" aria-label="The control plane: chat with Seed about a change to Acme Ops, with an evolution card showing it done and ready to try">
+            <div class="browser-bar"><i></i><i></i><i></i><span>/_seed · Chat</span></div>
+            <div class="cp-body"><div class="cp-nav"><b><span class="cp-logo"></span>Acme Ops</b><span class="cp-item on">Chat</span><span class="cp-item">Evolutions</span><span class="cp-item">Generations</span><span class="cp-item">Backups</span><span class="cp-item">Routines</span><span class="cp-item">Health</span><span class="cp-item">Spending</span><span class="cp-item">Settings</span></div><div class="cp-main cp-chatlog">
+              <div class="cp-msg cp-user"><span class="cp-shot"><i></i><i></i><i class="hot"></i></span>Make Friday's launch stand out, it's the big one<small>(About the area of the page I selected: it's in the attached picture.)</small></div>
+              <div class="cp-msg cp-seed"><span class="cp-av"></span><div>On it. Launch days get a glowing card with a countdown, and the week view marks them. Nothing else changes.
+                <div class="cp-evo"><div class="cp-evo-h"><span>Evolution</span><em>complete</em></div><b>Highlight launch days</b>
+                  <div class="cp-phases"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                  <div class="cp-evo-f"><span>Done</span><span>$0.42</span></div>
+                  <div class="cp-gen"><span class="dot"></span> I am now generation 7. <code>3f9c2a1</code></div></div></div></div>
+              <div class="cp-msg cp-seed"><span class="cp-av"></span><div><b>Highlight launch days</b> was ready to try first; you applied it after trying it on a copy of your data.</div></div>
+            </div></div></div>
         </div>
       </div>
     </section>
@@ -350,7 +386,7 @@
         <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg>
         Seed
       </span>
-      <span class="muted small">MPL-2.0 · <a href="https://github.com/paezao/seed">GitHub</a> · <a href="https://github.com/paezao/seed/tree/main/docs">Docs</a> · <a href="https://github.com/paezao/seed/blob/main/SECURITY.md">Security</a></span>
+      <span class="muted small">MPL-2.0 · <a href="https://github.com/paezao/seed">GitHub</a> · <a href="docs/">Docs</a> · <a href="https://github.com/paezao/seed/blob/main/SECURITY.md">Security</a></span>
     </div>
   </footer>
 

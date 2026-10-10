@@ -4,7 +4,7 @@ name: Website
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "docs/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +24,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache-dependency-path: site/tools/docsgen/go.sum
+      - name: Render the docs
+        working-directory: site/tools/docsgen
+        run: go run . -docs ../../../docs -out ../../docs
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

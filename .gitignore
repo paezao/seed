@@ -8,3 +8,4 @@ organism/bin/
 organism/web/dist/
 .env
 .stage/
+site/docs/
