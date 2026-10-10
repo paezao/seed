@@ -143,6 +143,7 @@ func TestOnlyPushServices(t *testing.T) {
 	key, auth := b64.EncodeToString(ua.PublicKey().Bytes()), b64.EncodeToString([]byte("0123456789abcdef"))
 	for _, ok := range []string{
 		"https://fcm.googleapis.com/fcm/send/x",
+		"https://jmt17.google.com/fcm/send/x",
 		"https://updates.push.services.mozilla.com/wpush/v2/x",
 		"https://web.push.apple.com/QX",
 		"https://wns2-par02p.notify.windows.com/w/?token=x",
@@ -160,6 +161,8 @@ func TestOnlyPushServices(t *testing.T) {
 		"https://localhost/x",
 		"https://169.254.169.254/latest",
 		"https://notify.windows.com.evil/x",
+		"https://google.com.evil.example/x",
+		"https://evilgoogle.com/x",
 	} {
 		if err := CheckSubscription(Subscription{Endpoint: bad, P256dh: key, Auth: auth}); err == nil {
 			t.Errorf("%s: accepted", bad)

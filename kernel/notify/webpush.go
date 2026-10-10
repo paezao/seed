@@ -100,7 +100,9 @@ type Subscription struct {
 // pushHosts are the push services browsers use. I only ever send to them:
 // an endpoint is a URL a browser hands me, and I won't post to anything else.
 var pushHosts = []string{
-	"fcm.googleapis.com",                // Chrome, Edge on Android, Opera, Brave…
+	"fcm.googleapis.com", // Chrome (older), Opera, Brave…
+	".google.com",        // Chrome (jmt17.google.com and the like)
+	".googleapis.com",
 	"updates.push.services.mozilla.com", // Firefox
 	".push.apple.com",                   // Safari
 	".notify.windows.com",               // Edge on Windows

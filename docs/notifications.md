@@ -48,7 +48,7 @@ the control-plane page it's about.
   notifications; it never handles requests, and a click only opens pages
   under `/_seed/`.
 - The kernel only posts to the push services browsers use
-  (`fcm.googleapis.com`, `updates.push.services.mozilla.com`,
+  (Google's `*.google.com` and `*.googleapis.com`, `updates.push.services.mozilla.com`,
   `*.push.apple.com`, `*.notify.windows.com`), over https: a subscription is
   a URL a browser hands over, and nothing else is accepted.
 - A subscription the push service says is gone (404/410) is removed.

@@ -59,9 +59,15 @@ export function NotificationsPanel() {
   // Is this browser on? If so, make sure I know about it (e.g. after a reset).
   const check = useCallback(async () => {
     const sub = await currentSubscription().catch(() => null);
-    setHere(!!sub);
-    if (sub) {
-      try { const d = await register(sub); setHereId(d.id); } catch { /* shown when acting */ }
+    if (!sub) { setHere(false); return; }
+    try {
+      const d = await register(sub);
+      setHereId(d.id);
+      setHere(true);
+      load.reload();
+    } catch (e) {
+      setHere(false);
+      setErr(`This browser allowed notifications, but I couldn't save it: ${errorMessage(e)}`);
     }
   }, []);
   useEffect(() => { void check(); }, [check]);
