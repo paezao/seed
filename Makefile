@@ -37,7 +37,7 @@ template:
 	git ls-files -co --exclude-standard -z \
 	  | xargs -0 sh -c 'for f; do [ -e "$$f" ] && printf "%s\0" "$$f"; done' sh \
 	  | grep -zv '^kernel/template/assets/template.tar.gz$$' \
-	  | grep -zvE '^(\.github/|install\.sh$$|CONTRIBUTING\.md$$|CODE_OF_CONDUCT\.md$$|SECURITY\.md$$|TRADEMARKS\.md$$)' \
+	  | grep -zvE '^(\.github/|site/|install\.sh$$|CONTRIBUTING\.md$$|CODE_OF_CONDUCT\.md$$|SECURITY\.md$$|TRADEMARKS\.md$$)' \
 	  | tar --null -cf - -T - | tar -C .stage -xf -
 	echo "$(VERSION)" > .stage/kernel/VERSION
 	echo "$(RELEASED)" > .stage/kernel/RELEASED

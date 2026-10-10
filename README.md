@@ -2,6 +2,8 @@
 
 > **A Seed is a minimal, self-modifying software system containing an agent and runtime capable of growing itself into an application through conversation.**
 
+**Website:** [paezao.github.io/seed](https://paezao.github.io/seed/)
+
 **Status: early and experimental.** Seed runs code that a language model writes. It does so in
 sandboxes, behind an owner sign-in, with every change tested and reversible (see
 [security](docs/security.md)), but treat it as the young project it is.

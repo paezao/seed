@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Seed · software that grows itself</title>
+  <meta name="description" content="Plant a Seed and tell it what to become. It writes the code, tests it, lets you try it on a copy of your data, and only then goes live, as a new generation you can always roll back.">
+  <meta property="og:title" content="Seed · software that grows itself">
+  <meta property="og:description" content="Plant a Seed and tell it what to become. It builds itself into your app, and keeps growing as you ask.">
+  <meta property="og:image" content="https://paezao.github.io/seed/assets/chat.jpg">
+  <meta property="og:url" content="https://paezao.github.io/seed/">
+  <meta name="theme-color" content="#0a0b0b" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#fafaf9" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="assets/seed.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="./" aria-label="Seed home">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg>
+        <span>Seed</span>
+      </a>
+      <nav class="nav-links">
+        <a href="#how">How it grows</a>
+        <a href="#features">Features</a>
+        <a href="https://github.com/paezao/seed/tree/main/docs">Docs</a>
+        <a class="btn btn-ghost btn-sm" href="https://github.com/paezao/seed">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="kicker">Open source · MPL-2.0</p>
+          <h1>Software that<br><span class="grow">grows itself.</span></h1>
+          <p class="lead">
+            Plant a Seed and tell it what to become. It writes the code, tests it, lets you try it on a copy of
+            your data, and only then goes live, as a new generation you can always roll back.
+          </p>
+          <div class="install">
+            <div class="code-line">
+              <code id="install-cmd">curl -fsSL https://raw.githubusercontent.com/paezao/seed/main/install.sh | sh</code>
+              <button class="copy" data-copy="install-cmd" aria-label="Copy the install command">Copy</button>
+            </div>
+            <div class="code-line">
+              <code id="new-cmd">seed new recipes -e OPENROUTER_API_KEY</code>
+              <button class="copy" data-copy="new-cmd" aria-label="Copy the command">Copy</button>
+            </div>
+          </div>
+          <div class="cta">
+            <a class="btn btn-primary" href="https://github.com/paezao/seed#install">Get started</a>
+            <a class="btn btn-ghost" href="https://github.com/paezao/seed/tree/main/docs">Read the docs</a>
+          </div>
+        </div>
+
+        <div class="hero-demo" aria-label="A Seed growing: a request in chat becomes a new generation">
+          <div class="window">
+            <div class="window-bar"><i></i><i></i><i></i><span>Family Recipes · control plane</span></div>
+            <div class="window-body">
+              <div class="msg msg-user"><div class="bubble">Become a family recipe book: recipes with ingredients and steps, and search.</div></div>
+              <div class="msg msg-seed">
+                <div class="avatar"><svg viewBox="0 0 24 24"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg></div>
+                <div class="seed-body">
+                  <p>On it. Here's my plan: a recipes table, a page to add them, and search across everything.</p>
+                  <div class="evo">
+                    <div class="evo-head"><span class="evo-kicker">Evolution</span><span class="pill pill-active" id="demo-pill">evolving</span></div>
+                    <div class="evo-title">Become a family recipe book</div>
+                    <div class="phases" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                    <div class="evo-foot"><span class="phase-label" id="demo-phase">Planning · 1 of 8</span><span class="cost" id="demo-cost">$0.00</span></div>
+                  </div>
+                </div>
+              </div>
+              <div class="msg msg-seed msg-live">
+                <div class="avatar"><svg viewBox="0 0 24 24"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg></div>
+                <div class="seed-body"><p><span class="dot"></span> I am now <strong>generation 2</strong>: <em>Family Recipes</em>. 12 tests pass.</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="how" class="section">
+      <div class="wrap">
+        <h2>How it grows</h2>
+        <p class="section-lead">Every change is a generation: planned, built in a sandbox, tested, tried by you, then live. Nothing is ever overwritten.</p>
+        <ol class="steps">
+          <li>
+            <span class="step-n">1</span>
+            <h3>Plant</h3>
+            <p><code>seed new recipes</code> gives you a folder with a kernel, a database and an empty app. It starts in its own container.</p>
+          </li>
+          <li>
+            <span class="step-n">2</span>
+            <h3>Ask</h3>
+            <p>Tell it what to become in chat, or point at part of the app and say what should change. It asks before guessing.</p>
+          </li>
+          <li>
+            <span class="step-n">3</span>
+            <h3>Try</h3>
+            <p>It builds and tests the change on a scratch database, then lets you try it on a copy of your real data.</p>
+          </li>
+          <li>
+            <span class="step-n">4</span>
+            <h3>Live</h3>
+            <p>Apply it and it's a new generation: a git commit, with a backup of your data taken first. Roll back any time.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section id="features" class="section section-alt">
+      <div class="wrap">
+        <h2>Everything a living app needs</h2>
+        <p class="section-lead">The kernel does the boring, careful parts, so every app a Seed becomes gets them for free.</p>
+        <div class="features">
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4l6.5 15.5 2.3-6.7 6.7-2.3L4 4z"/></svg></div>
+            <h3>Point and ask</h3>
+            <p>Hover the little seed on your app, drag a box around anything and say what should change. It gets a picture of exactly that.</p>
+          </article>
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>
+            <h3>Try before it's live</h3>
+            <p>Each change runs beside the live app on a copy of your data. Apply it, ask for changes, or throw it away.</p>
+          </article>
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4"/><path d="M3 4v5h5"/></svg></div>
+            <h3>Roll back, with data</h3>
+            <p>Your data is copied before every change goes live, and daily. Go back to any generation, and to its data too.</p>
+          </article>
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg></div>
+            <h3>Looks after itself</h3>
+            <p>It notices errors and crashes, restarts what fell over, finds the cause and fixes it with a test that proves it.</p>
+          </article>
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+            <h3>Routines</h3>
+            <p>Tasks it runs on a schedule and reports on, and jobs your app runs, like a weekly digest or a nightly cleanup.</p>
+          </article>
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-.9-1.6-1.5-3-1.5-1.7 0-3 .8-3 2s1.3 1.6 3 2 3 .8 3 2-1.3 2-3 2c-1.4 0-2.5-.6-3-1.5M12 6.5v1.5M12 16v1.5"/></svg></div>
+            <h3>Knows what it costs</h3>
+            <p>Every model call is counted. Watch an evolution's cost tick up live, and set a monthly budget for what it does alone.</p>
+          </article>
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9a6 6 0 0 1 12 0c0 6.5 2.5 8 2.5 8h-17S6 15.5 6 9"/><path d="M10.3 20.5a2 2 0 0 0 3.4 0"/></svg></div>
+            <h3>Tells you when it needs you</h3>
+            <p>Notifications on your laptop and phone when a change is ready to try, it has a question, or it found a problem.</p>
+          </article>
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div>
+            <h3>Locked down by default</h3>
+            <p>Your app has no network except HTTPS to hosts you approve, with only the secrets you grant. Risky actions wait for you.</p>
+          </article>
+          <article>
+            <div class="f-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg></div>
+            <h3>Updates itself</h3>
+            <p>New kernels arrive as signed releases you install from the control plane. If one fails to start, it rolls back on its own.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="wrap">
+        <h2>See it</h2>
+        <div class="gallery">
+          <figure><img src="assets/chat.jpg" alt="The control plane: a chat with Seed, and an evolution card showing its progress" loading="lazy"><figcaption>Chat, plans and progress, live</figcaption></figure>
+          <figure><img src="assets/point.jpg" alt="Point and ask: an area of the app selected, with a box asking what should change" loading="lazy"><figcaption>Point and ask, right on your app</figcaption></figure>
+          <figure><img src="assets/spending.jpg" alt="The Spending page: this month's model costs by day and by kind" loading="lazy"><figcaption>What every change cost</figcaption></figure>
+          <figure><img src="assets/backups.jpg" alt="The Backups page: copies of the app's data, ready to download or restore" loading="lazy"><figcaption>Backups before every change</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section section-alt">
+      <div class="wrap two">
+        <div>
+          <h2>Under the hood</h2>
+          <ul class="checks">
+            <li>One container per Seed, with its own PostgreSQL, or an external one with <code>DATABASE_URL</code>.</li>
+            <li>Every change built and tested in a sandbox (bubblewrap) with a scratch database. Your live data is out of reach.</li>
+            <li>A kernel boundary: the app it becomes can't change the parts that keep it safe.</li>
+            <li>Git is the source of truth. Every generation is a commit; history is never rewritten.</li>
+            <li>Any model through OpenRouter, with your own key. Keys are passed at start, never stored.</li>
+          </ul>
+          <p><a href="https://github.com/paezao/seed/blob/main/docs/architecture.md">Architecture →</a> · <a href="https://github.com/paezao/seed/blob/main/docs/security.md">Security →</a></p>
+        </div>
+        <div>
+          <h2>Your app is yours</h2>
+          <p>
+            Seed is open source under the MPL-2.0. The app your Seed becomes is yours, under the MIT license:
+            take it anywhere. A Seed runs anywhere Docker does: your laptop, a VPS, or Kubernetes, with a volume
+            and optionally an external database.
+          </p>
+          <p><a href="https://github.com/paezao/seed/blob/main/docs/hosting.md">Hosting a Seed →</a></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section final">
+      <div class="wrap">
+        <h2>Plant one</h2>
+        <div class="install install-center">
+          <div class="code-line">
+            <code id="install-cmd-2">curl -fsSL https://raw.githubusercontent.com/paezao/seed/main/install.sh | sh</code>
+            <button class="copy" data-copy="install-cmd-2" aria-label="Copy the install command">Copy</button>
+          </div>
+        </div>
+        <p class="muted small">Needs Docker. Or build it yourself: <code>git clone https://github.com/paezao/seed &amp;&amp; cd seed &amp;&amp; make install</code></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <span class="brand brand-sm">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9" class="stem"/><path d="M12 13c0-4.4 2.9-7.3 7.8-7.3 0 4.4-2.9 7.3-7.8 7.3z" class="leaf"/><path d="M12 15.5c0-3.3-2.2-5.6-5.8-5.6 0 3.3 2.2 5.6 5.8 5.6z" class="leaf leaf-2"/></svg>
+        Seed
+      </span>
+      <span class="muted small">MPL-2.0 · <a href="https://github.com/paezao/seed">GitHub</a> · <a href="https://github.com/paezao/seed/tree/main/docs">Docs</a> · <a href="https://github.com/paezao/seed/blob/main/SECURITY.md">Security</a></span>
+    </div>
+  </footer>
+
+  <script>
+    // The demo evolution: its label, cost and badge follow the bars.
+    (() => {
+      const phases = ['Planning', 'Evolving', 'Building', 'Testing', 'Launching', 'Checking health', 'Reflecting', 'Applying'];
+      const label = document.getElementById('demo-phase'), cost = document.getElementById('demo-cost'), pill = document.getElementById('demo-pill');
+      const done = () => {
+        label.textContent = 'Done';
+        cost.textContent = '$0.61';
+        pill.textContent = 'complete';
+        pill.className = 'pill pill-done';
+      };
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
+      phases.forEach((p, i) => setTimeout(() => {
+        label.textContent = p + ' \u00b7 ' + (i + 1) + ' of 8';
+        cost.textContent = '$' + (0.07 * (i + 1)).toFixed(2);
+      }, 600 + i * 400));
+      setTimeout(done, 3900);
+    })();
+
+    for (const b of document.querySelectorAll('[data-copy]')) {
+      b.addEventListener('click', async () => {
+        const text = document.getElementById(b.dataset.copy).textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+          b.textContent = 'Copied';
+        } catch {
+          b.textContent = 'Select it';
+        }
+        setTimeout(() => { b.textContent = 'Copy'; }, 1600);
+      });
+    }
+  </script>
+</body>
+</html>
